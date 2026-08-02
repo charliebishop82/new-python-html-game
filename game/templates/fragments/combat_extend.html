@@ -1,0 +1,36 @@
+<!-- ============================================================ -->
+<div class="fragment" id="extend-fragment">
+    <div class="term-line term-amber">
+        ═══ ROUND LIMIT REACHED ══════════════════════════════════════
+    </div>
+    <div class="term-line term-white">
+        The fight is unresolved. Extend or resolve by score formula?
+    </div>
+    <div class="term-line term-system">
+        Auto-resolving in <span id="extend-timer">{{ timeout }}</span> seconds...
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+        <form class="terminal-action"
+              action="{{ url_for('combat.extend') }}" method="POST">
+            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">
+                Extend (1 AP)
+            </button>
+        </form>
+        <form class="terminal-action"
+              action="{{ url_for('combat.resolve') }}" method="POST"
+              id="resolve-form">
+            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">
+                Resolve Now
+            </button>
+        </form>
+    </div>
+</div>
+<script>
+startExtensionTimer(
+    {{ timeout }},
+    "{{ url_for('combat.resolve') }}"
+);
+</script>
+
+
+<!-- ============================================================ -->

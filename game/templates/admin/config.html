@@ -1,0 +1,36 @@
+<!-- ============================================================ -->
+{% extends "admin/base_admin.html" %}
+{% block title %}Config{% endblock %}
+{% block content %}
+<h1>Game Config</h1>
+
+{% if feedback %}<div class="feedback">✓ {{ feedback }}</div>{% endif %}
+{% if error %}<div class="error">⚠ {{ error }}</div>{% endif %}
+
+<p style="color:#666;margin-bottom:16px;">
+    Edit individual constants. These take effect immediately (no reset needed).
+    Changes here override Excel-imported values until the next import.
+</p>
+
+<form method="POST" style="margin-bottom:24px;display:flex;gap:8px;align-items:center;">
+    <input type="text" name="constant_name" placeholder="CONSTANT_NAME" style="width:240px;">
+    <input type="text" name="value"         placeholder="value"          style="width:160px;">
+    <button type="submit" class="btn">Update</button>
+</form>
+
+<table>
+    <tr><th>Constant</th><th>DB Value</th><th>Default</th></tr>
+    {% for row in settings_rows %}
+    <tr>
+        <td style="color:#4499ff">{{ row.constant_name }}</td>
+        <td>{{ row.value }}</td>
+        <td style="color:#666;font-size:11px;">
+            {{ defaults.get(row.constant_name, '—') }}
+        </td>
+    </tr>
+    {% endfor %}
+</table>
+{% endblock %}
+
+
+<!-- ============================================================ -->

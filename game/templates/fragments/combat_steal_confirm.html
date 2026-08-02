@@ -1,0 +1,28 @@
+<!-- ============================================================ -->
+<div class="fragment">
+    <div class="term-line term-amber">
+        💰 STEAL ATTEMPT — Confirm?
+    </div>
+    <div class="term-line term-grey">
+        Opposing {{ opponent.character_name or opponent.name }}.
+        Success: take an item or credits. Failure: your AC is reduced for the next hit.
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+        <form class="terminal-action"
+              action="{{ url_for('combat.steal_confirm') }}" method="POST">
+            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">
+                Confirm Steal
+            </button>
+        </form>
+        <form class="terminal-action"
+              action="{{ url_for('combat.action') }}" method="POST">
+            <input type="hidden" name="action_type" value="attack">
+            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">
+                Attack Instead
+            </button>
+        </form>
+    </div>
+</div>
+
+
+<!-- ============================================================ -->

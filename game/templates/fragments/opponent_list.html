@@ -1,0 +1,49 @@
+<!-- ============================================================ -->
+<div class="fragment">
+    <div class="term-line term-amber">
+        ═══ PVP — CHOOSE YOUR OPPONENT ═══════════════════════════════
+    </div>
+    {% if opponents %}
+    <table style="margin-top:8px;">
+        <tr>
+            <th>Name</th><th>Level</th><th>HP</th><th>Wealth</th><th>Status</th><th></th>
+        </tr>
+        {% for opp in opponents %}
+        <tr>
+            <td>{{ opp.character_name }}</td>
+            <td>{{ opp.level }}</td>
+            <td class="term-{{ 'good' if opp.hp_tier == 'Healthy'
+                                else 'bad' if opp.hp_tier == 'Critical'
+                                else 'amber' }}">
+                {{ opp.hp_tier }}
+            </td>
+            <td style="color:var(--grey)">{{ opp.wealth_tier }}</td>
+            <td>
+                {% if opp.in_combat %}
+                <span style="color:var(--red)">In Combat</span>
+                {% else %}
+                <span style="color:var(--grey)">Available</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if not opp.in_combat %}
+                <form class="terminal-action"
+                      action="{{ url_for('actions.action_pvp_fight') }}" method="POST">
+                    <input type="hidden" name="target_id" value="{{ opp.id }}">
+                    <button type="submit" class="btn-small">Fight</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <div class="term-line term-grey">
+        No eligible opponents right now. Everyone is either too low level,
+        at 1 HP, or in combat.
+    </div>
+    {% endif %}
+</div>
+
+
+<!-- ============================================================ -->

@@ -1,0 +1,22 @@
+<!-- ============================================================ -->
+<div class="fragment"
+     data-hp="{{ new_hp }}"
+     data-max-hp="{{ max_hp }}"
+     data-ap="{{ new_ap }}"
+     data-max-ap="{{ player.max_ap }}"
+     data-credits="{{ new_credits }}">
+    <div class="term-line term-good">
+        ═══ TAVERN ════════════════════════════════════════════════
+    </div>
+    <div class="term-line term-good">
+        The barkeep patches you up. +{{ heal_amount }} HP restored.
+    </div>
+    <div class="term-line term-system">
+        HP: {{ new_hp }}/{{ max_hp }} &nbsp;|&nbsp;
+        Credits: {{ new_credits }} (-{{ cost_cr }}) &nbsp;|&nbsp;
+        AP: {{ new_ap }}
+    </div>
+</div>
+
+
+<!-- ============================================================ -->

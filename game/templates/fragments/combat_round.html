@@ -1,0 +1,66 @@
+<!-- ============================================================ -->
+<div class="fragment"
+     data-hp="{{ player.current_hp }}"
+     data-max-hp="{{ player.max_hp }}"
+     data-ap="{{ player.current_ap }}"
+     data-max-ap="{{ player.max_ap }}"
+     data-credits="{{ player.credits }}">
+
+    <div class="term-line term-grey">
+        ─── Round {{ result.session_id }} ────────────────────────────────────────
+    </div>
+    <div class="term-line term-system" style="font-size:11px;">
+        Initiative: You {{ result.att_init }} vs Opponent {{ result.def_init }}
+        — {{ 'You act first' if result.attacker_first else 'Opponent acts first' }}
+    </div>
+
+    {% for action_result in result.round_log %}
+    <div class="term-line
+        {% if action_result.action in ('ATTACK', 'SPECIAL_ATTACK') %}
+            {% if action_result.get('hit') %}term-white{% else %}term-grey{% endif %}
+        {% elif action_result.action == 'BRACE' %}term-good
+        {% elif action_result.action == 'ESCAPE' %}
+            {% if action_result.success %}term-good{% else %}term-bad{% endif %}
+        {% elif action_result.action == 'STEAL' %}
+            {% if action_result.success %}term-good{% else %}term-bad{% endif %}
+        {% elif action_result.action == 'OBSERVE' %}term-blue
+        {% elif action_result.action == 'SPECIAL_BUFF' %}term-amber
+        {% else %}term-grey{% endif %}">
+        {{ action_result.flavor }}
+    </div>
+    <div class="term-line term-grey" style="font-size:11px;margin-left:12px;">
+        {{ action_result.roll_detail if action_result.get('roll_detail') else '' }}
+    </div>
+    {% endfor %}
+
+    <!-- Show updated HP -->
+    <div class="term-line term-system">
+        Your HP: {{ player.current_hp }}/{{ player.max_hp }}
+    </div>
+
+    <!-- Combat action buttons (repeat for next round) -->
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
+            <input type="hidden" name="action_type" value="attack">
+            <button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">⚔ Attack</button>
+        </form>
+        <form class="terminal-action" action="{{ url_for('combat.steal') }}" method="POST">
+            <button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">💰 Steal</button>
+        </form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
+            <input type="hidden" name="action_type" value="brace">
+            <button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">🛡 Brace</button>
+        </form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
+            <input type="hidden" name="action_type" value="escape">
+            <button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">🚪 Escape</button>
+        </form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
+            <input type="hidden" name="action_type" value="observe">
+            <button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">🔍 Observe</button>
+        </form>
+    </div>
+</div>
+
+
+<!-- ============================================================ -->

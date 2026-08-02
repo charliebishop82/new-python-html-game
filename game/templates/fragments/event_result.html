@@ -1,0 +1,22 @@
+<!-- ============================================================ -->
+<div class="fragment"
+     data-hp="{{ player.current_hp if player else '' }}"
+     data-max-hp="{{ player.max_hp if player else '' }}"
+     data-ap="{{ player.current_ap if player else '' }}"
+     data-max-ap="{{ player.max_ap if player else '' }}"
+     data-credits="{{ player.credits if player else '' }}">
+    <div class="term-line term-{{ 'good' if event.event_type == 'Good' else 'bad' }}">
+        ═══ RANDOM EVENT ══════════════════════════════════════════════
+    </div>
+    <div class="term-line term-{{ 'good' if event.event_type == 'Good' else 'bad' }}">
+        {{ event.flavor_text }}
+    </div>
+    {% if event.duration == 'UntilMidnight' %}
+    <div class="term-line term-system">
+        Effect lasts until midnight reset.
+    </div>
+    {% endif %}
+</div>
+
+
+<!-- ============================================================ -->

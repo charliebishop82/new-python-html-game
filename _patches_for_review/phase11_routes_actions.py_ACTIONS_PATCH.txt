@@ -1,0 +1,9 @@
+Source phase doc : Phase11_Code.py
+Likely target file: routes/actions.py
+Reason flagged    : not a standalone function — needs manual placement
+Context/description from doc:
+  routes/actions.py  (patch — add PROTAGONIST_ENCOUNTER handler)
+----------------------------------------------------------------------
+
+        elif effect == "PROTAGONIST_ENCOUNTER":
+            _handle_protagonist_encounter(player_id, player, settings)

@@ -1,0 +1,38 @@
+<!-- ============================================================ -->
+{% extends "base.html" %}
+{% block title %}Level Up!{% endblock %}
+{% block content %}
+<div id="auth-box">
+    <h2 class="auth-heading term-amber">⬆ LEVEL UP!</h2>
+    <p>You have reached <strong>Level {{ player.level }}</strong>.</p>
+    <p>Choose one stat to permanently increase by 1:</p>
+
+    <form method="POST" action="{{ url_for('auth.levelup_post') }}">
+        <div id="levelup-stats">
+            {% for stat, label, detail in [
+                ('STR', 'STR — Strength',    'Melee attack & damage / Inventory size'),
+                ('END', 'END — Endurance',   'Max HP / Bonus AP / Passive HP regen'),
+                ('AGI', 'AGI — Agility',     'Ranged attack & damage / AC / Dodge / Initiative'),
+                ('LCK', 'LCK — Luck',        'Crit range / Dodge / Steal / Events / Repair'),
+                ('PER', 'PER — Perception',  'Observe / Shop discount / Minion detection')
+            ] %}
+            <label class="stat-choice">
+                <input type="radio" name="stat" value="{{ stat }}" required>
+                <span class="stat-name">{{ label }}</span>
+                <span class="stat-current">Currently: {{ player[stat.lower() + '_stat'] }} → {{ player[stat.lower() + '_stat'] + 1 }}</span>
+                <span class="stat-detail">{{ detail }}</span>
+            </label>
+            {% endfor %}
+        </div>
+
+        {% if error %}
+        <div class="term-error">{{ error }}</div>
+        {% endif %}
+
+        <button type="submit" class="auth-btn">CONFIRM</button>
+    </form>
+</div>
+{% endblock %}
+
+
+################################################################################

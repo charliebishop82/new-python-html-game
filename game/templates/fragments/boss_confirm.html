@@ -1,0 +1,36 @@
+<!-- ============================================================ -->
+<div class="fragment">
+    <div class="term-line term-amber">
+        ⚠ WARNING — LEVEL MISMATCH
+    </div>
+    <div class="term-line term-white">
+        {{ opponent.name }} is {{ level_diff }} level(s) above you.
+        This fight may be extremely dangerous.
+    </div>
+    <div class="term-line term-grey" style="font-size:11px;">
+        {{ opponent.flavor_text }}
+    </div>
+    <div style="display:flex;gap:8px;margin-top:8px;">
+        <form class="terminal-action"
+              action="{{ url_for('actions.action_boss_confirm') }}" method="POST">
+            <input type="hidden" name="opponent_id"    value="{{ opponent.id }}">
+            <input type="hidden" name="encounter_type" value="{{ encounter_type }}">
+            <input type="hidden" name="action"         value="fight">
+            <button type="submit" class="action-btn" style="width:auto;padding:6px 16px;">
+                Fight Anyway
+            </button>
+        </form>
+        <form class="terminal-action"
+              action="{{ url_for('actions.action_boss_confirm') }}" method="POST">
+            <input type="hidden" name="opponent_id"    value="{{ opponent.id }}">
+            <input type="hidden" name="encounter_type" value="{{ encounter_type }}">
+            <input type="hidden" name="action"         value="avoid">
+            <button type="submit" class="action-btn" style="width:auto;padding:6px 16px;">
+                Back Away (No AP cost)
+            </button>
+        </form>
+    </div>
+</div>
+
+
+<!-- ============================================================ -->
