@@ -1,0 +1,125 @@
+<!-- ============================================================ -->
+{% extends "base.html" %}
+{% block title %}Shop{% endblock %}
+{% block content %}
+<div id="page-content">
+    <a href="{{ url_for('dashboard.index') }}" class="back-link">← Back to Dashboard</a>
+    <h2 class="page-title">⚔ THE SHOP</h2>
+
+    <div id="terminal-output">
+        {% if feedback %}<span class="term-good">{{ feedback }}</span>{% endif %}
+        {% if error %}<span class="term-error">⚠ {{ error }}</span>{% endif %}
+    </div>
+
+    {% if discount_pct > 0 %}
+    <p class="term-good" style="margin-bottom:12px;">
+        Your discount: {{ discount_pct }}% (PER bonus + gear)
+    </p>
+    {% endif %}
+
+    <!-- BUY PANEL -->
+    <h3 style="color:var(--amber);margin-bottom:8px;">Available Items</h3>
+    {% if listings %}
+    <table>
+        <tr>
+            <th>Name</th><th>Type</th><th>Level</th><th>Details</th>
+            <th>Durability</th><th>Price</th><th></th>
+        </tr>
+        {% for item in listings %}
+        <tr>
+            <td>{{ item.name }}</td>
+            <td>
+                {% if item.item_type == 'WEAPON' %}
+                    {{ item.weapon_type }} · {{ item.damage_die }} {{ item.damage_type }}
+                {% elif item.item_type == 'ARMOR' %}
+                    Armor · AC+{{ item.ac_bonus }}
+                {% else %}
+                    <span style="color:var(--amber)">★ Special</span>
+                {% endif %}
+            </td>
+            <td>{{ item.level }}</td>
+            <td style="font-size:11px;color:var(--grey);">
+                {% if item.item_type == 'WEAPON' %}
+                    {% if item.str_bonus %}STR+{{ item.str_bonus }} {% endif %}
+                    {% if item.agi_bonus %}AGI+{{ item.agi_bonus }} {% endif %}
+                {% elif item.item_type == 'ARMOR' %}
+                    {% for dtype in ['blade','blunt','ballistic','energy','arcane','explosive','venom'] %}
+                        {% if item['res_' + dtype] %}{{ dtype[:3].upper() }}✓ {% endif %}
+                    {% endfor %}
+                {% endif %}
+            </td>
+            <td>
+                {% if item.durability_at_listing %}
+                    {{ item.durability_at_listing }}%
+                {% else %}
+                    100%
+                {% endif %}
+            </td>
+            <td>
+                {% if item.discounted_price < item.price %}
+                    <span style="text-decoration:line-through;color:var(--grey)">{{ item.price }}</span>
+                    <span class="term-good">{{ item.discounted_price }}</span>
+                {% else %}
+                    {{ item.price }}
+                {% endif %}
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('shop.buy') }}">
+                    <input type="hidden" name="listing_id" value="{{ item.listing_id }}">
+                    <button type="submit" class="btn-small">Buy</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p style="color:var(--grey)">Shop is empty — restocks at midnight.</p>
+    {% endif %}
+
+    <!-- SELL PANEL -->
+    <h3 style="color:var(--amber);margin:20px 0 8px;">Sell Items</h3>
+    {% if sellable %}
+    <table>
+        <tr>
+            <th>Name</th><th>Type</th><th>Durability</th><th>Sell Price</th><th></th>
+        </tr>
+        {% for item in sellable %}
+        <tr>
+            <td>{{ item.name }}</td>
+            <td>
+                {% if item.item_type == 'SPECIAL' %}
+                    <span style="color:var(--amber)">★ Special</span>
+                {% else %}
+                    {{ item.item_type|title }}
+                {% endif %}
+            </td>
+            <td>{{ item.current_durability }}%</td>
+            <td>
+                {% if item.sell_price == 0 %}
+                    <span style="color:var(--red)">0 credits</span>
+                {% else %}
+                    {{ item.sell_price }} credits
+                {% endif %}
+            </td>
+            <td>
+                <form method="POST" action="{{ url_for('shop.sell') }}"
+                      {% if item.sell_price == 0 %}
+                      onsubmit="return confirm('Sell {{ item.name }} for 0 credits?');"
+                      {% endif %}>
+                    <input type="hidden" name="inv_id" value="{{ item.inv_id }}">
+                    <button type="submit" class="btn-small {% if item.sell_price == 0 %}danger{% endif %}">
+                        Sell
+                    </button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p style="color:var(--grey)">No unequipped items to sell.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+
+<!-- ============================================================ -->

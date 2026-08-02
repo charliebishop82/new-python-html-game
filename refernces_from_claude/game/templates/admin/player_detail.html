@@ -1,0 +1,109 @@
+<!-- ============================================================ -->
+{% extends "admin/base_admin.html" %}
+{% block title %}Player: {{ player.character_name }}{% endblock %}
+{% block content %}
+<h1>{{ player.character_name }} <span style="color:#666;font-size:13px">({{ player.username }})</span></h1>
+
+{% if feedback %}<div class="feedback">✓ {{ feedback }}</div>{% endif %}
+{% if error %}<div class="error">⚠ {{ error }}</div>{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+<div>
+    <h2>Stats</h2>
+    <table>
+        <tr><td>Level</td><td>{{ player.level }}</td></tr>
+        <tr><td>XP</td><td>{{ player.xp }}</td></tr>
+        <tr><td>HP</td><td>{{ player.current_hp }}</td></tr>
+        <tr><td>AP</td><td>{{ player.current_ap }}</td></tr>
+        <tr><td>Credits</td><td>{{ player.credits }}</td></tr>
+        <tr><td>STR/END/AGI/LCK/PER</td>
+            <td>{{ player.str_stat }}/{{ player.end_stat }}/{{ player.agi_stat }}/{{ player.lck_stat }}/{{ player.per_stat }}</td>
+        </tr>
+        <tr><td>In Combat</td><td>{{ 'Yes' if player.in_combat else 'No' }}</td></tr>
+        <tr><td>Banned</td><td>{{ 'Yes' if player.is_banned else 'No' }}</td></tr>
+        <tr><td>Last Login</td><td>{{ player.last_login_at or 'Never' }}</td></tr>
+    </table>
+
+    <h2>Edit Fields</h2>
+    <form method="POST" action="/admin/players/{{ player.id }}/edit">
+        {% for field in ['credits','current_hp','current_ap','level','xp',
+                         'str_stat','end_stat','agi_stat','lck_stat','per_stat'] %}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <label style="width:100px;color:#666;font-size:11px;">{{ field }}</label>
+            <input type="number" name="{{ field }}" min="0"
+                   placeholder="{{ player[field] }}" style="width:80px;">
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn" style="margin-top:8px;">Save Changes</button>
+    </form>
+</div>
+
+<div>
+    <h2>Actions</h2>
+    {% if player.is_banned %}
+    <form method="POST" action="/admin/players/{{ player.id }}/ban">
+        <input type="hidden" name="action" value="unban">
+        <button type="submit" class="btn">Unban Player</button>
+    </form>
+    {% else %}
+    <form method="POST" action="/admin/players/{{ player.id }}/ban"
+          onsubmit="return confirm('Ban {{ player.username }}? This wipes credits, gear, and returns special items.');">
+        <input type="hidden" name="action" value="ban">
+        <button type="submit" class="btn btn-danger">Ban Player</button>
+    </form>
+    {% endif %}
+
+    <h2>Boss Kill Records</h2>
+    {% if boss_kills %}
+    <table>
+        <tr><th>Boss</th><th>Kills</th><th>First Seen</th></tr>
+        {% for row in boss_kills %}
+        <tr>
+            <td>{{ row.name }}</td>
+            <td>{{ row.kill_count }}</td>
+            <td style="font-size:11px;color:#666">{{ row.discovered_at[:10] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p style="color:#666">No boss encounters yet.</p>
+    {% endif %}
+</div>
+</div>
+
+<h2>Inventory ({{ inventory|length }} items)</h2>
+{% if inventory %}
+<table>
+    <tr><th>Item</th><th>Type</th><th>Durability</th><th>Acquired</th></tr>
+    {% for item in inventory %}
+    <tr>
+        <td>{{ item.item_name or 'Unknown' }}</td>
+        <td>{{ item.item_type }}</td>
+        <td>{{ item.current_durability }}%</td>
+        <td style="font-size:11px;color:#666">{{ item.acquired_method }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p style="color:#666">Empty inventory.</p>
+{% endif %}
+
+<h2>Recent Item History (last 50)</h2>
+{% if history %}
+<table>
+    <tr><th>Date</th><th>Item</th><th>Event</th><th>Credits</th></tr>
+    {% for h in history %}
+    <tr>
+        <td style="font-size:11px;color:#666">{{ h.occurred_at[:16] }}</td>
+        <td>{{ h.item_name }}</td>
+        <td>{{ h.event_type }}</td>
+        <td>{{ h.credit_amount or '' }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}
+{% endblock %}
+
+
+<!-- ============================================================ -->

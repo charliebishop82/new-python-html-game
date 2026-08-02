@@ -97,35 +97,11 @@ def get_player(player_id: int) -> dict | None:
     if player is None:
         return None
 
-    active_effects = execute(
-        "SELECT effect_type, value FROM status_effects WHERE player_id = ?",
+    cursed = execute_one(
+        "SELECT value FROM status_effects WHERE player_id = ? AND effect_type = 'CURSED'",
         (player_id,)
     )
-    is_cursed = any(effect["effect_type"] == "CURSED" for effect in active_effects)
-
-    stat_modifiers = {
-        "str": 0, "end": 0, "agi": 0, "lck": 0, "per": 0, "initiative": 0
-    }
-    effect_stats = {
-        "STAT_BOOST_STR": "str", "STAT_PENALTY_STR": "str",
-        "STAT_BOOST_END": "end", "STAT_PENALTY_END": "end",
-        "STAT_BOOST_AGI": "agi", "STAT_PENALTY_AGI": "agi",
-        "STAT_BOOST_LCK": "lck", "STAT_PENALTY_LCK": "lck",
-        "STAT_BOOST_PER": "per", "STAT_PENALTY_PER": "per",
-        "STAT_BOOST_INITIATIVE": "initiative",
-        "STAT_PENALTY_INITIATIVE": "initiative",
-    }
-    for effect in active_effects:
-        stat = effect_stats.get(effect["effect_type"])
-        if stat:
-            stat_modifiers[stat] += int(effect["value"])
-
-    player["str_stat"] = max(1, player["str_stat"] + stat_modifiers["str"])
-    player["end_stat"] = max(1, player["end_stat"] + stat_modifiers["end"])
-    player["agi_stat"] = max(1, player["agi_stat"] + stat_modifiers["agi"])
-    player["lck_stat"] = max(1, player["lck_stat"] + stat_modifiers["lck"])
-    player["per_stat"] = max(1, player["per_stat"] + stat_modifiers["per"])
-    player["initiative_modifier"] = stat_modifiers["initiative"]
+    is_cursed = cursed is not None
     settings = get_all_settings()
 
     base_daily_ap  = settings.get("BASE_DAILY_AP",            cfg.BASE_DAILY_AP)

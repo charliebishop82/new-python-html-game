@@ -1,0 +1,19 @@
+Source phase doc : Phase12_Code.py
+Likely target file: combat/actions.py
+Reason flagged    : not a standalone function — needs manual placement
+Context/description from doc:
+  combat/actions.py
+----------------------------------------------------------------------
+
+
+# At the bottom of finalize_combat(), change the return statement to:
+
+    return {
+        "winner_side":    winner_side,
+        "result_type":    result_type,
+        "xp_earned":      xp_earned,
+        "credits_stolen": credits_stolen,
+        "item_stolen":    item_stolen,
+        "drops":          drops if session["combat_type"] in ("BOSS", "MINION") else None,
+        "flavor":         global_text,
+    }

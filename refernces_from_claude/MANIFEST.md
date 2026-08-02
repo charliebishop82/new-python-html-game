@@ -1,6 +1,6 @@
 # Ingestion Manifest
 
-Generated from 14 phase documents in `/mnt/user-data/uploads`.
+Generated from 15 phase documents in `/mnt/user-data/uploads`.
 
 Rule applied: for any file or function defined in more than one phase, the **highest phase number wins**.
 
@@ -37,9 +37,10 @@ Rule applied: for any file or function defined in more than one phase, the **hig
 - `routes/feeds.py` — base from Phase 2 (Phase2_Code.py)
 - `routes/scoreboards.py` — base from Phase 6 (Phase6_Code.py)
 - `routes/shop.py` — base from Phase 3 (Phase3_Code.py)
-- `run.py` — base from Phase 9 (Phase9_Code.py)
+- `run.py` — base from Phase 15 (Phase15_Code.py)
 - `scheduler.py` — base from Phase 7 (Phase7_Code.py)
-- `schema.sql` — base from Phase 1 (Phase1_Code.py)
+- `schema.sql` — base from Phase 15 (Phase15_Code.py)
+- `setup.py` — base from Phase 15 (Phase15_Code.py)
 - `static/style.css` — base from Phase 2 (Phase2_Code.py)
 - `static/terminal.js` — base from Phase 2 (Phase2_Code.py)
 - `templates/admin/base_admin.html` — base from Phase 8 (Phase8_Code.py)
@@ -75,6 +76,7 @@ Rule applied: for any file or function defined in more than one phase, the **hig
 
 - `SUMMARY` from Phase 13 (Phase13_Code.py) — combat/actions.py
 - `SUMMARY` from Phase 14 (Phase14_Code.py) — 
+- `SUMMARY` from Phase 15 (Phase15_Code.py) — 
 
 ## Needs manual review (`_patches_for_review/`)
 
@@ -96,3 +98,4 @@ These are instructions, HTML/CSS/SQL fragments, or mid-function inserts (e.g. an
 - `_patches_for_review/phase14_routes_actions.py_INTEL_ROUTES_PATCH.txt` → target: `routes/actions.py` (Phase 14, not a standalone function — needs manual placement)
 - `_patches_for_review/phase14_templates_fragments_combat_open.html_INTEL_TEMPLATE_PATCH.txt` → target: `templates/fragments/combat_open.html` (Phase 14, not a standalone function — needs manual placement)
 - `_patches_for_review/phase14_routes_auth.py_TUTORIAL_PATCH.txt` → target: `routes/auth.py` (Phase 14, not a standalone function — needs manual placement)
+- `_patches_for_review/phase15_admin.py_ADMIN_AUTH_PATCH.txt` → target: `admin.py` (Phase 15, not a standalone function — needs manual placement)

@@ -1,0 +1,11 @@
+Source phase doc : Phase14_Code.py
+Likely target file: routes/auth.py
+Reason flagged    : not a standalone function — needs manual placement
+Context/description from doc:
+  
+----------------------------------------------------------------------
+
+# In routes/auth.py, add after _award_starter_gear() call in character_create_post():
+
+    _write_tutorial_feed(player_id)
+    return redirect(url_for("dashboard.index"))

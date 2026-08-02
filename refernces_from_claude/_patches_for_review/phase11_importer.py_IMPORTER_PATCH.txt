@@ -1,0 +1,69 @@
+Source phase doc : Phase11_Code.py
+Likely target file: importer.py
+Reason flagged    : not a standalone function — needs manual placement
+Context/description from doc:
+  importer.py  (patches)
+----------------------------------------------------------------------
+
+
+# PATCH 1: Add to VALID_EFFECT_TYPES:
+    "PROTAGONIST_ENCOUNTER",
+
+# PATCH 2: In _validate_special_items(), update AssociationType check:
+#   Change:
+#       if r.get('AssociationType') not in ('Boss', 'Minion', None):
+#   To:
+#       if r.get('AssociationType') not in ('Boss', 'Minion', 'Protagonist', None):
+
+# PATCH 3: In _apply_master(), extend to process protagonist columns.
+# After the existing minion FK resolution block, add:
+
+        prot_name     = get_id_by_name('players', r.get('ProtagonistName'))  # N/A — name only
+        prot_weapon   = get_id('weapons',       r.get('ProtagonistWeapon'))
+        prot_armor    = get_id('armor',         r.get('ProtagonistArmor'))
+        prot_special  = get_id('special_items', r.get('ProtagonistSpecialItem'))
+
+        # Update master row with protagonist FKs (add these columns to master table in schema)
+        # See schema patch below.
+
+# PATCH 4: schema.sql — add protagonist columns to master table:
+#   ALTER TABLE master ADD COLUMN protagonist_name         TEXT;
+#   ALTER TABLE master ADD COLUMN protagonist_weapon_id    INTEGER REFERENCES weapons(id);
+#   ALTER TABLE master ADD COLUMN protagonist_armor_id     INTEGER REFERENCES armor(id);
+#   ALTER TABLE master ADD COLUMN protagonist_special_item_id INTEGER REFERENCES special_items(id);
+
+# Or simpler — run these once after adding the columns to schema.sql:
+#   python3 -c "
+#   import sqlite3
+#   conn = sqlite3.connect('data/game.db')
+#   for sql in [
+#       'ALTER TABLE master ADD COLUMN protagonist_name TEXT',
+#       'ALTER TABLE master ADD COLUMN protagonist_weapon_id INTEGER REFERENCES weapons(id)',
+#       'ALTER TABLE master ADD COLUMN protagonist_armor_id INTEGER REFERENCES armor(id)',
+#       'ALTER TABLE master ADD COLUMN protagonist_special_item_id INTEGER REFERENCES special_items(id)',
+#   ]:
+#       try: conn.execute(sql)
+#       except: pass
+#   conn.commit(); conn.close()
+#   print('Done')
+#   "
+
+# PATCH 5: In _apply_master(), extend the INSERT/UPDATE to include protagonist columns:
+#   existing INSERT:
+#       INSERT INTO master (movie_name, boss_id, ..., minion_special_item_id, imported_at)
+#   becomes:
+#       INSERT INTO master (movie_name, boss_id, ..., minion_special_item_id,
+#                           protagonist_name, protagonist_weapon_id,
+#                           protagonist_armor_id, protagonist_special_item_id,
+#                           imported_at)
+#       VALUES (?, ?, ..., ?, ?, ?, ?, ?)
+
+# PATCH 6: In _validate_master(), add checks for protagonist fields:
+#   for field, pool in [
+#       ('ProtagonistWeapon',      weapon_names),
+#       ('ProtagonistArmor',       armor_names),
+#       ('ProtagonistSpecialItem', special_names),
+#   ]:
+#       v = rd.get(field)
+#       if v and v not in pool:
+#           errors.append(f"[Master] '{movie}': {field} '{v}' not found")

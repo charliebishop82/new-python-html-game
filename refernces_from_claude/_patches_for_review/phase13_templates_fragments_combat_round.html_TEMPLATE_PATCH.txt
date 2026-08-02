@@ -1,0 +1,30 @@
+Source phase doc : Phase13_Code.py
+Likely target file: templates/fragments/combat_round.html
+Reason flagged    : not a standalone function — needs manual placement
+Context/description from doc:
+  combat/actions.py
+----------------------------------------------------------------------
+
+
+<!-- In templates/fragments/combat_round.html, inside the round_log loop,
+     add after the existing action_result div: -->
+
+{% if action_result.boss_phase is defined and action_result.phase_changed %}
+<div class="term-line term-amber">
+    ⚠ {{ action_result.flavor if 'PHASE' in action_result.flavor else '' }}
+</div>
+{% endif %}
+
+{% if action_result.extra_attack_result is defined %}
+<div class="term-line term-bad">
+    ★ PHASE 3 EXTRA ATTACK: {{ action_result.extra_attack_result.flavor }}
+</div>
+{% endif %}
+
+<!-- Also add a phase indicator to combat_open.html status line:
+     (shown on fight start if boss already damaged from a previous session) -->
+{% if boss_phase is defined and boss_phase > 1 %}
+<div class="term-line term-amber">
+    ⚠ This boss is in Phase {{ boss_phase }} — expect increased aggression.
+</div>
+{% endif %}

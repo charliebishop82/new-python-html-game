@@ -1,0 +1,172 @@
+<!-- ============================================================ -->
+{% extends "base.html" %}
+{% block title %}Character Sheet{% endblock %}
+{% block content %}
+<div id="page-content">
+    <a href="{{ url_for('dashboard.index') }}" class="back-link">← Back to Dashboard</a>
+    <h2 class="page-title">📋 CHARACTER SHEET</h2>
+
+    <div id="terminal-output">
+        {% if feedback %}<span class="term-good">{{ feedback }}</span>{% endif %}
+        {% if error %}<span class="term-error">⚠ {{ error }}</span>{% endif %}
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;">
+
+        <!-- LEFT: Core stats -->
+        <div>
+            <h3 style="color:var(--amber);margin-bottom:10px;">Stats</h3>
+            <table>
+                <tr><th>Stat</th><th>Base</th><th>With Gear</th></tr>
+                <tr><td>STR</td><td>{{ player.str_stat }}</td><td id="d-str">{{ derived.str }}</td></tr>
+                <tr><td>END</td><td>{{ player.end_stat }}</td><td id="d-end">{{ derived.end }}</td></tr>
+                <tr><td>AGI</td><td>{{ player.agi_stat }}</td><td id="d-agi">{{ derived.agi }}</td></tr>
+                <tr><td>LCK</td><td>{{ player.lck_stat }}</td><td id="d-lck">{{ derived.lck }}</td></tr>
+                <tr><td>PER</td><td>{{ player.per_stat }}</td><td id="d-per">{{ derived.per }}</td></tr>
+            </table>
+
+            <h3 style="color:var(--amber);margin:14px 0 10px;">Derived</h3>
+            <table>
+                <tr><td>Armor Class</td><td id="d-ac">{{ derived.ac }}</td></tr>
+                <tr><td>Max HP</td><td id="d-maxhp">{{ derived.max_hp }}</td></tr>
+                <tr><td>Crit Threshold</td><td id="d-crit">{{ derived.crit_threshold }}+</td></tr>
+                <tr><td>Inventory Limit</td><td id="d-invlimit">{{ derived.inv_limit }}</td></tr>
+                <tr><td>Daily AP</td><td id="d-ap">{{ derived.daily_ap }}</td></tr>
+                <tr><td>HP Regen/AP</td><td id="d-regen">{{ derived.passive_regen }}</td></tr>
+                <tr><td>Shop Discount</td><td id="d-discount">{{ derived.shop_discount_pct }}%</td></tr>
+                {% if derived.extra_attack %}
+                <tr><td colspan="2" class="term-amber">★ Extra Attack active</td></tr>
+                {% endif %}
+            </table>
+        </div>
+
+        <!-- RIGHT: Combat preference + Equipment -->
+        <div>
+            <h3 style="color:var(--amber);margin-bottom:10px;">Combat Preference</h3>
+            <form method="POST" action="{{ url_for('character.preference') }}">
+                <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:14px;">
+                    {% for pref in preferences %}
+                    <label style="cursor:pointer;">
+                        <input type="radio" name="preference" value="{{ pref }}"
+                               {% if player.combat_preference == pref %}checked{% endif %}>
+                        <span style="color:{% if player.combat_preference == pref %}var(--green){% else %}var(--grey){% endif %}">
+                            {{ pref }}
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <button type="submit" class="btn-small">Update</button>
+            </form>
+
+            <h3 style="color:var(--amber);margin:14px 0 10px;">Equipped</h3>
+            {% for slot, item in equipped.items() %}
+            <div style="margin-bottom:8px;padding:6px;background:var(--bg-input);border:1px solid var(--border);">
+                <span style="color:var(--grey);font-size:11px;">{{ slot|upper }}</span>
+                {% if item %}
+                <div>{{ item.name }}
+                    <span style="color:var(--grey);font-size:11px;">({{ item.current_durability }}%)</span>
+                </div>
+                <form method="POST" action="{{ url_for('character.unequip') }}" style="display:inline">
+                    <input type="hidden" name="slot" value="{{ slot }}">
+                    <button type="submit" class="btn-small">Unequip</button>
+                </form>
+                {% else %}
+                <div style="color:var(--dim)">— empty —</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- INVENTORY TABLE -->
+    <h3 style="color:var(--amber);margin-bottom:10px;">
+        Inventory
+        <span style="font-size:12px;color:{% if player.is_overencumbered %}var(--red){% else %}var(--grey){% endif %}">
+            ({{ player.inventory_count }}/{{ player.inventory_limit }}
+            {% if player.is_overencumbered %} — OVER ENCUMBERED{% endif %})
+        </span>
+    </h3>
+    {% if inventory %}
+    <table>
+        <tr>
+            <th>Name</th><th>Type</th><th>Durability</th>
+            <th>Equipped</th><th colspan="2">Actions</th>
+        </tr>
+        {% for item in inventory %}
+        <tr id="item-row-{{ item.inv_id }}">
+            <td>
+                {% if item.item_type == 'SPECIAL' %}
+                <span style="color:var(--amber)">★ </span>
+                {% endif %}
+                {{ item.name }}
+            </td>
+            <td style="font-size:11px;color:var(--grey);">
+                {% if item.item_type == 'WEAPON' %}
+                    {{ item.weapon_type }} {{ item.damage_die }} {{ item.damage_type }}
+                {% elif item.item_type == 'ARMOR' %}
+                    Armor AC+{{ item.ac_bonus }}
+                {% else %}
+                    Special
+                {% endif %}
+            </td>
+            <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <div style="width:60px;height:5px;background:var(--border);">
+                        <div class="dur-bar {% if item.current_durability < 25 %}low{% elif item.current_durability < 60 %}medium{% endif %}"
+                             style="width:{{ item.current_durability }}%"></div>
+                    </div>
+                    {{ item.current_durability }}%
+                </div>
+            </td>
+            <td>{% if item.is_equipped %}<span class="term-good">✓</span>{% endif %}</td>
+            <td>
+                {% if not item.is_equipped %}
+                <form method="POST" action="{{ url_for('character.equip') }}"
+                      data-inv-id="{{ item.inv_id }}"
+                      data-item-type="{{ item.item_type }}"
+                      class="equip-form">
+                    <input type="hidden" name="inv_id" value="{{ item.inv_id }}">
+                    <button type="submit" class="btn-small">Equip</button>
+                </form>
+                {% endif %}
+            </td>
+            <td>
+                {% if not item.is_equipped %}
+                <form method="POST" action="{{ url_for('character.drop') }}"
+                      onsubmit="return confirm('Permanently drop {{ item.name }}?');">
+                    <input type="hidden" name="inv_id" value="{{ item.inv_id }}">
+                    <button type="submit" class="btn-small danger">Drop</button>
+                </form>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p style="color:var(--grey)">Your inventory is empty.</p>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Live stat preview on equip form submission
+// Intercept equip form, fetch /character/preview with new loadout, update stat display
+const previewUrl = "{{ url_for('character.preview') }}";
+
+document.querySelectorAll('.equip-form').forEach(form => {
+    form.addEventListener('submit', async (e) => {
+        // Let the form submit normally for the actual equip
+        // but also fetch preview to update stats live
+        const invId    = form.dataset.invId;
+        const itemType = form.dataset.itemType;
+        // No need to prevent default — we let the server redirect handle it
+        // The stat preview feature is for interactive checkbox-style UX in future;
+        // for now equip always does a full redirect back to /character
+    });
+});
+</script>
+{% endblock %}
+
+
+<!-- ============================================================ -->

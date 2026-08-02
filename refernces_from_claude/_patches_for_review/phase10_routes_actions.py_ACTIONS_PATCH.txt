@@ -1,0 +1,23 @@
+Source phase doc : Phase10_Code.py
+Likely target file: routes/actions.py
+Reason flagged    : not a standalone function — needs manual placement
+Context/description from doc:
+  routes/actions.py  (patch — extend _apply_random_event())
+----------------------------------------------------------------------
+
+
+# In routes/actions.py, inside _apply_random_event(), add these elif blocks:
+
+        elif effect in (
+            "STAT_BOOST_STR", "STAT_BOOST_END", "STAT_BOOST_AGI",
+            "STAT_BOOST_LCK", "STAT_BOOST_PER", "STAT_BOOST_INITIATIVE",
+            "STAT_PENALTY_STR", "STAT_PENALTY_END", "STAT_PENALTY_AGI",
+            "STAT_PENALTY_LCK", "STAT_PENALTY_PER", "STAT_PENALTY_INITIATIVE",
+        ):
+            # Insert a status_effect row — cleared at midnight step 0.
+            # amount is positive for boosts, negative for penalties.
+            execute_write(
+                """INSERT INTO status_effects (player_id, effect_type, value)
+                   VALUES (?, ?, ?)""",
+                (player_id, effect, float(amount))
+            )

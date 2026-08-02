@@ -411,6 +411,10 @@ CREATE TABLE IF NOT EXISTS master (
     minion_weapon_id        INTEGER NOT NULL REFERENCES weapons(id),
     minion_armor_id         INTEGER NOT NULL REFERENCES armor(id),
     minion_special_item_id  INTEGER NOT NULL REFERENCES special_items(id),
+    protagonist_name        TEXT,
+    protagonist_weapon_id   INTEGER REFERENCES weapons(id),
+    protagonist_armor_id    INTEGER REFERENCES armor(id),
+    protagonist_special_item_id INTEGER REFERENCES special_items(id),
     imported_at             TEXT    NOT NULL DEFAULT (datetime("now"))
 );
 
