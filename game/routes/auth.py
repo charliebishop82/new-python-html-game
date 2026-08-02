@@ -228,7 +228,6 @@ def character_create_post():
 
     # Award starter gear (random level 1 weapon + armor)
     _award_starter_gear(player_id)
-    _write_tutorial_feed(player_id)
 
     return redirect(url_for("dashboard.index"))
 

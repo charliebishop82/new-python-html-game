@@ -7,114 +7,41 @@
 
     <div class="term-line term-amber">
         {% if encounter_type == 'BOSS' %}
-        === BOSS FIGHT: {{ opponent.name|upper }} ====================================
+        === BOSS FIGHT: {{ opponent.name|upper }} ===
         {% elif encounter_type == 'MINION' %}
-        === MINION ENCOUNTER: {{ opponent.name|upper }} ==============================
+        === MINION ENCOUNTER: {{ opponent.name|upper }} ===
         {% else %}
-        === PVP: {{ opponent.character_name|upper }} =================================
+        === PVP: {{ opponent.character_name|upper }} ===
         {% endif %}
     </div>
 
-    {% if boss_flavor %}
-    <div class="term-line term-grey">{{ boss_flavor }}</div>
+    {% if boss_flavor %}<div class="term-line term-grey">{{ boss_flavor }}</div>{% endif %}
+
+    {% if intel and intel_detail %}
+    <div class="term-line term-blue">[KNOWN INTEL - previous encounter data]</div>
+    {% if intel_detail.resistances %}<div class="term-line term-blue" style="font-size:11px;margin-left:12px;">Resistant to: {{ intel_detail.resistances | join(", ") }}</div>{% endif %}
+    {% if intel_detail.weaknesses %}<div class="term-line term-good" style="font-size:11px;margin-left:12px;">Weak to: {{ intel_detail.weaknesses | join(", ") }}</div>{% endif %}
+    {% if intel_detail.special_attack_name %}<div class="term-line term-amber" style="font-size:11px;margin-left:12px;">Special Attack: {{ intel_detail.special_attack_name }} ({{ intel_detail.special_attack_type }})</div>{% endif %}
+    {% if intel_detail.special_buff_name %}<div class="term-line term-amber" style="font-size:11px;margin-left:12px;">Special Buff: {{ intel_detail.special_buff_name }} ({{ intel_detail.special_buff_type }})</div>{% endif %}
+    {% if intel_detail.current_hp is not none %}<div class="term-line term-blue" style="font-size:11px;margin-left:12px;">Last known HP: {{ intel_detail.current_hp }}/{{ intel_detail.max_hp }}</div>{% endif %}
+    {% elif intel %}
+    <div class="term-line term-blue">[KNOWN INTEL - previous encounter logged]</div>
     {% endif %}
 
-    {% if intel %}
-    <div class="term-line term-blue">[KNOWN INTEL from previous encounter — check character sheet]</div>
-    {% endif %}
+    {% if boss_phase is defined and boss_phase > 1 %}<div class="term-line term-amber">This boss is in Phase {{ boss_phase }} - expect increased aggression.</div>{% endif %}
 
-    <!-- Pre-combat warnings -->
-    {% if not player.equipped_weapon_id %}
-    <div class="term-line term-amber">⚠ No weapon equipped — fighting unarmed (d4 Blunt).</div>
-    {% endif %}
-    {% if not player.equipped_armor_id %}
-    <div class="term-line term-amber">⚠ No armor equipped — unprotected.</div>
-    {% endif %}
-    {% if player.is_overencumbered %}
-    <div class="term-line term-amber">⚠ Over encumbered — AP costs doubled, combat penalties active.</div>
-    {% endif %}
+    {% if not player.equipped_weapon_id %}<div class="term-line term-amber">No weapon equipped - fighting unarmed (d4 Blunt).</div>{% endif %}
+    {% if not player.equipped_armor_id %}<div class="term-line term-amber">No armor equipped - unprotected.</div>{% endif %}
+    {% if player.is_overencumbered %}<div class="term-line term-amber">Over encumbered - AP costs doubled, combat penalties active.</div>{% endif %}
 
-    <div class="term-line term-system">
-        Your HP: {{ player.current_hp }}/{{ player.max_hp }} &nbsp;|&nbsp;
-        AP: {{ player.current_ap }}
-    </div>
+    <div class="term-line term-system">Your HP: {{ player.current_hp }}/{{ player.max_hp }} &nbsp;|&nbsp; AP: {{ player.current_ap }}</div>
 
-    <!-- Combat action buttons -->
     <div id="combat-actions" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
-        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
-            <input type="hidden" name="action_type" value="attack">
-            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">⚔ Attack</button>
-        </form>
-        <form class="terminal-action" action="{{ url_for('combat.steal') }}" method="POST">
-            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">💰 Steal</button>
-        </form>
-        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
-            <input type="hidden" name="action_type" value="brace">
-            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">🛡 Brace</button>
-        </form>
-        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
-            <input type="hidden" name="action_type" value="escape">
-            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">🚪 Escape</button>
-        </form>
-        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
-            <input type="hidden" name="action_type" value="observe">
-            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">🔍 Observe</button>
-        </form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="attack"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Attack</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.steal') }}" method="POST"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Steal</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="brace"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Brace</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="escape"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Escape</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="observe"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Observe</button></form>
     </div>
 </div>
-<script>
-window._combatSessionId = {{ session_id }};
-</script>
-"""
-
-
-# =============================================================================
-# FINAL CHECKLIST — things to verify before first run
-# =============================================================================
-CHECKLIST = """
-# ── Pre-launch checklist ────────────────────────────────────────────────────
-
-# 1. Directory structure:
-#    game/
-#    ├── app.py, admin.py, config_defaults.py, database.py
-#    ├── queue_handler.py, scheduler.py, importer.py, run.py
-#    ├── schema.sql
-#    ├── combat/__init__.py, engine.py, actions.py, flavour.py
-#    ├── routes/__init__.py, auth.py, dashboard.py, actions.py, combat.py
-#    │         shop.py, blacksmith.py, character.py, scoreboards.py, feeds.py
-#    ├── templates/
-#    │   ├── base.html, dashboard.html
-#    │   ├── auth/  (login, register, character_create, levelup)
-#    │   ├── shop/, blacksmith/, character/, scoreboards/
-#    │   ├── fragments/  (error, tavern_result, event_result, boss_confirm,
-#    │   │               minion_spotted, opponent_list, combat_open,
-#    │   │               combat_round, combat_steal_confirm,
-#    │   │               combat_extend, combat_result)
-#    │   └── admin/  (base_admin, dashboard, import, players,
-#    │               player_detail, config, logs)
-#    ├── static/style.css, terminal.js
-#    └── data/  (auto-created by init_db)
-
-# 2. Install dependencies:
-#    pip install flask apscheduler openpyxl werkzeug
-
-# 3. Import game content FIRST:
-#    - Place GameContent_Template.xlsx at data/pending_import.xlsx
-#    - Run: python -c "from importer import run_import; print(run_import())"
-#    - Or start the app and trigger via admin at http://localhost:5001/admin
-
-# 4. Run in development:
-#    python run.py
-#    Admin app: flask --app admin:create_admin_app run --port 5001
-
-# 5. Apply Phase 9 session_id patch to routes/actions.py:
-#    In _start_boss_fight(): after result check, add:
-#      from flask import session; session['combat_session_id'] = result['session_id']
-#    In action_pvp_fight(): same pattern
-
-# 6. Verify APScheduler is firing:
-#    Check logs for 'APScheduler started' and trickle/reset messages
-
-# 7. Set GAME_SECRET_KEY environment variable for production:
-#    export GAME_SECRET_KEY='your-secret-key-here'
-"""
+<script>window._combatSessionId = {{ session_id }};</script>

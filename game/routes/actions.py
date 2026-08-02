@@ -165,20 +165,6 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
                 (player_id, abs(amount) / 100)
             )
 
-        elif effect in (
-            "STAT_BOOST_STR", "STAT_BOOST_END", "STAT_BOOST_AGI",
-            "STAT_BOOST_LCK", "STAT_BOOST_PER", "STAT_BOOST_INITIATIVE",
-            "STAT_PENALTY_STR", "STAT_PENALTY_END", "STAT_PENALTY_AGI",
-            "STAT_PENALTY_LCK", "STAT_PENALTY_PER", "STAT_PENALTY_INITIATIVE",
-        ):
-            execute_write(
-                "INSERT INTO status_effects (player_id, effect_type, value) VALUES (?, ?, ?)",
-                (player_id, effect, float(amount))
-            )
-
-        elif effect == "PROTAGONIST_ENCOUNTER":
-            _handle_protagonist_encounter(player_id, player, settings)
-
         elif effect == "ITEM_AT_LEVEL":
             # Random weapon or armor at or above player level
             table = random.choice(["weapons", "armor"])
@@ -437,39 +423,23 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
     if result.get("error"):
         return _error_fragment(result["error"])
 
-    session["combat_session_id"] = result["session_id"]
-
     opponent_full = execute_one(
         f"SELECT * FROM {'bosses' if encounter_type == 'BOSS' else 'minions'} WHERE id = ?",
         (opponent["id"],)
     )
     # Show boss intel if previously observed
     intel = None
-    intel_detail = None
     if encounter_type == "BOSS":
         intel = execute_one(
             "SELECT * FROM boss_intel WHERE player_id = ? AND boss_id = ?",
             (player["id"], opponent["id"])
         )
-        if intel:
-            damage_types = ("blade", "blunt", "ballistic", "energy", "arcane", "explosive", "venom")
-            intel_detail = {
-                "resistances": [kind.upper() for kind in damage_types if opponent_full.get(f"res_{kind}")],
-                "weaknesses": [kind.upper() for kind in damage_types if opponent_full.get(f"weak_{kind}")],
-                "special_attack_name": opponent_full.get("special_attack_name"),
-                "special_attack_type": opponent_full.get("special_attack_damage_type"),
-                "special_buff_name": opponent_full.get("special_buff_name"),
-                "special_buff_type": opponent_full.get("special_buff_type"),
-                "current_hp": opponent_full.get("current_hp"),
-                "max_hp": opponent_full.get("max_hp"),
-            }
 
     return render_template("fragments/combat_open.html",
                            opponent=opponent_full,
                            encounter_type=encounter_type,
                            session_id=result["session_id"],
                            intel=intel,
-                           intel_detail=intel_detail,
                            player=player,
                            boss_flavor=opponent_full.get("flavor_text", ""))
 
@@ -643,8 +613,6 @@ def action_pvp_fight():
     )
     if result.get("error"):
         return _error_fragment(result["error"])
-
-    session["combat_session_id"] = result["session_id"]
 
     return render_template("fragments/combat_open.html",
                            opponent=target,

@@ -30,31 +30,12 @@ def index():
     # Inject current UTC timestamp for JS feed polling start point
     now_iso = datetime.utcnow().isoformat()
 
-    active_effects = execute(
-        "SELECT effect_type, value FROM status_effects WHERE player_id = ?",
-        (player["id"],)
-    )
-    label_map = {
-        "STAT_BOOST_STR": "+STR", "STAT_BOOST_END": "+END",
-        "STAT_BOOST_AGI": "+AGI", "STAT_BOOST_LCK": "+LCK",
-        "STAT_BOOST_PER": "+PER", "STAT_BOOST_INITIATIVE": "+INIT",
-        "STAT_PENALTY_STR": "-STR", "STAT_PENALTY_END": "-END",
-        "STAT_PENALTY_AGI": "-AGI", "STAT_PENALTY_LCK": "-LCK",
-        "STAT_PENALTY_PER": "-PER", "STAT_PENALTY_INITIATIVE": "-INIT",
-        "CURSED": "CURSED",
-    }
-    effect_labels = [
-        f"{label_map.get(effect['effect_type'], effect['effect_type'])} {int(abs(effect['value']))}"
-        for effect in active_effects
-    ]
-
     return render_template(
         'dashboard.html',
         terminal_history=terminal_history,
         button_states=button_states,
         blackout=g.get('blackout', False),
         now_iso=now_iso,
-        effect_labels=effect_labels,
     )
 
 
