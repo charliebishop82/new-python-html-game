@@ -28,6 +28,13 @@
     <div class="term-line term-blue">Seized: {{ fr.item_stolen }}</div>
     {% endif %}
 
+    {% if fr.drops %}
+        {% if fr.drops.credits %}<div class="term-line term-good">+{{ fr.drops.credits }} credits looted</div>{% endif %}
+        {% if fr.drops.weapon %}<div class="term-line term-blue">Dropped: {{ fr.drops.weapon }}</div>{% endif %}
+        {% if fr.drops.armor %}<div class="term-line term-blue">Dropped: {{ fr.drops.armor }}</div>{% endif %}
+        {% if fr.drops.special %}<div class="term-line term-amber">SPECIAL: {{ fr.drops.special }}</div>{% endif %}
+    {% endif %}
+
     {% if result.att_score is defined %}
     <div class="term-line term-grey" style="font-size:11px;">
         Score: You {{ result.att_score }} vs Opponent {{ result.def_score }}

@@ -71,7 +71,7 @@
                 <div class="stat-row">
                     <label>{{ label }}</label>
                     <input type="number" name="{{ stat }}_alloc"
-                           value="{{ (alloc or {})|default({})|get(stat, 0) }}"
+                           value="{{ (alloc or {}).get(stat, 0) }}"
                            min="0" max="{{ stat_points }}" required>
                 </div>
                 {% endfor %}

@@ -31,7 +31,11 @@ VALID_BUFF_TYPES = {
 VALID_EFFECT_TYPES = {
     "CREDITS", "ITEM_AT_LEVEL", "BONUS_AP", "DURABILITY_RESTORE_RANDOM",
     "SPECIAL_ITEM_FROM_POOL", "HP_LOSS", "DURABILITY_LOSS_RANDOM",
-    "XP_LOSS", "AP_REDUCTION_PERCENT"
+    "XP_LOSS", "AP_REDUCTION_PERCENT", "PROTAGONIST_ENCOUNTER",
+    "STAT_BOOST_STR", "STAT_BOOST_END", "STAT_BOOST_AGI",
+    "STAT_BOOST_LCK", "STAT_BOOST_PER", "STAT_BOOST_INITIATIVE",
+    "STAT_PENALTY_STR", "STAT_PENALTY_END", "STAT_PENALTY_AGI",
+    "STAT_PENALTY_LCK", "STAT_PENALTY_PER", "STAT_PENALTY_INITIATIVE",
 }
 
 # Intel-sensitive columns on the bosses table — changing these clears boss_intel
@@ -227,8 +231,8 @@ def _validate_special_items(rows: list, errors: list):
             errors.append(f"[SpecialItems] Duplicate name: '{name}'")
         names.add(name)
         _require(r, ["Name", "AssociatedTo", "AssociationType", "CreditCost"], "SpecialItems", errors, name)
-        if r.get("AssociationType") not in ("Boss", "Minion", None):
-            errors.append(f"[SpecialItems] '{name}': AssociationType must be 'Boss' or 'Minion'")
+        if r.get("AssociationType") not in ("Boss", "Minion", "Protagonist", None):
+            errors.append(f"[SpecialItems] '{name}': invalid AssociationType")
 
 
 def _validate_random_events(rows: list, errors: list):
@@ -275,6 +279,14 @@ def _validate_master(raw_data: dict, errors: list):
             errors.append(f"[Master] '{movie}': MinionArmor '{r['MinionArmor']}' not found in Armor sheet")
         if r.get("MinionSpecialItem") and r["MinionSpecialItem"] not in special_names:
             errors.append(f"[Master] '{movie}': MinionSpecialItem '{r['MinionSpecialItem']}' not found in SpecialItems sheet")
+        for field, pool in [
+            ("ProtagonistWeapon", weapon_names),
+            ("ProtagonistArmor", armor_names),
+            ("ProtagonistSpecialItem", special_names),
+        ]:
+            value = r.get(field)
+            if value and value not in pool:
+                errors.append(f"[Master] '{movie}': {field} '{value}' not found")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

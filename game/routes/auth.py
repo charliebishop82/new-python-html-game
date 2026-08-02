@@ -118,7 +118,7 @@ def register_post():
                (username, password_hash, email, character_name, sex, class_id,
                 str_stat, end_stat, agi_stat, lck_stat, per_stat,
                 level, xp, current_hp, current_ap, credits, last_login_at)
-               VALUES (?, ?, ?, '', '', 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, ?, ?)""",
+               VALUES (?, ?, ?, '', '', NULL, 1, 1, 1, 1, 1, 1, 0, 0, 0, ?, ?)""",
             (username, password_hash, email,
              cfg.STARTING_CREDITS, datetime.utcnow().isoformat())
         )
@@ -228,6 +228,7 @@ def character_create_post():
 
     # Award starter gear (random level 1 weapon + armor)
     _award_starter_gear(player_id)
+    _write_tutorial_feed(player_id)
 
     return redirect(url_for("dashboard.index"))
 

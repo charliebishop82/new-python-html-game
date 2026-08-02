@@ -223,6 +223,21 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
                         (new_dur, target["id"])
                     )
 
+        elif effect in (
+            "STAT_BOOST_STR", "STAT_BOOST_END", "STAT_BOOST_AGI",
+            "STAT_BOOST_LCK", "STAT_BOOST_PER", "STAT_BOOST_INITIATIVE",
+            "STAT_PENALTY_STR", "STAT_PENALTY_END", "STAT_PENALTY_AGI",
+            "STAT_PENALTY_LCK", "STAT_PENALTY_PER", "STAT_PENALTY_INITIATIVE",
+        ):
+            execute_write(
+                "INSERT INTO status_effects (player_id, effect_type, value) VALUES (?, ?, ?)",
+                (player_id, effect, float(amount))
+            )
+
+        elif effect == "PROTAGONIST_ENCOUNTER":
+            # Applied after this transaction because the handler owns its transaction.
+            pass
+
         elif effect == "SPECIAL_ITEM_FROM_POOL":
             # Rare: give player a random special item from the pool
             available = execute(
@@ -253,6 +268,9 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
                VALUES ('PERSONAL', ?, ?, 'RANDOM_EVENT')""",
             (player_id, feed_text)
         )
+
+    if effect == "PROTAGONIST_ENCOUNTER":
+        _handle_protagonist_encounter(player_id, player, settings)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -423,23 +441,39 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
     if result.get("error"):
         return _error_fragment(result["error"])
 
+    session["combat_session_id"] = result["session_id"]
+
     opponent_full = execute_one(
         f"SELECT * FROM {'bosses' if encounter_type == 'BOSS' else 'minions'} WHERE id = ?",
         (opponent["id"],)
     )
     # Show boss intel if previously observed
     intel = None
+    intel_detail = None
     if encounter_type == "BOSS":
         intel = execute_one(
             "SELECT * FROM boss_intel WHERE player_id = ? AND boss_id = ?",
             (player["id"], opponent["id"])
         )
+        if intel:
+            damage_types = ("blade", "blunt", "ballistic", "energy", "arcane", "explosive", "venom")
+            intel_detail = {
+                "resistances": [t.upper() for t in damage_types if opponent_full.get(f"res_{t}")],
+                "weaknesses": [t.upper() for t in damage_types if opponent_full.get(f"weak_{t}")],
+                "special_attack_name": opponent_full.get("special_attack_name"),
+                "special_attack_type": opponent_full.get("special_attack_damage_type"),
+                "special_buff_name": opponent_full.get("special_buff_name"),
+                "special_buff_type": opponent_full.get("special_buff_type"),
+                "current_hp": opponent_full.get("current_hp"),
+                "max_hp": opponent_full.get("max_hp"),
+            }
 
     return render_template("fragments/combat_open.html",
                            opponent=opponent_full,
                            encounter_type=encounter_type,
                            session_id=result["session_id"],
                            intel=intel,
+                           intel_detail=intel_detail,
                            player=player,
                            boss_flavor=opponent_full.get("flavor_text", ""))
 
@@ -614,6 +648,8 @@ def action_pvp_fight():
     if result.get("error"):
         return _error_fragment(result["error"])
 
+    session["combat_session_id"] = result["session_id"]
+
     return render_template("fragments/combat_open.html",
                            opponent=target,
                            encounter_type="PVP",
@@ -682,15 +718,16 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
 
     if not movies:
         # Fallback: award credits
-        execute_write(
+        with exclusive_transaction():
+            execute_write(
             "UPDATE players SET credits = credits + 50 WHERE id = ?", (player_id,)
-        )
-        execute_write(
+            )
+            execute_write(
             """INSERT INTO daily_feed (feed_scope, player_id, flavor_text, event_category)
                VALUES ('PERSONAL', ?, ?, 'RANDOM_EVENT')""",
             (player_id,
              "A familiar figure passes in the crowd — but vanishes before you can speak. +50 credits left behind.")
-        )
+            )
         return
 
     # Pick from the 3 closest level matches (weighted toward closest)
@@ -719,9 +756,10 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
 
     if not item_id:
         # Protagonist item not defined — fallback credits
-        execute_write(
-            "UPDATE players SET credits = credits + 50 WHERE id = ?", (player_id,)
-        )
+        with exclusive_transaction():
+            execute_write(
+                "UPDATE players SET credits = credits + 50 WHERE id = ?", (player_id,)
+            )
         return
 
     # For specials: check if already in world

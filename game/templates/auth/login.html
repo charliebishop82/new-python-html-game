@@ -3,14 +3,12 @@
 {% block title %}Login{% endblock %}
 {% block content %}
 <div id="auth-box">
-    <div class="auth-title">
-        ██████  ██    ██ ███████ ██      ██ ███    ██  ██████<br>
-        ██   ██ ██    ██ ██      ██      ██ ████   ██ ██<br>
-        ██   ██ ██    ██ █████   ██      ██ ██ ██  ██ ██<br>
-        ██   ██ ██    ██ ██      ██      ██ ██  ██ ██ ██<br>
-        ██████   ██████  ███████ ███████ ██ ██   ████  ██████
+    <div class="auth-banner" role="banner" aria-label="Dueling">
+        <div class="auth-banner-rule" aria-hidden="true">+------------------------------------------------+</div>
+        <h1 class="auth-title">DUELING</h1>
+        <p class="auth-subtitle">[ BBS MULTIPLAYER COMBAT SYSTEM ]</p>
+        <div class="auth-banner-rule" aria-hidden="true">+------------------------------------------------+</div>
     </div>
-    <p class="auth-subtitle">BBS Multiplayer Dueling Game</p>
 
     {% if error %}
     <div class="term-error">{{ error }}</div>

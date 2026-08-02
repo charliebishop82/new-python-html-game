@@ -1057,6 +1057,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
     xp_earned     = 0
     credits_stolen = 0
     item_stolen    = None
+    drops           = None
 
     # Step 1: XP award
     if session["combat_type"] in ("BOSS", "MINION") and winner_is_attacker:
@@ -1073,25 +1074,33 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
             leveled = engine.check_level_up(
                 attacker["id"], attacker["xp"] + xp_earned, attacker["level"]
             )
-        # Update kill count
-        if session["combat_type"] == "BOSS":
-            execute_write(
-                "UPDATE boss_instances SET kill_count = kill_count + 1 WHERE id = ?",
-                (session["boss_instance_id"],)
-            )
-            # Reset boss instance for next fight
-            execute_write(
-                """UPDATE boss_instances
-                   SET current_hp = (SELECT max_hp FROM bosses WHERE id = boss_id),
-                       special_attack_used=0, special_buff_used=0, current_phase=1
-                   WHERE id = ?""",
-                (session["boss_instance_id"],)
-            )
-        else:
-            execute_write(
-                "UPDATE minion_instances SET kill_count = kill_count + 1 WHERE id = ?",
-                (session["minion_instance_id"],)
-            )
+        # Update kill count and reset persistent encounter state atomically.
+        with exclusive_transaction():
+            if session["combat_type"] == "BOSS":
+                execute_write(
+                    "UPDATE boss_instances SET kill_count = kill_count + 1 WHERE id = ?",
+                    (session["boss_instance_id"],)
+                )
+                execute_write(
+                    """UPDATE boss_instances
+                       SET current_hp = (SELECT max_hp FROM bosses WHERE id = boss_id),
+                           special_attack_used=0, special_buff_used=0, current_phase=1
+                       WHERE id = ?""",
+                    (session["boss_instance_id"],)
+                )
+            else:
+                execute_write(
+                    "UPDATE minion_instances SET kill_count = kill_count + 1 WHERE id = ?",
+                    (session["minion_instance_id"],)
+                )
+
+        drops = _award_drops(
+            player_id=attacker["id"], player=attacker, opponent=opp,
+            combat_type=session["combat_type"],
+            master_row=_get_master_for_opponent(opp, session["combat_type"]),
+            settings=settings,
+            equipped_special=state["attacker_equipped"].get("special"),
+        )
 
     elif session["combat_type"] == "PVP":
         zero_xp_bonus = settings.get("ZERO_CREDIT_XP_BONUS", cfg.ZERO_CREDIT_XP_BONUS)
@@ -1149,8 +1158,9 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
 
             if credits_stolen == 0:
                 # Zero credit bonus
-                execute_write("UPDATE players SET xp = xp + ? WHERE id = ?",
-                              (zero_xp_bonus, winner["id"]))
+                with exclusive_transaction():
+                    execute_write("UPDATE players SET xp = xp + ? WHERE id = ?",
+                                  (zero_xp_bonus, winner["id"]))
             else:
                 with exclusive_transaction():
                     execute_write(
@@ -1247,6 +1257,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
         "xp_earned":       xp_earned,
         "credits_stolen":  credits_stolen,
         "item_stolen":     item_stolen,
+        "drops":           drops,
         "flavor":          global_text,
     }
 

@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def create_admin_app() -> Flask:
-    app = Flask(__name__, template_folder="templates/admin")
+    app = Flask(__name__, template_folder="templates")
     app.secret_key = cfg.SECRET_KEY + "-admin"
     app.teardown_appcontext(close_db)
     _register_routes(app)
@@ -769,5 +769,4 @@ def admin_logs():
 <p style="color:#666">No failed queue rows.</p>
 {% endif %}
 {% endblock %}
-
 

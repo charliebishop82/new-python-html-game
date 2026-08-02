@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS players (
     email               TEXT    UNIQUE NOT NULL,
     character_name      TEXT    NOT NULL,
     sex                 TEXT    NOT NULL,
-    class_id            INTEGER NOT NULL REFERENCES classes(id),
+    class_id            INTEGER REFERENCES classes(id),
     str_stat            INTEGER NOT NULL DEFAULT 1,
     end_stat            INTEGER NOT NULL DEFAULT 1,
     agi_stat            INTEGER NOT NULL DEFAULT 1,
@@ -640,6 +640,7 @@ CREATE INDEX IF NOT EXISTS idx_special_registry_status ON special_item_registry(
 import sqlite3
 import logging
 import math
+import uuid
 from contextlib import contextmanager
 from flask import g
 import config_defaults as cfg
@@ -698,6 +699,18 @@ def exclusive_transaction():
             execute_write("UPDATE players SET credits = ? WHERE id = ?", (amt, pid))
     """
     db = get_db()
+    if db.in_transaction:
+        savepoint = f"nested_{uuid.uuid4().hex}"
+        db.execute(f"SAVEPOINT {savepoint}")
+        try:
+            yield
+            db.execute(f"RELEASE SAVEPOINT {savepoint}")
+        except Exception:
+            db.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            db.execute(f"RELEASE SAVEPOINT {savepoint}")
+            raise
+        return
+
     db.execute("BEGIN EXCLUSIVE")
     try:
         yield
@@ -1017,8 +1030,12 @@ from queue_handler import startup_cleanup
 
 logger = logging.getLogger(__name__)
 
-_AUTH_EXEMPT    = {"auth.login", "auth.register", "static"}
-_LEVELUP_EXEMPT = {"auth.levelup", "auth.logout", "static"}
+_AUTH_EXEMPT = {
+    "auth.login", "auth.login_post",
+    "auth.register", "auth.register_post",
+    "static",
+}
+_LEVELUP_EXEMPT = {"auth.levelup", "auth.levelup_post", "auth.logout", "static"}
 
 
 def create_app() -> Flask:
@@ -1032,6 +1049,7 @@ def create_app() -> Flask:
     _register_blueprints(app)
     app.context_processor(_context_processor)
     app.before_request(_check_auth)
+    app.before_request(_load_player)
     app.before_request(_check_levelup)
     app.before_request(_set_blackout_flag)
     _start_scheduler(app)
@@ -1056,15 +1074,10 @@ def _register_blueprints(app: Flask):
 
 
 def _context_processor() -> dict:
-    context = {}
-    player_id = session.get("player_id")
-    if player_id:
-        player = get_player(player_id)
-        if player:
-            g.player = player
-            context["player"] = player
-            context["settings"] = get_all_settings()
-    return context
+    player = g.get("player")
+    if not player:
+        return {}
+    return {"player": player, "settings": get_all_settings()}
 
 
 def _check_auth():
@@ -1072,6 +1085,18 @@ def _check_auth():
         return None
     if not session.get("player_id"):
         return redirect(url_for("auth.login"))
+    return None
+
+
+def _load_player():
+    player_id = session.get("player_id")
+    if not player_id:
+        return None
+    player = get_player(player_id)
+    if player is None:
+        session.clear()
+        return redirect(url_for("auth.login"))
+    g.player = player
     return None
 
 

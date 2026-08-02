@@ -11,7 +11,7 @@
 #   6. SUMMARY              — full launch sequence
 #
 # Secret key (set as GAME_SECRET_KEY env var):
-#   80489f7f9c611d9322c97a791a55f5df6e1ea9632f743d4f16c254088b1141c8
+#   replace-with-a-random-secret
 #
 # PvP protection and UTC midnight — both confirmed correct, no changes needed.
 ################################################################################
@@ -102,7 +102,9 @@ print("=== Game Setup ===")
 print()
 
 # 1. Check for Excel
-IMPORT_SRC = "GameContent_Filled.xlsx"
+IMPORT_CANDIDATES = ("GameContent Filled.xlsx", "GameContent_Filled.xlsx")
+IMPORT_SRC = next((name for name in IMPORT_CANDIDATES if os.path.exists(name)),
+                  IMPORT_CANDIDATES[0])
 IMPORT_DST = "data/pending_import.xlsx"
 if not os.path.exists(IMPORT_SRC):
     print(f"WARNING: {IMPORT_SRC} not found. Place it here before running setup.")
@@ -172,13 +174,13 @@ if os.path.exists(IMPORT_DST):
                 print(f"    ERROR: {err}")
 else:
     print()
-    print("No content staged. Place GameContent_Filled.xlsx and re-run.")
+    print("No content staged. Place the game-content workbook here and re-run.")
 
 print()
 print("=== Setup Complete ===")
 print()
 print("Next steps:")
-print("  export GAME_SECRET_KEY=\'80489f7f9c611d9322c97a791a55f5df6e1ea9632f743d4f16c254088b1141c8\'")
+print("  export GAME_SECRET_KEY=\'replace-with-a-random-secret\'")
 print("  export ADMIN_PASSWORD=\'your-chosen-password\'")
 print("  python run.py")
 print("  # In a second terminal:")
@@ -233,7 +235,7 @@ Decisions:
   UTC midnight reset    — no scheduler change needed
   Starting credits: 50  — update config_defaults.py: STARTING_CREDITS = 50
   PvP protection        — no change needed (already correct)
-  Secret key            — 80489f7f9c611d9322c97a791a55f5df6e1ea9632f743d4f16c254088b1141c8
+  Secret key            — replace-with-a-random-secret
 
 Files to patch:
   config_defaults.py  — STARTING_CREDITS = 50
@@ -245,9 +247,9 @@ New files:
   setup.py            — one-shot setup (run before first launch)
 
 Launch sequence:
-  1. Place GameContent_Filled.xlsx in the project root
+  1. Place GameContent Filled.xlsx in the project root
   2. python setup.py
-  3. export GAME_SECRET_KEY=80489f7f9c611d9322c97a791a55f5df6e1ea9632f743d4f16c254088b1141c8
+  3. export GAME_SECRET_KEY=replace-with-a-random-secret
   4. export ADMIN_PASSWORD=your-chosen-password
   5. python run.py                                          (terminal 1)
   6. flask --app admin:create_admin_app run --port 5001    (terminal 2)

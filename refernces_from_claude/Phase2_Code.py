@@ -140,7 +140,7 @@ def register_post():
                (username, password_hash, email, character_name, sex, class_id,
                 str_stat, end_stat, agi_stat, lck_stat, per_stat,
                 level, xp, current_hp, current_ap, credits, last_login_at)
-               VALUES (?, ?, ?, '', '', 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, ?, ?)""",
+               VALUES (?, ?, ?, '', '', NULL, 1, 1, 1, 1, 1, 1, 0, 0, 0, ?, ?)""",
             (username, password_hash, email,
              cfg.STARTING_CREDITS, datetime.utcnow().isoformat())
         )
@@ -656,14 +656,12 @@ def global_latest():
 {% block title %}Login{% endblock %}
 {% block content %}
 <div id="auth-box">
-    <div class="auth-title">
-        ██████  ██    ██ ███████ ██      ██ ███    ██  ██████<br>
-        ██   ██ ██    ██ ██      ██      ██ ████   ██ ██<br>
-        ██   ██ ██    ██ █████   ██      ██ ██ ██  ██ ██<br>
-        ██   ██ ██    ██ ██      ██      ██ ██  ██ ██ ██<br>
-        ██████   ██████  ███████ ███████ ██ ██   ████  ██████
+    <div class="auth-banner" role="banner" aria-label="Dueling">
+        <div class="auth-banner-rule" aria-hidden="true">+------------------------------------------------+</div>
+        <h1 class="auth-title">DUELING</h1>
+        <p class="auth-subtitle">[ BBS MULTIPLAYER COMBAT SYSTEM ]</p>
+        <div class="auth-banner-rule" aria-hidden="true">+------------------------------------------------+</div>
     </div>
-    <p class="auth-subtitle">BBS Multiplayer Dueling Game</p>
 
     {% if error %}
     <div class="term-error">{{ error }}</div>
@@ -801,7 +799,7 @@ def global_latest():
                 <div class="stat-row">
                     <label>{{ label }}</label>
                     <input type="number" name="{{ stat }}_alloc"
-                           value="{{ (alloc or {})|default({})|get(stat, 0) }}"
+                           value="{{ (alloc or {}).get(stat, 0) }}"
                            min="0" max="{{ stat_points }}" required>
                 </div>
                 {% endfor %}
@@ -1095,18 +1093,35 @@ a:hover { text-decoration: underline; }
     margin: 60px auto;
     padding: 32px;
     background: var(--bg-panel);
-    border: 1px solid var(--border);
+    border: 1px solid #1d6b42;
+    box-shadow: 0 0 24px rgba(0, 204, 102, 0.08), inset 0 0 24px rgba(0, 204, 102, 0.025);
+}
+
+.auth-banner {
+    overflow: hidden;
+    margin-bottom: 24px;
+    text-align: center;
+}
+
+.auth-banner-rule {
+    color: var(--dim);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 .auth-title {
-    color: var(--green);
-    font-size: 10px;
-    line-height: 1.2;
-    margin-bottom: 16px;
-    letter-spacing: 0;
+    margin: 12px 0 8px;
+    color: #40ee86;
+    font-size: clamp(32px, 10vw, 56px);
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.14em;
+    text-indent: 0.14em;
+    text-shadow: 0 0 9px rgba(0, 204, 102, 0.45);
 }
 
-.auth-subtitle  { color: var(--grey); margin-bottom: 20px; font-size: 13px; }
+.auth-subtitle  { color: var(--amber); margin-bottom: 12px; font-size: 12px; letter-spacing: 0.08em; }
 .auth-heading   { color: var(--amber); margin-bottom: 16px; font-size: 16px; }
 .auth-link      { color: var(--grey); font-size: 12px; margin-top: 16px; }
 
@@ -1469,5 +1484,3 @@ function startExtensionTimer(seconds, resolveUrl) {
 
 // Expose so combat fragments can call it after injection
 window.startExtensionTimer = startExtensionTimer;
-
-

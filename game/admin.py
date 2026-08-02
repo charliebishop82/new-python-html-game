@@ -5,10 +5,11 @@
 
 import math
 import logging
+import os
 from datetime import datetime
 
 from flask import (Flask, render_template, request, redirect,
-                   url_for, g, jsonify)
+                   url_for, g, jsonify, Response)
 
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write,
@@ -16,6 +17,7 @@ from database import (execute, execute_one, execute_write,
                       get_all_settings)
 
 logger = logging.getLogger(__name__)
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -23,9 +25,22 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def create_admin_app() -> Flask:
-    app = Flask(__name__, template_folder="templates/admin")
+    app = Flask(__name__, template_folder="templates")
     app.secret_key = cfg.SECRET_KEY + "-admin"
     app.teardown_appcontext(close_db)
+
+    @app.before_request
+    def check_admin_auth():
+        if not ADMIN_PASSWORD:
+            return None
+        auth = request.authorization
+        if not auth or auth.password != ADMIN_PASSWORD:
+            return Response(
+                "Admin access required.", 401,
+                {"WWW-Authenticate": 'Basic realm="Admin"'}
+            )
+        return None
+
     _register_routes(app)
     return app
 

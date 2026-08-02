@@ -75,7 +75,7 @@ def classify(desc: str, var_name: str, content: str):
         break
     if desc and PATCH_WORDS.search(desc):
         return 'SNIPPET'
-    if var_name and 'PATCH' in var_name.upper():
+    if var_name and ('PATCH' in var_name.upper() or var_name.upper() == 'SCHEMA_UPDATE'):
         return 'SNIPPET'
     if first_real_line and re.match(r'^def\s+\w+\(', first_real_line):
         return 'SNIPPET'
@@ -369,6 +369,15 @@ def main():
     proj_dir.mkdir(parents=True, exist_ok=True)
     written = []
     for target, content in sorted(base_files.items()):
+        # Some phase documents place a second Python string assignment after an
+        # HTML payload under the same FILE marker. Do not emit that wrapper and
+        # following checklist into the rendered template.
+        if target.endswith('.html') and '\n"""\n' in content:
+            content = content.split('\n"""\n', 1)[0]
+        # SQLite treats double-quoted "now" as an identifier in DEFAULT
+        # expressions; normalize the Phase 1 schema literal for fresh installs.
+        if target == 'schema.sql':
+            content = content.replace('datetime("now")', "datetime('now')")
         out_path = proj_dir / target
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(content.strip("\n") + "\n", encoding="utf-8")

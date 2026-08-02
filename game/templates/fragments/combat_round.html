@@ -31,6 +31,12 @@
     <div class="term-line term-grey" style="font-size:11px;margin-left:12px;">
         {{ action_result.roll_detail if action_result.get('roll_detail') else '' }}
     </div>
+    {% if action_result.boss_phase is defined and action_result.phase_changed %}
+    <div class="term-line term-amber">Boss phase changed: Phase {{ action_result.boss_phase }}.</div>
+    {% endif %}
+    {% if action_result.extra_attack_result is defined %}
+    <div class="term-line term-bad">PHASE 3 EXTRA ATTACK: {{ action_result.extra_attack_result.flavor }}</div>
+    {% endif %}
     {% endfor %}
 
     <!-- Show updated HP -->

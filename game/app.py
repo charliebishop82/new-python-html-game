@@ -14,8 +14,12 @@ from queue_handler import startup_cleanup
 
 logger = logging.getLogger(__name__)
 
-_AUTH_EXEMPT    = {"auth.login", "auth.register", "static"}
-_LEVELUP_EXEMPT = {"auth.levelup", "auth.logout", "static"}
+_AUTH_EXEMPT = {
+    "auth.login", "auth.login_post",
+    "auth.register", "auth.register_post",
+    "static",
+}
+_LEVELUP_EXEMPT = {"auth.levelup", "auth.levelup_post", "auth.logout", "static"}
 
 
 def create_app() -> Flask:
@@ -29,6 +33,7 @@ def create_app() -> Flask:
     _register_blueprints(app)
     app.context_processor(_context_processor)
     app.before_request(_check_auth)
+    app.before_request(_load_player)
     app.before_request(_check_levelup)
     app.before_request(_set_blackout_flag)
     _start_scheduler(app)
@@ -53,15 +58,10 @@ def _register_blueprints(app: Flask):
 
 
 def _context_processor() -> dict:
-    context = {}
-    player_id = session.get("player_id")
-    if player_id:
-        player = get_player(player_id)
-        if player:
-            g.player = player
-            context["player"] = player
-            context["settings"] = get_all_settings()
-    return context
+    player = g.get("player")
+    if not player:
+        return {}
+    return {"player": player, "settings": get_all_settings()}
 
 
 def _check_auth():
@@ -69,6 +69,19 @@ def _check_auth():
         return None
     if not session.get("player_id"):
         return redirect(url_for("auth.login"))
+    return None
+
+
+def _load_player():
+    """Load the authenticated player before route handlers access ``g.player``."""
+    player_id = session.get("player_id")
+    if not player_id:
+        return None
+    player = get_player(player_id)
+    if player is None:
+        session.clear()
+        return redirect(url_for("auth.login"))
+    g.player = player
     return None
 
 

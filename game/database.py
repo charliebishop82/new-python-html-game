@@ -6,6 +6,7 @@
 import sqlite3
 import logging
 import math
+import uuid
 from contextlib import contextmanager
 from flask import g
 import config_defaults as cfg
@@ -64,6 +65,18 @@ def exclusive_transaction():
             execute_write("UPDATE players SET credits = ? WHERE id = ?", (amt, pid))
     """
     db = get_db()
+    if db.in_transaction:
+        savepoint = f"nested_{uuid.uuid4().hex}"
+        db.execute(f"SAVEPOINT {savepoint}")
+        try:
+            yield
+            db.execute(f"RELEASE SAVEPOINT {savepoint}")
+        except Exception:
+            db.execute(f"ROLLBACK TO SAVEPOINT {savepoint}")
+            db.execute(f"RELEASE SAVEPOINT {savepoint}")
+            raise
+        return
+
     db.execute("BEGIN EXCLUSIVE")
     try:
         yield
@@ -97,11 +110,24 @@ def get_player(player_id: int) -> dict | None:
     if player is None:
         return None
 
-    cursed = execute_one(
-        "SELECT value FROM status_effects WHERE player_id = ? AND effect_type = 'CURSED'",
-        (player_id,)
+    active_effects = execute(
+        "SELECT effect_type, value FROM status_effects WHERE player_id = ?", (player_id,)
     )
-    is_cursed = cursed is not None
+    is_cursed = any(e["effect_type"] == "CURSED" for e in active_effects)
+    modifiers = {"str": 0, "end": 0, "agi": 0, "lck": 0, "per": 0, "initiative": 0}
+    names = {
+        "STR": "str", "END": "end", "AGI": "agi", "LCK": "lck",
+        "PER": "per", "INITIATIVE": "initiative",
+    }
+    for effect in active_effects:
+        parts = effect["effect_type"].split("_")
+        if len(parts) == 3 and parts[0] == "STAT" and parts[2] in names:
+            modifiers[names[parts[2]]] += int(effect["value"])
+    for column, key in (("str_stat", "str"), ("end_stat", "end"),
+                        ("agi_stat", "agi"), ("lck_stat", "lck"),
+                        ("per_stat", "per")):
+        player[column] = max(1, player[column] + modifiers[key])
+    player["initiative_modifier"] = modifiers["initiative"]
     settings = get_all_settings()
 
     base_daily_ap  = settings.get("BASE_DAILY_AP",            cfg.BASE_DAILY_AP)

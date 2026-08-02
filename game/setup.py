@@ -10,7 +10,9 @@ print("=== Game Setup ===")
 print()
 
 # 1. Check for Excel
-IMPORT_SRC = "GameContent_Filled.xlsx"
+IMPORT_CANDIDATES = ("GameContent Filled.xlsx", "GameContent_Filled.xlsx")
+IMPORT_SRC = next((name for name in IMPORT_CANDIDATES if os.path.exists(name)),
+                  IMPORT_CANDIDATES[0])
 IMPORT_DST = "data/pending_import.xlsx"
 if not os.path.exists(IMPORT_SRC):
     print(f"WARNING: {IMPORT_SRC} not found. Place it here before running setup.")
@@ -86,7 +88,7 @@ print()
 print("=== Setup Complete ===")
 print()
 print("Next steps:")
-print("  export GAME_SECRET_KEY='80489f7f9c611d9322c97a791a55f5df6e1ea9632f743d4f16c254088b1141c8'")
+print("  export GAME_SECRET_KEY='replace-with-a-random-secret'")
 print("  export ADMIN_PASSWORD='your-chosen-password'")
 print("  python run.py")
 print("  # In a second terminal:")

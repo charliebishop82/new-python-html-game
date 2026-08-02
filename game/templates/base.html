@@ -38,6 +38,13 @@
         {% if player.is_cursed %}
         <div class="status-warning">☠ CURSED</div>
         {% endif %}
+        {% if effect_labels is defined and effect_labels %}
+        <div class="status-effects">
+            {% for label in effect_labels %}
+            <span class="effect-tag {{ 'effect-good' if label.startswith('+') else 'effect-bad' }}">{{ label }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
         {% if player.in_combat %}
         <div class="status-combat">⚔ IN COMBAT</div>
         {% endif %}
@@ -96,6 +103,3 @@
 
 </body>
 </html>
-
-
-################################################################################
