@@ -1172,7 +1172,6 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
 
     elif session["combat_type"] == "PVP":
         zero_xp_bonus = settings.get("ZERO_CREDIT_XP_BONUS", cfg.ZERO_CREDIT_XP_BONUS)
-        xp_loss_div   = settings.get("XP_LOSS_DIVISOR",       cfg.XP_LOSS_DIVISOR)
         special       = state["attacker_equipped"].get("special")
         xp_mult       = special.get("xp_multiplier", 0.0) if special else 0.0
 
@@ -1194,11 +1193,8 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                     (state["defender"]["id"],)
                 )
         else:
-            # Initiator lost — XP penalty
-            base_xp = 80 * (state["defender"]["level"] if state.get("defender") else 1)
-            potential_win_xp = engine.calc_xp_reward(base_xp, attacker["level"],
-                                                       attacker["level"], xp_mult)
-            xp_penalty = max(0, potential_win_xp // xp_loss_div)
+            # The defending winner earns XP; the defeated initiator keeps all
+            # previously earned XP because progression is permanent.
             defender = state["defender"]
             defender_special = state["defender_equipped"].get("special")
             defender_xp_mult = (defender_special.get("xp_multiplier", 0.0)
@@ -1208,10 +1204,6 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                 defender_xp_mult
             )
             with exclusive_transaction():
-                execute_write(
-                    "UPDATE players SET xp = MAX(0, xp - ?) WHERE id = ?",
-                    (xp_penalty, attacker["id"])
-                )
                 execute_write("UPDATE player_stats SET pvp_kills = pvp_kills + 1 WHERE player_id = ?",
                               (state["defender"]["id"],))
                 execute_write(

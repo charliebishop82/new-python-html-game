@@ -741,9 +741,10 @@ def _create_npc(form) -> int:
             (pid, *scores)
         )
     from routes.auth import _award_starter_gear
-    from npc import _equip_best_core_items
+    from npc import _equip_best_items
     _award_starter_gear(pid)
-    _equip_best_core_items(pid)
+    profile = execute_one("SELECT * FROM npc_profiles WHERE player_id=?", (pid,))
+    _equip_best_items(pid, profile)
     return pid
 
 

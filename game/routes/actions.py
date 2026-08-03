@@ -91,7 +91,7 @@ def _describe_random_event_effect(event: dict) -> str:
     if effect == "CREDITS": return f"Credits {amount:+d}"
     if effect == "BONUS_AP": return f"AP +{amount} (up to your AP cap)"
     if effect == "HP_LOSS": return f"HP {amount:+d} (cannot reduce you below 1 HP)"
-    if effect == "XP_LOSS": return f"XP {amount:+d} (cannot reduce XP below 0)"
+    if effect == "XP_LOSS": return "No XP lost (legacy event disabled)"
     if effect == "AP_REDUCTION_PERCENT": return f"Daily AP award -{abs(amount)}%"
     if effect == "DURABILITY_RESTORE_RANDOM": return f"Restore up to {abs(amount)} durability on one random item"
     if effect == "DURABILITY_LOSS_RANDOM": return f"One random item's durability {amount:+d}"
@@ -210,10 +210,9 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
             execute_write("UPDATE players SET current_hp = ? WHERE id = ?", (new_hp, player_id))
 
         elif effect == "XP_LOSS":
-            execute_write(
-                "UPDATE players SET xp = MAX(0, xp + ?) WHERE id = ?",
-                (amount, player_id)  # amount is negative
-            )
+            # XP represents permanent progression and may never be reduced.
+            # Retain this branch as a safeguard for old/re-imported content.
+            pass
 
         elif effect == "AP_REDUCTION_PERCENT":
             # Cursed: insert status_effect

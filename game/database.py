@@ -61,6 +61,36 @@ def init_db():
         player_columns = {row[1] for row in conn.execute("PRAGMA table_info(players)")}
         if "retired_at" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
+        # Older builds recorded permanent level choices in level_up_history but
+        # did not publish them to the player's dashboard feed. Backfill each
+        # historical choice once, keyed by player and original timestamp.
+        conn.execute(
+            """INSERT INTO daily_feed
+               (feed_scope, player_id, flavor_text, event_category, occurred_at)
+               SELECT 'PERSONAL', l.player_id,
+                      p.character_name || ' reached Level ' || l.level_reached ||
+                      ' and increased ' ||
+                      CASE l.stat_increased
+                          WHEN 'STR' THEN 'Strength'
+                          WHEN 'END' THEN 'Endurance'
+                          WHEN 'AGI' THEN 'Agility'
+                          WHEN 'LCK' THEN 'Luck'
+                          WHEN 'PER' THEN 'Perception'
+                          ELSE l.stat_increased
+                      END || ' by 1.',
+                      'LEVEL_UP', l.timestamp
+               FROM level_up_history l
+               JOIN players p ON p.id = l.player_id
+               WHERE NOT EXISTS (
+                   SELECT 1 FROM daily_feed d
+                   WHERE d.player_id = l.player_id
+                     AND d.event_category = 'LEVEL_UP'
+                     AND d.occurred_at = l.timestamp
+               )"""
+        )
+        conn.execute(
+            "UPDATE random_events SET is_active = 0 WHERE effect_type = 'XP_LOSS'"
+        )
     logger.info("Database initialised at %s", cfg.DB_PATH)
 
 
