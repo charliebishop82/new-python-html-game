@@ -1,8 +1,12 @@
 <!-- ============================================================ -->
 {% extends "base.html" %}
-{% block title %}Register{% endblock %}
+{% block title %}Create Account | Movie Multiverse{% endblock %}
+{% block body_class %}poster-page poster-register{% endblock %}
 {% block content %}
-<div id="auth-box">
+<div class="poster-stage poster-stage-register">
+<img class="poster-art" src="{{ url_for('static', filename='images/movie-multiverse-signup-concept.png') }}"
+     alt="Movie Multiverse cinema lobby poster">
+<div id="auth-box" class="poster-auth-card">
     <h2 class="auth-heading">Create Account</h2>
 
     {% if errors %}
@@ -32,6 +36,7 @@
     </form>
 
     <p class="auth-link">Already registered? <a href="{{ url_for('auth.login') }}">Login here</a></p>
+</div>
 </div>
 {% endblock %}
 

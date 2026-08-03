@@ -796,16 +796,45 @@ def index():
         "special": _find_equipped(inventory, player.get("equipped_special_id")),
     }
     derived = _calc_derived_stats(player, equipped, settings)
+    active_effects = _get_active_effects(player["id"])
 
     return render_template(
         "character/character.html",
         inventory=inventory,
         equipped=equipped,
         derived=derived,
+        active_effects=active_effects,
         preferences=["Aggressive", "Defensive", "Opportunist", "Balanced"],
         feedback=request.args.get("feedback"),
         error=request.args.get("error"),
     )
+
+
+def _get_active_effects(player_id: int) -> list[dict]:
+    """Build readable character-sheet entries for midnight status effects."""
+    rows = execute(
+        "SELECT effect_type, value FROM status_effects WHERE player_id = ? ORDER BY id",
+        (player_id,)
+    )
+    stat_names = {
+        "STAT_BOOST_STR": "Strength", "STAT_BOOST_END": "Endurance",
+        "STAT_BOOST_AGI": "Agility", "STAT_BOOST_LCK": "Luck",
+        "STAT_BOOST_PER": "Perception", "STAT_BOOST_INITIATIVE": "Initiative",
+        "STAT_PENALTY_STR": "Strength", "STAT_PENALTY_END": "Endurance",
+        "STAT_PENALTY_AGI": "Agility", "STAT_PENALTY_LCK": "Luck",
+        "STAT_PENALTY_PER": "Perception", "STAT_PENALTY_INITIATIVE": "Initiative",
+    }
+    effects = []
+    for row in rows:
+        effect_type, value = row["effect_type"], row["value"]
+        if effect_type == "CURSED":
+            description, is_good = f"Daily AP award -{int(round(value * 100))}%", False
+        elif effect_type in stat_names:
+            description, is_good = f"{stat_names[effect_type]} {int(value):+d}", value > 0
+        else:
+            description, is_good = effect_type.replace("_", " ").title(), value >= 0
+        effects.append({"description": description, "is_good": is_good, "expires": "Midnight reset"})
+    return effects
 
 
 def _get_full_inventory(player: dict) -> list[dict]:
@@ -1500,6 +1529,22 @@ document.querySelectorAll('.item-checkbox').forEach(cb =>
         </div>
     </div>
 
+    <section class="active-effects-panel" aria-labelledby="active-effects-title">
+        <h3 id="active-effects-title">Active Effects</h3>
+        {% if active_effects %}
+        <div class="active-effects-list">
+            {% for effect in active_effects %}
+            <div class="active-effect {{ 'effect-good' if effect.is_good else 'effect-bad' }}">
+                <span>{{ effect.description }}</span>
+                <span class="active-effect-duration">Until {{ effect.expires }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="active-effects-empty">No temporary effects are currently active.</p>
+        {% endif %}
+    </section>
+
     <!-- INVENTORY TABLE -->
     <h3 style="color:var(--amber);margin-bottom:10px;">
         Inventory
@@ -1603,5 +1648,4 @@ document.querySelectorAll('.equip-form').forEach(form => {
     <p style="color:var(--grey)">Full leaderboards coming in Phase 9.</p>
 </div>
 {% endblock %}
-
 

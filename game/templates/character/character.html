@@ -78,6 +78,22 @@
         </div>
     </div>
 
+    <section class="active-effects-panel" aria-labelledby="active-effects-title">
+        <h3 id="active-effects-title">Active Effects</h3>
+        {% if active_effects %}
+        <div class="active-effects-list">
+            {% for effect in active_effects %}
+            <div class="active-effect {{ 'effect-good' if effect.is_good else 'effect-bad' }}">
+                <span>{{ effect.description }}</span>
+                <span class="active-effect-duration">Until {{ effect.expires }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="active-effects-empty">No temporary effects are currently active.</p>
+        {% endif %}
+    </section>
+
     <!-- INVENTORY TABLE -->
     <h3 style="color:var(--amber);margin-bottom:10px;">
         Inventory

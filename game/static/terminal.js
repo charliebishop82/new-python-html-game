@@ -7,6 +7,30 @@
 
 'use strict';
 
+// Persistent light/dark color theme.
+document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('theme-toggle');
+    if (!toggle) return;
+
+    const updateToggle = () => {
+        const isLight = document.documentElement.dataset.theme === 'light';
+        toggle.textContent = isLight ? 'DARK MODE' : 'LIGHT MODE';
+        toggle.setAttribute('aria-pressed', String(isLight));
+    };
+
+    updateToggle();
+    toggle.addEventListener('click', () => {
+        const nextTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+        document.documentElement.dataset.theme = nextTheme;
+        try {
+            localStorage.setItem('movie-multiverse-theme', nextTheme);
+        } catch (error) {
+            // The theme still changes for this page if storage is unavailable.
+        }
+        updateToggle();
+    });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. TERMINAL ACTION FORM INTERCEPTION
 // All forms with class="terminal-action" are intercepted.
@@ -15,18 +39,52 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     bindTerminalForms();
+    bindClassSelection();
 });
+
+function bindClassSelection() {
+    const options = document.querySelectorAll('.class-option');
+    if (!options.length) return;
+
+    const updateSelection = () => {
+        options.forEach(option => {
+            const radio = option.querySelector('input[type="radio"]');
+            const selected = Boolean(radio && radio.checked);
+            option.classList.toggle('selected', selected);
+            option.setAttribute('aria-selected', String(selected));
+        });
+    };
+
+    options.forEach(option => {
+        const radio = option.querySelector('input[type="radio"]');
+        if (radio) radio.addEventListener('change', updateSelection);
+    });
+    updateSelection();
+}
 
 function bindTerminalForms() {
     document.querySelectorAll('.terminal-action').forEach(form => {
+        if (form.dataset.terminalBound === 'true') return;
+        form.dataset.terminalBound = 'true';
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const response = await fetch(form.action, {
+            const actionUrl = form.getAttribute('action');
+            if (!actionUrl) {
+                appendToTerminal('<div class="term-line term-error">This action is unavailable because its destination is missing.</div>');
+                return;
+            }
+
+            const response = await fetch(actionUrl, {
                 method: 'POST',
                 body: new FormData(form),
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             const html = await response.text();
+            if (!response.ok) {
+                appendToTerminal(`<div class="term-line term-error">Action failed (${response.status}). Please try again or check the server log.</div>`);
+                return;
+            }
             appendToTerminal(html);
             // Rebind any new terminal-action forms inside the fragment
             bindTerminalForms();

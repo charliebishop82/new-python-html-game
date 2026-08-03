@@ -1,15 +1,13 @@
 <!-- ============================================================ -->
 {% extends "base.html" %}
-{% block title %}Login{% endblock %}
+{% block title %}Login | Movie Multiverse{% endblock %}
+{% block body_class %}poster-page poster-login{% endblock %}
 {% block content %}
-<div id="auth-box">
-    <div class="auth-banner" role="banner" aria-label="Dueling">
-        <div class="auth-banner-rule" aria-hidden="true">+------------------------------------------------+</div>
-        <h1 class="auth-title">DUELING</h1>
-        <p class="auth-subtitle">[ BBS MULTIPLAYER COMBAT SYSTEM ]</p>
-        <div class="auth-banner-rule" aria-hidden="true">+------------------------------------------------+</div>
-    </div>
-
+<div class="poster-stage poster-stage-login">
+<img class="poster-art" src="{{ url_for('static', filename='images/movie-multiverse-login-boss-fight-v2.png') }}"
+     alt="Movie Multiverse: Boss Fight movie poster">
+<div id="auth-box" class="poster-auth-card">
+    <h1 class="sr-only">Movie Multiverse: Boss Fight!</h1>
     {% if error %}
     <div class="term-error">{{ error }}</div>
     {% endif %}
@@ -27,6 +25,7 @@
     </form>
 
     <p class="auth-link">New player? <a href="{{ url_for('auth.register') }}">Register here</a></p>
+</div>
 </div>
 {% endblock %}
 

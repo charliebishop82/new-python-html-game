@@ -199,5 +199,13 @@ TEMPLATE_PATCH = """
 .effect-tag     { font-size: 10px; padding: 1px 5px; border-radius: 2px; }
 .effect-good    { background: #0a2a0a; color: var(--green); border: 1px solid var(--green); }
 .effect-bad     { background: #2a0a0a; color: var(--red);   border: 1px solid var(--red); }
+
+.random-event-effect { margin-top: 5px; }
+.active-effects-panel { margin-bottom: 24px; }
+.active-effects-panel h3 { color: var(--amber); margin-bottom: 10px; }
+.active-effects-list { display: grid; gap: 7px; }
+.active-effect { display: flex; justify-content: space-between; gap: 16px; padding: 8px 10px; }
+.active-effect-duration { color: var(--grey); font-size: 11px; white-space: nowrap; }
+.active-effects-empty { color: var(--grey); font-size: 12px; }
 */
 """

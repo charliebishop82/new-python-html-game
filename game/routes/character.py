@@ -34,16 +34,53 @@ def index():
         "special": _find_equipped(inventory, player.get("equipped_special_id")),
     }
     derived = _calc_derived_stats(player, equipped, settings)
+    active_effects = _get_active_effects(player["id"])
 
     return render_template(
         "character/character.html",
         inventory=inventory,
         equipped=equipped,
         derived=derived,
+        active_effects=active_effects,
         preferences=["Aggressive", "Defensive", "Opportunist", "Balanced"],
         feedback=request.args.get("feedback"),
         error=request.args.get("error"),
     )
+
+
+def _get_active_effects(player_id: int) -> list[dict]:
+    """Build readable character-sheet entries for midnight status effects."""
+    rows = execute(
+        "SELECT effect_type, value FROM status_effects WHERE player_id = ? ORDER BY id",
+        (player_id,)
+    )
+    stat_names = {
+        "STAT_BOOST_STR": "Strength", "STAT_BOOST_END": "Endurance",
+        "STAT_BOOST_AGI": "Agility", "STAT_BOOST_LCK": "Luck",
+        "STAT_BOOST_PER": "Perception", "STAT_BOOST_INITIATIVE": "Initiative",
+        "STAT_PENALTY_STR": "Strength", "STAT_PENALTY_END": "Endurance",
+        "STAT_PENALTY_AGI": "Agility", "STAT_PENALTY_LCK": "Luck",
+        "STAT_PENALTY_PER": "Perception", "STAT_PENALTY_INITIATIVE": "Initiative",
+    }
+    effects = []
+    for row in rows:
+        effect_type = row["effect_type"]
+        value = row["value"]
+        if effect_type == "CURSED":
+            description = f"Daily AP award -{int(round(value * 100))}%"
+            is_good = False
+        elif effect_type in stat_names:
+            description = f"{stat_names[effect_type]} {int(value):+d}"
+            is_good = value > 0
+        else:
+            description = effect_type.replace("_", " ").title()
+            is_good = value >= 0
+        effects.append({
+            "description": description,
+            "is_good": is_good,
+            "expires": "Midnight reset",
+        })
+    return effects
 
 
 def _get_full_inventory(player: dict) -> list[dict]:

@@ -63,6 +63,33 @@ def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict
 # RANDOM EVENT CHECK
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _describe_random_event_effect(event: dict) -> str:
+    """Return a short player-facing description of an event's mechanics."""
+    effect = event["effect_type"]
+    amount = int(event["effect_amount"])
+    stat_names = {
+        "STAT_BOOST_STR": "STR", "STAT_BOOST_END": "END",
+        "STAT_BOOST_AGI": "AGI", "STAT_BOOST_LCK": "LCK",
+        "STAT_BOOST_PER": "PER", "STAT_BOOST_INITIATIVE": "Initiative",
+        "STAT_PENALTY_STR": "STR", "STAT_PENALTY_END": "END",
+        "STAT_PENALTY_AGI": "AGI", "STAT_PENALTY_LCK": "LCK",
+        "STAT_PENALTY_PER": "PER", "STAT_PENALTY_INITIATIVE": "Initiative",
+    }
+    if effect in stat_names:
+        return f"{stat_names[effect]} {amount:+d}"
+    if effect == "CREDITS": return f"Credits {amount:+d}"
+    if effect == "BONUS_AP": return f"AP +{amount} (up to your AP cap)"
+    if effect == "HP_LOSS": return f"HP {amount:+d} (cannot reduce you below 1 HP)"
+    if effect == "XP_LOSS": return f"XP {amount:+d} (cannot reduce XP below 0)"
+    if effect == "AP_REDUCTION_PERCENT": return f"Daily AP award -{abs(amount)}%"
+    if effect == "DURABILITY_RESTORE_RANDOM": return f"Restore up to {abs(amount)} durability on one random item"
+    if effect == "DURABILITY_LOSS_RANDOM": return f"One random item's durability {amount:+d}"
+    if effect == "ITEM_AT_LEVEL": return "Receive one level-appropriate weapon or armor"
+    if effect == "SPECIAL_ITEM_FROM_POOL": return "Receive one available unique special item"
+    if effect == "PROTAGONIST_ENCOUNTER": return "Receive a reward from a protagonist encounter"
+    return effect.replace("_", " ").title()
+
+
 def check_random_event(player: dict, settings: dict) -> dict | None:
     """Roll for a random event. Returns event dict if triggered, else None.
     Fires BEFORE AP is deducted. If triggered: apply effect, write feeds."""
@@ -103,6 +130,25 @@ def check_random_event(player: dict, settings: dict) -> dict | None:
     if not events:
         return None
 
+    # Avoid showing the same event twice in a row to the same player. The
+    # previous feed text is enough to identify it without adding schema state.
+    last_event = execute_one(
+        """SELECT flavor_text FROM daily_feed
+           WHERE player_id = ? AND event_category = 'RANDOM_EVENT'
+           ORDER BY id DESC LIMIT 1""",
+        (player["id"],)
+    )
+    if last_event and len(events) > 1:
+        previous_text = last_event["flavor_text"]
+        alternatives = [
+            event for event in events
+            if flavour.random_event_flavor(
+                event, player.get("character_name", "Player")
+            ) != previous_text
+        ]
+        if alternatives:
+            events = alternatives
+
     # Weight by rarity (LCK improves chance of Rare/Uncommon in good pool)
     if is_good:
         weights = {"Common": 60, "Uncommon": 30 + effective_lck_steps,
@@ -118,6 +164,7 @@ def check_random_event(player: dict, settings: dict) -> dict | None:
         return None
 
     event = random.choice(weighted_pool)
+    event["effect_summary"] = _describe_random_event_effect(event)
     _apply_random_event(player["id"], player, event, settings)
     return event
 

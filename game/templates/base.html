@@ -3,10 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Dueling Game{% endblock %}</title>
+    <title>{% block title %}Movie Multiverse{% endblock %}</title>
+    <script>
+        try {
+            document.documentElement.dataset.theme = localStorage.getItem('movie-multiverse-theme') || 'dark';
+        } catch (error) {
+            document.documentElement.dataset.theme = 'dark';
+        }
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="{{ 'authenticated' if player else 'auth-page' }} {% block body_class %}{% endblock %}">
+
+<button id="theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false">
+    LIGHT MODE
+</button>
 
 {% if player %}
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -52,13 +63,26 @@
 
     <div id="action-buttons">
         {% if button_states is defined %}
+            {% set action_endpoints = {
+                'boss': 'actions.action_boss',
+                'pvp': 'actions.action_pvp',
+                'tavern': 'actions.action_tavern',
+                'blacksmith': 'blacksmith.index',
+                'shop': 'shop.index'
+            } %}
             {% for action, state in button_states.items() %}
                 {% if state.enabled %}
-                <form class="terminal-action" action="{{ url_for('actions.' + action) }}" method="POST">
+                    {% if action in ('blacksmith', 'shop') %}
+                    <a class="action-btn action-link" href="{{ url_for(action_endpoints[action]) }}">
+                        {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
+                    </a>
+                    {% else %}
+                    <form class="terminal-action" action="{{ url_for(action_endpoints[action]) }}" method="POST">
                     <button type="submit" class="action-btn">
                         {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
                     </button>
-                </form>
+                    </form>
+                    {% endif %}
                 {% else %}
                 <button class="action-btn disabled" title="{{ state.reason }}" disabled>
                     {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
@@ -98,8 +122,8 @@
 </div>
 {% endif %}
 
-<script src="{{ url_for('static', filename='terminal.js') }}"></script>
 {% block scripts %}{% endblock %}
+<script src="{{ url_for('static', filename='terminal.js') }}"></script>
 
 </body>
 </html>

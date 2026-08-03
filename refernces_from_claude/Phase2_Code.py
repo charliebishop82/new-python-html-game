@@ -514,10 +514,21 @@ def global_latest():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Dueling Game{% endblock %}</title>
+    <title>{% block title %}Movie Multiverse{% endblock %}</title>
+    <script>
+        try {
+            document.documentElement.dataset.theme = localStorage.getItem('movie-multiverse-theme') || 'dark';
+        } catch (error) {
+            document.documentElement.dataset.theme = 'dark';
+        }
+    </script>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
-<body>
+<body class="{{ 'authenticated' if player else 'auth-page' }} {% block body_class %}{% endblock %}">
+
+<button id="theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false">
+    LIGHT MODE
+</button>
 
 {% if player %}
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -556,13 +567,26 @@ def global_latest():
 
     <div id="action-buttons">
         {% if button_states is defined %}
+            {% set action_endpoints = {
+                'boss': 'actions.action_boss',
+                'pvp': 'actions.action_pvp',
+                'tavern': 'actions.action_tavern',
+                'blacksmith': 'blacksmith.index',
+                'shop': 'shop.index'
+            } %}
             {% for action, state in button_states.items() %}
                 {% if state.enabled %}
-                <form class="terminal-action" action="{{ url_for('actions.' + action) }}" method="POST">
+                    {% if action in ('blacksmith', 'shop') %}
+                    <a class="action-btn action-link" href="{{ url_for(action_endpoints[action]) }}">
+                        {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
+                    </a>
+                    {% else %}
+                    <form class="terminal-action" action="{{ url_for(action_endpoints[action]) }}" method="POST">
                     <button type="submit" class="action-btn">
                         {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
                     </button>
-                </form>
+                    </form>
+                    {% endif %}
                 {% else %}
                 <button class="action-btn disabled" title="{{ state.reason }}" disabled>
                     {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
@@ -602,8 +626,8 @@ def global_latest():
 </div>
 {% endif %}
 
-<script src="{{ url_for('static', filename='terminal.js') }}"></script>
 {% block scripts %}{% endblock %}
+<script src="{{ url_for('static', filename='terminal.js') }}"></script>
 
 </body>
 </html>
@@ -653,16 +677,14 @@ def global_latest():
 <!-- FILE: templates/auth/login.html                            -->
 <!-- ============================================================ -->
 {% extends "base.html" %}
-{% block title %}Login{% endblock %}
+{% block title %}Login | Movie Multiverse{% endblock %}
+{% block body_class %}poster-page poster-login{% endblock %}
 {% block content %}
-<div id="auth-box">
-    <div class="auth-banner" role="banner" aria-label="Dueling">
-        <div class="auth-banner-rule" aria-hidden="true">+------------------------------------------------+</div>
-        <h1 class="auth-title">DUELING</h1>
-        <p class="auth-subtitle">[ BBS MULTIPLAYER COMBAT SYSTEM ]</p>
-        <div class="auth-banner-rule" aria-hidden="true">+------------------------------------------------+</div>
-    </div>
-
+<div class="poster-stage poster-stage-login">
+<img class="poster-art" src="{{ url_for('static', filename='images/movie-multiverse-login-boss-fight-v2.png') }}"
+     alt="Movie Multiverse: Boss Fight movie poster">
+<div id="auth-box" class="poster-auth-card">
+    <h1 class="sr-only">Movie Multiverse: Boss Fight!</h1>
     {% if error %}
     <div class="term-error">{{ error }}</div>
     {% endif %}
@@ -681,6 +703,7 @@ def global_latest():
 
     <p class="auth-link">New player? <a href="{{ url_for('auth.register') }}">Register here</a></p>
 </div>
+</div>
 {% endblock %}
 
 
@@ -688,9 +711,13 @@ def global_latest():
 <!-- FILE: templates/auth/register.html                         -->
 <!-- ============================================================ -->
 {% extends "base.html" %}
-{% block title %}Register{% endblock %}
+{% block title %}Create Account | Movie Multiverse{% endblock %}
+{% block body_class %}poster-page poster-register{% endblock %}
 {% block content %}
-<div id="auth-box">
+<div class="poster-stage poster-stage-register">
+<img class="poster-art" src="{{ url_for('static', filename='images/movie-multiverse-signup-concept.png') }}"
+     alt="Movie Multiverse cinema lobby poster">
+<div id="auth-box" class="poster-auth-card">
     <h2 class="auth-heading">Create Account</h2>
 
     {% if errors %}
@@ -720,6 +747,7 @@ def global_latest():
     </form>
 
     <p class="auth-link">Already registered? <a href="{{ url_for('auth.login') }}">Login here</a></p>
+</div>
 </div>
 {% endblock %}
 
@@ -901,6 +929,21 @@ updateCounter();
     --ticker-h:   32px;
 }
 
+:root[data-theme="light"] {
+    --bg:       #f4f0e7;
+    --bg-panel: #ffffff;
+    --bg-input: #faf7f0;
+    --border:   #c9bea9;
+    --green:    #176b42;
+    --red:      #a12b2b;
+    --amber:    #8a5400;
+    --blue:     #185f9d;
+    --grey:     #655f55;
+    --white:    #201d18;
+    --dim:      #8a8174;
+    color-scheme: light;
+}
+
 /* ── Reset & Base ──────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -915,6 +958,46 @@ html, body {
 
 a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
+
+#theme-toggle {
+    position: fixed;
+    top: 12px;
+    right: 14px;
+    z-index: 1000;
+    min-width: 112px;
+    padding: 7px 10px;
+    border: 1px solid var(--amber);
+    background: var(--bg-panel);
+    color: var(--amber);
+    font: bold 11px/1 var(--font);
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.18);
+}
+
+#theme-toggle:hover,
+#theme-toggle:focus-visible {
+    background: var(--amber);
+    color: var(--bg);
+    outline: none;
+}
+
+:root[data-theme="light"] .action-btn:hover:not(:disabled),
+:root[data-theme="light"] .auth-btn { background: #e5f2e9; }
+:root[data-theme="light"] .action-btn.disabled,
+:root[data-theme="light"] .action-btn:disabled { border-color: var(--border); }
+:root[data-theme="light"] #auth-box {
+    border-color: #9b7a3f;
+    box-shadow: 0 8px 30px rgba(54, 43, 25, 0.12);
+}
+:root[data-theme="light"] .auth-title {
+    color: #176b42;
+    text-shadow: none;
+}
+:root[data-theme="light"] .auth-btn:hover { background: #d5e9dc; }
+:root[data-theme="light"] tr:nth-child(even) td { background: #eee8dc; }
+:root[data-theme="light"] .effect-good { background: #e5f2e9; }
+:root[data-theme="light"] .effect-bad { background: #f7e6e3; }
 
 /* ── Layout ────────────────────────────────────────────────── */
 #left-col {
@@ -934,9 +1017,109 @@ a:hover { text-decoration: underline; }
 #main {
     margin-left: var(--left-width);
     height: calc(100vh - var(--ticker-h));
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
     display: flex;
     flex-direction: column;
+}
+
+body.auth-page #main {
+    margin-left: 0;
+    height: 100vh;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+body.poster-page #main {
+    min-height: 100vh;
+    height: auto;
+    background-color: #05070c;
+    align-items: center;
+    justify-content: flex-start;
+}
+
+.poster-stage {
+    position: relative;
+    flex: 0 0 auto;
+    width: min(100vw, 150vh);
+    aspect-ratio: 3 / 2;
+    margin: 0 auto;
+    background: #05070c;
+}
+
+.poster-art {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+body.poster-page #auth-box.poster-auth-card {
+    position: absolute;
+    margin: 0;
+    border-color: rgba(190, 142, 54, 0.72);
+    background: rgba(5, 8, 13, 0.92);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(3px);
+}
+
+body.poster-login #auth-box.poster-auth-card {
+    left: 25.5%;
+    top: 62.5%;
+    width: 49%;
+    max-width: none;
+    padding: clamp(12px, 1.5vw, 24px) clamp(18px, 2.5vw, 42px);
+}
+
+body.poster-register #auth-box.poster-auth-card {
+    left: 36%;
+    top: 53.5%;
+    width: 28%;
+    max-width: none;
+    padding: clamp(10px, 1.2vw, 20px) clamp(14px, 2vw, 32px);
+}
+
+:root[data-theme="light"] body.poster-page #auth-box.poster-auth-card {
+    background: rgba(255, 252, 245, 0.96);
+    border-color: #9b7a3f;
+}
+
+@media (max-width: 760px), (max-height: 620px) {
+    body.poster-page #main {
+        min-height: 100vh;
+        padding-bottom: 28px;
+        background: var(--bg);
+    }
+
+    .poster-stage {
+        width: 100%;
+        aspect-ratio: auto;
+    }
+
+    .poster-art {
+        height: auto;
+    }
+
+    body.poster-login #auth-box.poster-auth-card,
+    body.poster-register #auth-box.poster-auth-card {
+        position: relative;
+        inset: auto;
+        width: min(100%, 520px);
+        max-width: 520px;
+        margin: 18px auto 0;
+        padding: 24px;
+    }
 }
 
 /* ── Status Block ──────────────────────────────────────────── */
@@ -990,6 +1173,13 @@ a:hover { text-decoration: underline; }
     letter-spacing: 0.5px;
     transition: background 0.1s, border-color 0.1s;
 }
+
+.action-link {
+    display: block;
+    text-decoration: none;
+}
+
+.action-link:hover { text-decoration: none; }
 
 .action-btn:hover:not(:disabled) {
     background: #1a2a1a;
@@ -1178,8 +1368,25 @@ a:hover { text-decoration: underline; }
     margin-bottom: 6px;
     cursor: pointer;
 }
-.class-option:hover, .class-option.selected { border-color: var(--green); }
-.class-option input[type=radio] { display: none; }
+.class-option:hover { border-color: var(--green); }
+.class-option.selected {
+    border-color: var(--green);
+    background: #10281b;
+    box-shadow: inset 4px 0 0 var(--green), 0 0 10px rgba(0, 204, 102, 0.18);
+}
+.class-option input[type=radio] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+.class-option:focus-within { outline: 2px solid var(--blue); outline-offset: 2px; }
+.class-option.selected .class-name::after {
+    content: " [SELECTED]";
+    color: var(--green);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+}
+:root[data-theme="light"] .class-option.selected { background: #e5f2e9; }
 .class-name    { color: var(--amber); font-size: 13px; display: block; }
 .class-bonuses { color: var(--green); font-size: 12px; display: block; }
 .class-desc    { color: var(--grey);  font-size: 11px; display: block; margin-top: 3px; }
@@ -1313,6 +1520,30 @@ tr:nth-child(even) td { background: #0d0d0d; }
 
 'use strict';
 
+// Persistent light/dark color theme.
+document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('theme-toggle');
+    if (!toggle) return;
+
+    const updateToggle = () => {
+        const isLight = document.documentElement.dataset.theme === 'light';
+        toggle.textContent = isLight ? 'DARK MODE' : 'LIGHT MODE';
+        toggle.setAttribute('aria-pressed', String(isLight));
+    };
+
+    updateToggle();
+    toggle.addEventListener('click', () => {
+        const nextTheme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+        document.documentElement.dataset.theme = nextTheme;
+        try {
+            localStorage.setItem('movie-multiverse-theme', nextTheme);
+        } catch (error) {
+            // The theme still changes for this page if storage is unavailable.
+        }
+        updateToggle();
+    });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. TERMINAL ACTION FORM INTERCEPTION
 // All forms with class="terminal-action" are intercepted.
@@ -1321,18 +1552,52 @@ tr:nth-child(even) td { background: #0d0d0d; }
 
 document.addEventListener('DOMContentLoaded', () => {
     bindTerminalForms();
+    bindClassSelection();
 });
+
+function bindClassSelection() {
+    const options = document.querySelectorAll('.class-option');
+    if (!options.length) return;
+
+    const updateSelection = () => {
+        options.forEach(option => {
+            const radio = option.querySelector('input[type="radio"]');
+            const selected = Boolean(radio && radio.checked);
+            option.classList.toggle('selected', selected);
+            option.setAttribute('aria-selected', String(selected));
+        });
+    };
+
+    options.forEach(option => {
+        const radio = option.querySelector('input[type="radio"]');
+        if (radio) radio.addEventListener('change', updateSelection);
+    });
+    updateSelection();
+}
 
 function bindTerminalForms() {
     document.querySelectorAll('.terminal-action').forEach(form => {
+        if (form.dataset.terminalBound === 'true') return;
+        form.dataset.terminalBound = 'true';
+
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
-            const response = await fetch(form.action, {
+            const actionUrl = form.getAttribute('action');
+            if (!actionUrl) {
+                appendToTerminal('<div class="term-line term-error">This action is unavailable because its destination is missing.</div>');
+                return;
+            }
+
+            const response = await fetch(actionUrl, {
                 method: 'POST',
                 body: new FormData(form),
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
             const html = await response.text();
+            if (!response.ok) {
+                appendToTerminal(`<div class="term-line term-error">Action failed (${response.status}). Please try again or check the server log.</div>`);
+                return;
+            }
             appendToTerminal(html);
             // Rebind any new terminal-action forms inside the fragment
             bindTerminalForms();
