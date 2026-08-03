@@ -105,7 +105,9 @@ def run_npc_turn(player_id: int) -> dict:
                   and active["combat_type"] == "PVP" else _finish_active_combat(player_id, profile=profile))
         return _finish_turn(profile, "COMBAT", "An active fight must be resolved first", result)
 
-    _equip_best_core_items(player_id)
+    equipment_changes = _equip_best_items(player_id, profile)
+    if equipment_changes:
+        _log(player_id, "EQUIP", "Re-evaluated owned equipment", ", ".join(equipment_changes))
     player = get_player(player_id)
     settings = get_all_settings()
 
@@ -123,9 +125,9 @@ def run_npc_turn(player_id: int) -> dict:
     if heal_result:
         return _finish_turn(profile, "HEAL", heal_result[0], heal_result[1])
 
-    hoard_result = _maybe_hoard(player, profile)
-    if hoard_result:
-        return _finish_turn(profile, "HOARD", hoard_result[0], hoard_result[1])
+    shop_result = _maybe_manage_inventory(player, profile, settings)
+    if shop_result:
+        return _finish_turn(profile, "SHOP", shop_result[0], shop_result[1])
 
     pvp_targets = _eligible_pvp_targets(player)
     if profile["thief"] >= max(profile["player_hunter"], profile["boss_killer"],
@@ -437,28 +439,109 @@ def _maybe_heal(player: dict, profile: dict, settings: dict):
         return ("Healing was desirable but unavailable", str(exc))
 
 
-def _maybe_hoard(player: dict, profile: dict):
-    """Provide the internal maybe hoard operation used by this module."""
-    if profile["hoarder"] <= 0:
+def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
+    """Occasionally sell obsolete gear or buy a meaningful, affordable upgrade.
+
+    The NPC sees only its own inventory and the same public shop listings as a
+    human player. One sale or purchase consumes the normal configured Shop AP.
+    """
+    ap_cost = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
+    if player["current_ap"] < ap_cost:
         return None
-    inv_count = execute_one("SELECT COUNT(*) cnt FROM inventory_items WHERE player_id=?", (player["id"],))["cnt"]
+
+    owned = _load_scored_inventory(player, profile)
+    inv_count = len(owned)
+    # Make space when full. Hoarders protect specials; other personalities sell
+    # the least useful unequipped item regardless of category.
     if inv_count >= player["inventory_limit"]:
-        cheapest = execute_one(
-            """SELECT ii.id FROM inventory_items ii JOIN special_items si ON si.id=ii.item_id
-               WHERE ii.player_id=? AND ii.item_type='SPECIAL' AND ii.id != COALESCE(?, -1)
-               ORDER BY si.credit_cost ASC LIMIT 1""", (player["id"], player.get("equipped_special_id"))
-        )
-        if cheapest:
-            result = enqueue_and_process(player["id"], "shop_sell", {"inv_id": cheapest["id"]})
-            return ("Inventory was full; sold the cheapest unequipped special", str(result))
-    listing = execute_one(
-        """SELECT sl.id FROM shop_listings sl WHERE sl.item_type='SPECIAL' AND sl.price<=?
-           ORDER BY sl.price ASC LIMIT 1""", (player["credits"],)
-    )
-    if listing and random.randint(1, 100) <= profile["hoarder"]:
-        result = enqueue_and_process(player["id"], "shop_buy", {"listing_id": listing["id"]})
-        return ("An affordable special item was available", str(result))
-    return None
+        equipped = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
+                    player.get("equipped_special_id")} - {None}
+        candidates = [item for item in owned if item["inv_id"] not in equipped]
+        if profile["hoarder"] >= 50:
+            non_specials = [item for item in candidates if item["item_type"] != "SPECIAL"]
+            if non_specials:
+                candidates = non_specials
+            elif candidates:
+                victim = min(candidates, key=lambda item: item["credit_cost"])
+                result = enqueue_and_process(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+                return (f"Inventory was full; sold cheapest special {victim['name']}", str(result))
+        if candidates:
+            victim = min(candidates, key=lambda item: (item["score"], item["credit_cost"]))
+            result = enqueue_and_process(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+            return (f"Inventory was full; sold obsolete {victim['name']}", str(result))
+        return None
+
+    # Near capacity, occasionally clear a duplicate weapon or armor that is
+    # materially worse than the equipped one. This is deliberately infrequent
+    # so the NPC does not burn all of its AP merely reorganizing inventory.
+    if inv_count >= max(3, player["inventory_limit"] - 2) and random.random() < 0.20:
+        equipped = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
+                    player.get("equipped_special_id")} - {None}
+        obsolete = []
+        for kind in ("WEAPON", "ARMOR"):
+            category = [item for item in owned if item["item_type"] == kind]
+            best_score = max((item["score"] for item in category), default=0)
+            obsolete.extend(item for item in category
+                            if item["inv_id"] not in equipped and item["score"] < best_score * 0.75)
+        if obsolete:
+            victim = min(obsolete, key=lambda item: (item["score"], item["credit_cost"]))
+            result = enqueue_and_process(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+            return (f"Sold obsolete {victim['name']} to keep inventory useful", str(result))
+
+    # Temperament creates stable differences between otherwise identical NPCs,
+    # while the per-turn roll prevents a completely predictable schedule.
+    temperament = random.Random(player["id"] * 65537).randint(-10, 10)
+    shop_interest = max(profile["hoarder"], profile["boss_killer"] // 2,
+                        profile["player_hunter"] // 2, profile["thief"] // 2)
+    if random.randint(1, 100) > max(10, min(85, 15 + shop_interest // 2 + temperament)):
+        return None
+
+    # Preserve enough money for one heal and a modest repair reserve. More
+    # self-preserving NPCs keep a larger cushion; hoarders accept more risk.
+    heal_reserve = settings.get("TAVERN_HEAL_COST", cfg.TAVERN_HEAL_COST)
+    reserve_pct = max(0.10, 0.35 + profile["self_preservation"] / 400
+                      - profile["hoarder"] / 500)
+    credit_reserve = max(heal_reserve, int(player["credits"] * reserve_pct))
+    spendable = max(0, player["credits"] - credit_reserve)
+    if spendable <= 0:
+        return None
+
+    current_scores = {kind: 0.0 for kind in ("WEAPON", "ARMOR", "SPECIAL")}
+    equipped_ids = {"WEAPON": player.get("equipped_weapon_id"),
+                    "ARMOR": player.get("equipped_armor_id"),
+                    "SPECIAL": player.get("equipped_special_id")}
+    for item in owned:
+        if item["inv_id"] == equipped_ids[item["item_type"]]:
+            current_scores[item["item_type"]] = item["score"]
+
+    listings = execute("SELECT * FROM shop_listings ORDER BY id")
+    upgrades = []
+    owned_special_ids = {item["id"] for item in owned if item["item_type"] == "SPECIAL"}
+    for listing in listings:
+        detail = _load_item_detail(listing["item_type"], listing["item_id"])
+        if not detail:
+            continue
+        price = _discounted_shop_price(player, listing["price"])
+        if price > spendable:
+            continue
+        score = _score_item(listing["item_type"], detail, player, profile,
+                            listing.get("durability_at_listing") or detail.get("starting_durability", 100))
+        baseline = current_scores[listing["item_type"]]
+        # Empty slots are always useful; otherwise require a real 10% upgrade.
+        collectible = (listing["item_type"] == "SPECIAL" and profile["hoarder"] >= 50
+                       and listing["item_id"] not in owned_special_ids)
+        if baseline <= 0 or score >= baseline * 1.10 or collectible:
+            value = (score - baseline) / max(1, price)
+            if collectible:
+                value += profile["hoarder"] / 25
+            upgrades.append((value, score - baseline, -price, listing, detail))
+    if not upgrades:
+        return None
+    _, improvement, _, listing, detail = max(upgrades, key=lambda row: row[:3])
+    result = enqueue_and_process(player["id"], "shop_buy", {"listing_id": listing["id"]})
+    _equip_best_items(player["id"], profile)
+    return (f"Bought {detail['name']} as a meaningful {listing['item_type'].lower()} upgrade",
+            f"estimated improvement {improvement:.1f}; {result}")
 
 
 def _eligible_pvp_targets(player: dict) -> list[dict]:
@@ -496,26 +579,108 @@ def _choose_boss(player: dict):
     )
 
 
-def _equip_best_core_items(player_id: int):
-    """Provide the internal equip best core items operation used by this module."""
-    updates = {}
-    for item_type, table, field in (("WEAPON", "weapons", "equipped_weapon_id"),
-                                    ("ARMOR", "armor", "equipped_armor_id")):
-        item = execute_one(
-            f"""SELECT ii.id FROM inventory_items ii JOIN {table} c ON c.id=ii.item_id
-                WHERE ii.player_id=? AND ii.item_type=?
-                ORDER BY c.level DESC,c.credit_cost DESC,ii.current_durability DESC LIMIT 1""",
-            (player_id, item_type)
-        )
-        if item:
-            updates[field] = item["id"]
+def _equip_best_items(player_id: int, profile: dict) -> list[str]:
+    """Equip the best owned weapon, armor, and special for this NPC's build."""
+    player = get_player(player_id)
+    if not player:
+        return []
+    items = _load_scored_inventory(player, profile)
+    fields = {"WEAPON": "equipped_weapon_id", "ARMOR": "equipped_armor_id",
+              "SPECIAL": "equipped_special_id"}
+    updates, changes = {}, []
+    for item_type, field in fields.items():
+        choices = [item for item in items if item["item_type"] == item_type]
+        if not choices:
+            continue
+        best = max(choices, key=lambda item: (item["score"], item["current_durability"],
+                                               item["credit_cost"]))
+        if player.get(field) != best["inv_id"]:
+            updates[field] = best["inv_id"]
+            changes.append(f"{item_type.lower()}: {best['name']}")
     if updates:
         with exclusive_transaction():
-            execute_write(
-                "UPDATE players SET equipped_weapon_id=COALESCE(?,equipped_weapon_id),"
-                "equipped_armor_id=COALESCE(?,equipped_armor_id) WHERE id=?",
-                (updates.get("equipped_weapon_id"), updates.get("equipped_armor_id"), player_id)
-            )
+            for field, inv_id in updates.items():
+                execute_write(f"UPDATE players SET {field}=? WHERE id=?", (inv_id, player_id))
+    return changes
+
+
+def _load_scored_inventory(player: dict, profile: dict) -> list[dict]:
+    """Return the NPC's inventory with public item data and build-aware scores."""
+    result = []
+    for inv in execute("SELECT * FROM inventory_items WHERE player_id=?", (player["id"],)):
+        detail = _load_item_detail(inv["item_type"], inv["item_id"])
+        if detail:
+            result.append({**detail, "inv_id": inv["id"], "item_type": inv["item_type"],
+                           "current_durability": inv["current_durability"],
+                           "score": _score_item(inv["item_type"], detail, player, profile,
+                                                inv["current_durability"])})
+    return result
+
+
+def _load_item_detail(item_type: str, item_id: int) -> dict | None:
+    """Load one item definition using the same content tables as player screens."""
+    table = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}.get(item_type)
+    return execute_one(f"SELECT * FROM {table} WHERE id=?", (item_id,)) if table else None
+
+
+def _stat_bonus_score(item: dict, weights: dict[str, float]) -> float:
+    return sum(item.get(f"{stat}_bonus", 0) * weight for stat, weight in weights.items())
+
+
+def _score_item(item_type: str, item: dict, player: dict, profile: dict,
+                durability: int = 100) -> float:
+    """Estimate practical value without hidden opponent information."""
+    thief_led = profile["thief"] >= max(profile["player_hunter"], profile["boss_killer"],
+                                         profile["hoarder"])
+    weights = {"str": 1.2, "end": 1.2, "agi": 1.2, "lck": 1.0, "per": 1.0}
+    if thief_led:
+        weights.update({"agi": 2.0, "lck": 1.7, "per": 1.5})
+    elif profile["boss_killer"] >= max(profile["player_hunter"], profile["hoarder"]):
+        weights.update({"str": 1.8, "end": 1.7, "agi": 1.4})
+    elif profile["player_hunter"] >= profile["hoarder"]:
+        weights.update({"agi": 1.8, "per": 1.6, "str": 1.4})
+    elif profile["hoarder"] > 0:
+        weights.update({"lck": 1.7, "per": 1.6, "end": 1.4})
+    stats = _stat_bonus_score(item, weights)
+    condition = 0.55 + 0.45 * max(0, min(100, durability)) / 100
+    resistances = sum(bool(item.get(f"res_{kind}")) for kind in
+                      ("blade", "blunt", "ballistic", "energy", "arcane", "explosive", "venom"))
+    if item_type == "WEAPON":
+        die = str(item.get("damage_die", "d4")).lower().split("d")[-1]
+        average = (int(die) + 1) / 2 if die.isdigit() else 2.5
+        combat_stat = player["str_stat"] if item.get("weapon_type") == "Melee" else player["agi_stat"]
+        return (average * 4 + math.floor(combat_stat / 2) * 2 + stats
+                + item.get("level", 0) * 0.5) * condition
+    if item_type == "ARMOR":
+        return (item.get("ac_bonus", 0) * 5 + resistances * 3 + stats
+                + item.get("level", 0) * 0.4) * condition
+    economy = (item.get("shop_discount", 0) + item.get("sell_bonus", 0)
+               + item.get("credit_multiplier", 0)) * (14 if profile["hoarder"] else 8)
+    thief_value = item.get("steal_bonus", 0) * (18 if thief_led else 6)
+    combat = (item.get("bonus_damage_amount", 0) * 3 + item.get("extra_attack", 0) * 10
+              + item.get("ac_bonus", 0) * 5 + resistances * 3
+              + item.get("initiative_bonus", 0) * 2
+              + item.get("crit_chance_bonus", 0) * 20
+              + item.get("crit_dmg_multiplier", 0) * 8)
+    utility = (item.get("bonus_ap", 0) * 4 + item.get("hp_regen_bonus", 0) * 2
+               + item.get("durability_reduction", 0) * 10
+               + item.get("encounter_bonus", 0) * 8 + item.get("xp_multiplier", 0) * 10)
+    return (combat + utility + economy + thief_value + stats + 1) * condition
+
+
+def _discounted_shop_price(player: dict, listed_price: int) -> int:
+    """Mirror the Shop's PER and equipped-special discount calculation."""
+    settings = get_all_settings()
+    discount = math.floor(player["per_stat"] / 2) / 100
+    if player.get("equipped_special_id"):
+        row = execute_one(
+            """SELECT si.shop_discount FROM inventory_items ii JOIN special_items si ON si.id=ii.item_id
+               WHERE ii.id=? AND ii.player_id=?""",
+            (player["equipped_special_id"], player["id"])
+        )
+        discount += row["shop_discount"] if row else 0
+    discount = min(discount, settings.get("SHOP_DISCOUNT_MAX", cfg.SHOP_DISCOUNT_MAX))
+    return max(0, int(listed_price * (1 - discount)))
 
 
 def _finish_turn(profile: dict, decision: str, reason: str, result) -> dict:
