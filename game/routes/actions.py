@@ -13,7 +13,7 @@ from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings, get_player)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
-from combat import flavour
+from combat import engine, flavour
 import config_defaults as cfg
 
 bp = Blueprint("actions", __name__)
@@ -153,9 +153,9 @@ def check_random_event(player: dict, settings: dict) -> dict | None:
         previous_text = last_event["flavor_text"]
         alternatives = [
             event for event in events
-            if flavour.random_event_flavor(
+            if not previous_text.startswith(flavour.random_event_flavor(
                 event, player.get("character_name", "Player")
-            ) != previous_text
+            ))
         ]
         if alternatives:
             events = alternatives
@@ -320,7 +320,8 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
                 )
 
         # Personal feed entry
-        feed_text = flavour.random_event_flavor(event, player_name)
+        feed_text = (f"{flavour.random_event_flavor(event, player_name)}  "
+                     f"Effect: {event.get('effect_summary') or _describe_random_event_effect(event)}.")
         execute_write(
             """INSERT INTO daily_feed (feed_scope, player_id, flavor_text, event_category)
                VALUES ('PERSONAL', ?, ?, 'RANDOM_EVENT')""",
@@ -543,6 +544,9 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
                            intel=intel,
                            intel_detail=intel_detail,
                            player=player,
+                           opponent_health=flavour.hp_status(
+                               opponent_full.get("current_hp", opponent_full["max_hp"]),
+                               opponent_full["max_hp"]),
                            boss_flavor=opponent_full.get("flavor_text", ""))
 
 
@@ -727,6 +731,8 @@ def action_pvp_fight():
                            encounter_type="PVP",
                            session_id=result["session_id"],
                            intel=None,
+                           opponent_health=flavour.hp_status(
+                               target["current_hp"], engine.calc_max_hp(target)),
                            player=player,
                            boss_flavor="")
 

@@ -12,6 +12,43 @@
     Changes here override Excel-imported values until the next import.
 </p>
 
+<section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
+    <h2 style="margin-top:0;">Player Interface Defaults</h2>
+    <p style="color:#777;margin-bottom:12px;">Interface style and color mode are independent. Players may override them only when allowed below.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="DEFAULT_INTERFACE_STYLE">
+            <label>Default interface</label><br>
+            <select name="value"><option value="CLASSIC" {% if settings_map.get('DEFAULT_INTERFACE_STYLE','CLASSIC') == 'CLASSIC' %}selected{% endif %}>Classic BBS</option><option value="CINEMATIC" {% if settings_map.get('DEFAULT_INTERFACE_STYLE') == 'CINEMATIC' %}selected{% endif %}>Cinematic</option></select>
+            <button type="submit" class="btn">Save</button>
+        </form>
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="DEFAULT_COLOR_MODE">
+            <label>Default color mode</label><br>
+            <select name="value"><option value="DARK" {% if settings_map.get('DEFAULT_COLOR_MODE','DARK') == 'DARK' %}selected{% endif %}>Dark</option><option value="LIGHT" {% if settings_map.get('DEFAULT_COLOR_MODE') == 'LIGHT' %}selected{% endif %}>Light</option></select>
+            <button type="submit" class="btn">Save</button>
+        </form>
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="ALLOW_PLAYER_INTERFACE_OVERRIDE">
+            <label>Player style selector</label><br>
+            <select name="value"><option value="TRUE" {% if settings_map.get('ALLOW_PLAYER_INTERFACE_OVERRIDE','TRUE') == 'TRUE' %}selected{% endif %}>Allowed</option><option value="FALSE" {% if settings_map.get('ALLOW_PLAYER_INTERFACE_OVERRIDE') == 'FALSE' %}selected{% endif %}>Locked to default</option></select>
+            <button type="submit" class="btn">Save</button>
+        </form>
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="CLASSIC_CRT_EFFECTS">
+            <label>Classic CRT effect</label><br>
+            <select name="value"><option value="FALSE" {% if settings_map.get('CLASSIC_CRT_EFFECTS','FALSE') == 'FALSE' %}selected{% endif %}>Off</option><option value="TRUE" {% if settings_map.get('CLASSIC_CRT_EFFECTS') == 'TRUE' %}selected{% endif %}>On</option></select>
+            <button type="submit" class="btn">Save</button>
+        </form>
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="ALLOW_PLAYER_COLOR_OVERRIDE">
+            <label>Player light/dark selector</label><br>
+            <select name="value"><option value="TRUE" {% if settings_map.get('ALLOW_PLAYER_COLOR_OVERRIDE','TRUE') == 'TRUE' %}selected{% endif %}>Allowed</option><option value="FALSE" {% if settings_map.get('ALLOW_PLAYER_COLOR_OVERRIDE') == 'FALSE' %}selected{% endif %}>Locked to default</option></select>
+            <button type="submit" class="btn">Save</button>
+        </form>
+    </div>
+</section>
+
 <form method="POST" style="margin-bottom:24px;display:flex;gap:8px;align-items:center;">
     <input type="text" name="constant_name" placeholder="CONSTANT_NAME" style="width:240px;">
     <input type="text" name="value"         placeholder="value"          style="width:160px;">

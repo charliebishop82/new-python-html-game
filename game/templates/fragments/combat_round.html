@@ -43,6 +43,9 @@
     <div class="term-line term-system">
         Your HP: {{ player.current_hp }}/{{ player.max_hp }}
     </div>
+    <div class="term-line term-amber">
+        Opponent: {{ result.opponent_health.meter }} {{ result.opponent_health.label }}
+    </div>
 
     <!-- Combat action buttons (repeat for next round) -->
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">

@@ -3,12 +3,32 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
+<div class="feed-legend" aria-label="Feed legend">
+    <strong>FEED KEY</strong>
+    <span><b class="feed-scope feed-you">YOU</b> Private events and results for your character</span>
+    <span><b class="feed-scope feed-world">WORLD</b> Public announcements visible to every player</span>
+    <span><b class="feed-scope feed-system">SYSTEM</b> Rules, tutorial, and service notices</span>
+    <span>Bottom bar: live <b class="feed-scope feed-world">WORLD</b> ticker</span>
+</div>
 <div id="terminal" role="log" aria-live="polite">
     {# Pre-populate with last N personal feed entries on every load #}
     {% for entry in terminal_history %}
-        <div class="term-line term-{{ entry.event_category|lower }}">
+        <div class="term-line feed-entry term-{{ entry.event_category|lower }}">
             <span class="term-ts">[{{ entry.occurred_at[11:16] }}]</span>
-            {{ entry.flavor_text }}
+            <span class="feed-entry-scope">
+            {% if entry.feed_scope == 'GLOBAL' %}
+            <span class="feed-scope feed-world">WORLD</span>
+            {% elif entry.event_category == 'SYSTEM' %}
+            <span class="feed-scope feed-system">SYSTEM</span>
+            {% elif entry.event_category == 'RANDOM_EVENT' %}
+            <span class="feed-scope feed-you">YOU · EVENT</span>
+            {% elif entry.event_category == 'COMBAT' %}
+            <span class="feed-scope feed-you">YOU · COMBAT</span>
+            {% else %}
+            <span class="feed-scope feed-you">YOU</span>
+            {% endif %}
+            </span>
+            <span class="feed-message">{{ entry.flavor_text }}</span>
         </div>
     {% endfor %}
 

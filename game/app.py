@@ -62,10 +62,11 @@ def _register_blueprints(app: Flask):
 
 def _context_processor() -> dict:
     """Provide the internal context processor operation used by this module."""
+    settings = get_all_settings()
     player = g.get("player")
     if not player:
-        return {}
-    return {"player": player, "settings": get_all_settings()}
+        return {"settings": settings}
+    return {"player": player, "settings": settings}
 
 
 def _check_auth():

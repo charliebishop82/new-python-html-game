@@ -50,6 +50,32 @@ def index():
     )
 
 
+@bp.route("/equipment")
+def equipment():
+    """Render the dedicated equipment comparison and loadout screen."""
+    player = g.player
+    inventory = _get_full_inventory(player)
+    equipped = {
+        "weapon": _find_equipped(inventory, player.get("equipped_weapon_id")),
+        "armor": _find_equipped(inventory, player.get("equipped_armor_id")),
+        "special": _find_equipped(inventory, player.get("equipped_special_id")),
+    }
+    return render_template(
+        "character/equipment.html",
+        inventory=inventory,
+        equipped=equipped,
+        derived=_calc_derived_stats(player, equipped, get_all_settings()),
+        feedback=request.args.get("feedback"),
+        error=request.args.get("error"),
+    )
+
+
+def _management_redirect(**values):
+    """Return to the equipment screen only when that form requested it."""
+    endpoint = "character.equipment" if request.form.get("return_to") == "equipment" else "character.index"
+    return redirect(url_for(endpoint, **values))
+
+
 def _get_active_effects(player_id: int) -> list[dict]:
     """Build readable character-sheet entries for midnight status effects."""
     rows = execute(
@@ -226,9 +252,9 @@ def equip():
     inv_id = request.form.get("inv_id", type=int)
     try:
         enqueue_and_process(session["player_id"], "equip", {"inv_id": inv_id})
-        return redirect(url_for("character.index", feedback="Item equipped."))
+        return _management_redirect(feedback="Item equipped.")
     except RuntimeError as e:
-        return redirect(url_for("character.index", error=str(e)))
+        return _management_redirect(error=str(e))
 
 
 @register_handler("equip")
@@ -270,9 +296,9 @@ def unequip():
     slot = request.form.get("slot")  # weapon / armor / special
     try:
         enqueue_and_process(session["player_id"], "unequip", {"slot": slot})
-        return redirect(url_for("character.index", feedback="Item unequipped."))
+        return _management_redirect(feedback="Item unequipped.")
     except RuntimeError as e:
-        return redirect(url_for("character.index", error=str(e)))
+        return _management_redirect(error=str(e))
 
 
 @register_handler("unequip")
@@ -305,9 +331,9 @@ def drop():
     inv_id = request.form.get("inv_id", type=int)
     try:
         enqueue_and_process(session["player_id"], "drop_item", {"inv_id": inv_id})
-        return redirect(url_for("character.index", feedback="Item dropped."))
+        return _management_redirect(feedback="Item dropped.")
     except RuntimeError as e:
-        return redirect(url_for("character.index", error=str(e)))
+        return _management_redirect(error=str(e))
 
 
 @register_handler("drop_item")

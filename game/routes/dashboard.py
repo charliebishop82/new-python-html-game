@@ -18,7 +18,7 @@ def index():
     history_count = settings.get('TERMINAL_HISTORY_ENTRIES', cfg.TERMINAL_HISTORY_ENTRIES)
 
     terminal_history = execute(
-        '''SELECT flavor_text, event_category, occurred_at, combat_session_id
+        '''SELECT id,feed_scope,player_id,flavor_text,event_category,occurred_at,combat_session_id
            FROM daily_feed
            WHERE player_id = ? OR feed_scope = 'GLOBAL'
            ORDER BY occurred_at DESC
@@ -26,6 +26,33 @@ def index():
         (player['id'], history_count)
     )
     terminal_history = list(reversed(terminal_history))
+
+    # A completed fight writes a private result and an identical public world
+    # announcement. Show the private copy in the terminal and leave the public
+    # copy to the world ticker, avoiding apparent duplicate rewards/results.
+    private_combat = {
+        (entry.get('combat_session_id'), entry['flavor_text'])
+        for entry in terminal_history
+        if entry['feed_scope'] == 'PERSONAL' and entry.get('combat_session_id')
+    }
+    terminal_history = [
+        entry for entry in terminal_history
+        if not (entry['feed_scope'] == 'GLOBAL'
+                and (entry.get('combat_session_id'), entry['flavor_text']) in private_combat)
+    ]
+
+    # Historical random-event rows predate effect summaries. Reconstruct them
+    # from content so old feed lines become as useful as newly generated ones.
+    random_events = execute("SELECT * FROM random_events WHERE is_active=1")
+    from combat.flavour import random_event_flavor
+    from routes.actions import _describe_random_event_effect
+    for entry in terminal_history:
+        if entry['event_category'] != 'RANDOM_EVENT' or 'Effect:' in entry['flavor_text']:
+            continue
+        for event in random_events:
+            if random_event_flavor(event, player['character_name']) == entry['flavor_text']:
+                entry['flavor_text'] += f"  Effect: {_describe_random_event_effect(event)}."
+                break
 
     button_states = _get_button_states(player, settings)
 

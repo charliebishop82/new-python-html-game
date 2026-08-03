@@ -18,7 +18,7 @@ def personal_latest():
     since = request.args.get("since", "1970-01-01T00:00:00")
 
     rows = execute(
-        """SELECT flavor_text, event_category, occurred_at, combat_session_id
+        """SELECT feed_scope,flavor_text,event_category,occurred_at,combat_session_id
            FROM daily_feed
            WHERE player_id = ? AND datetime(occurred_at) > datetime(?)
            ORDER BY occurred_at ASC""",
@@ -34,8 +34,8 @@ def global_latest():
     since = request.args.get("since", "1970-01-01T00:00:00")
 
     rows = execute(
-        """SELECT flavor_text, event_category, occurred_at FROM (
-               SELECT flavor_text, event_category, occurred_at
+        """SELECT feed_scope,flavor_text,event_category,occurred_at FROM (
+               SELECT feed_scope,flavor_text,event_category,occurred_at,id
                FROM daily_feed
                WHERE feed_scope = 'GLOBAL' AND datetime(occurred_at) > datetime(?)
                ORDER BY datetime(occurred_at) DESC, id DESC LIMIT 50

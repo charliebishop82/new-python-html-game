@@ -6,8 +6,19 @@
     <title>{% block title %}Movie Multiverse{% endblock %}</title>
     <script>
         try {
-            document.documentElement.dataset.theme = localStorage.getItem('movie-multiverse-theme') || 'dark';
+            const defaultStyle = "{{ settings.get('DEFAULT_INTERFACE_STYLE', 'CLASSIC')|lower }}";
+            const defaultColor = "{{ settings.get('DEFAULT_COLOR_MODE', 'DARK')|lower }}";
+            const allowStyleOverride = {{ settings.get('ALLOW_PLAYER_INTERFACE_OVERRIDE', true)|tojson }};
+            document.documentElement.dataset.interface = allowStyleOverride
+                ? (localStorage.getItem('movie-multiverse-interface') || defaultStyle)
+                : defaultStyle;
+            const allowColorOverride = {{ settings.get('ALLOW_PLAYER_COLOR_OVERRIDE', true)|tojson }};
+            document.documentElement.dataset.theme = allowColorOverride
+                ? (localStorage.getItem('movie-multiverse-theme') || defaultColor)
+                : defaultColor;
+            document.documentElement.dataset.crt = {{ settings.get('CLASSIC_CRT_EFFECTS', false)|tojson }} ? 'on' : 'off';
         } catch (error) {
+            document.documentElement.dataset.interface = 'classic';
             document.documentElement.dataset.theme = 'dark';
         }
     </script>
@@ -16,9 +27,14 @@
 </head>
 <body class="{{ 'authenticated' if player else 'auth-page' }} {% block body_class %}{% endblock %}">
 
-<button id="theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false">
+{% if settings.get('ALLOW_PLAYER_COLOR_OVERRIDE', true) %}<button id="theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false">
     LIGHT MODE
+</button>{% endif %}
+{% if settings.get('ALLOW_PLAYER_INTERFACE_OVERRIDE', true) %}
+<button id="interface-toggle" type="button" aria-label="Switch interface style" aria-pressed="false">
+    CINEMATIC UI
 </button>
+{% endif %}
 
 {% if player %}
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -31,6 +47,14 @@
         <div class="status-line">
             <span class="label">LVL</span>
             <span id="status-level">{{ player.level }}</span>
+        </div>
+        <div class="status-line">
+            <span class="label">XP</span>
+            <span id="status-xp">{{ player.xp }}</span>
+        </div>
+        <div class="status-line" title="Experience still needed to reach level {{ player.level + 1 }}">
+            <span class="label">NEXT</span>
+            <span id="status-xp-next">{{ player.xp_to_next_level if player.xp_to_next_level is not none else 'MAX' }}</span>
         </div>
         <div class="status-line">
             <span class="label">HP</span>
@@ -95,7 +119,9 @@
     </div>
 
     <nav id="left-nav">
+        <span class="nav-heading">PLAYER</span>
         <a href="{{ url_for('character.index') }}">Character</a>
+        <a href="{{ url_for('character.equipment') }}">Equipment</a>
         <a href="{{ url_for('scoreboards.index') }}">Scoreboards</a>
         <form action="{{ url_for('auth.logout') }}" method="POST" style="margin:0">
             <button type="submit" class="nav-link-btn">Logout</button>
@@ -118,6 +144,7 @@
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <div id="ticker-wrap">
     <div id="ticker">
+        <span class="ticker-scope feed-scope feed-world">WORLD</span>
         <span id="ticker-content">Loading global feed...</span>
     </div>
 </div>

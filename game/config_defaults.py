@@ -89,6 +89,14 @@ BOSS_LEVEL_WARNING_THRESHOLD           = 3
 LOG_DAILY_ARCHIVE                      = False
 LOG_ARCHIVE_PATH                       = "data/logs/daily/"
 
+# Presentation defaults. Interface style and light/dark color mode are kept
+# independent so either visual system can be used in either color mode.
+DEFAULT_INTERFACE_STYLE                = "CLASSIC"
+DEFAULT_COLOR_MODE                     = "DARK"
+ALLOW_PLAYER_INTERFACE_OVERRIDE        = True
+ALLOW_PLAYER_COLOR_OVERRIDE            = True
+CLASSIC_CRT_EFFECTS                    = False
+
 XP_CURVE = {
     2: 100,   3: 250,   4: 500,   5: 900,
     6: 1400,  7: 2000,  8: 2700,  9: 3500,
@@ -134,6 +142,9 @@ SETTING_TYPES = {
     "MINION_ENCOUNTER_CHANCE": float, "CURSE_AP_REDUCTION": float,
     "SPECIAL_ITEM_DURABILITY_LOSS_PER_ROUND": float,
     "LOG_DAILY_ARCHIVE": bool,
+    "DEFAULT_INTERFACE_STYLE": str, "DEFAULT_COLOR_MODE": str,
+    "ALLOW_PLAYER_INTERFACE_OVERRIDE": bool, "ALLOW_PLAYER_COLOR_OVERRIDE": bool,
+    "CLASSIC_CRT_EFFECTS": bool,
 }
 
 

@@ -9,7 +9,7 @@ import random
 import logging
 from datetime import datetime
 
-from database import (execute, execute_one, execute_write,
+from database import (execute, execute_one, execute_write, get_player,
                       exclusive_transaction, get_all_settings)
 from combat import engine
 from combat import flavour
@@ -32,18 +32,16 @@ def get_combat_state(session_id: int) -> dict:
     if session is None:
         raise ValueError(f"Combat session {session_id} not found.")
 
-    attacker = execute_one(
-        "SELECT * FROM players WHERE id = ?", (session["attacker_player_id"],)
-    )
+    # Use the same derived player record as the UI so active random-event stat
+    # effects influence combat instead of appearing only on the dashboard.
+    attacker = get_player(session["attacker_player_id"])
     attacker_equipped = _load_equipped(attacker)
 
     # Load defender (player, boss, or minion)
     defender = defender_equipped = boss = minion = None
 
     if session["combat_type"] == "PVP":
-        defender = execute_one(
-            "SELECT * FROM players WHERE id = ?", (session["defender_player_id"],)
-        )
+        defender = get_player(session["defender_player_id"])
         defender_equipped = _load_equipped(defender)
 
     elif session["combat_type"] == "BOSS":
@@ -1120,8 +1118,9 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
     settings = get_all_settings()
 
     winner_is_attacker = winner_side == "ATTACKER"
-    winner  = attacker if winner_is_attacker else state.get("defender")
-    loser   = state.get("defender") if winner_is_attacker else attacker
+    opponent = state.get("defender") or state.get("boss") or state.get("minion")
+    winner = attacker if winner_is_attacker else opponent
+    loser = opponent if winner_is_attacker else attacker
 
     xp_earned     = 0
     credits_stolen = 0
@@ -1301,9 +1300,14 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
         execute_write("DELETE FROM combat_buffs WHERE combat_session_id = ?", (session_id,))
 
     # Feed entries
-    winner_name = winner.get("character_name") if winner else "Unknown"
-    loser_name  = (loser.get("character_name") if loser
-                   else (state.get("boss") or state.get("minion") or {}).get("name", "opponent"))
+    def _combatant_name(combatant: dict | None, fallback: str) -> str:
+        """Read either a player character name or an encounter name."""
+        if not combatant:
+            return fallback
+        return combatant.get("character_name") or combatant.get("name") or fallback
+
+    winner_name = _combatant_name(winner, "Unknown combatant")
+    loser_name = _combatant_name(loser, "opponent")
     global_text = flavour.combat_result_flavor(
         winner_name, loser_name, session["combat_type"],
         credits_stolen, item_stolen, result_type

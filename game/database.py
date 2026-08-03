@@ -176,6 +176,10 @@ def get_player(player_id: int) -> dict | None:
     elif hp_pct >= 26: hp_tier = "Hurt"
     else:              hp_tier = "Critical"
 
+    next_level_xp = cfg.XP_CURVE.get(level + 1)
+    xp_to_next_level = (max(0, next_level_xp - player["xp"])
+                        if next_level_xp is not None else None)
+
     player.update({
         "max_hp":            max_hp,
         "max_ap":            max_ap,
@@ -187,6 +191,8 @@ def get_player(player_id: int) -> dict | None:
         "passive_regen":     passive_regen,
         "hp_tier":           hp_tier,
         "hp_pct":            round(hp_pct, 1),
+        "next_level_xp":     next_level_xp,
+        "xp_to_next_level":  xp_to_next_level,
     })
     return player
 

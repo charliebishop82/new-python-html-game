@@ -782,10 +782,12 @@ def admin_config():
             error = "Both constant name and value are required."
 
     settings_rows = execute("SELECT * FROM settings ORDER BY constant_name")
+    settings_map = {row["constant_name"]: row["value"] for row in settings_rows}
     defaults      = {k: v for k, v in vars(cfg).items()
                      if k.isupper() and not k.startswith("_")}
     return render_template("admin/config.html",
                            settings_rows=settings_rows,
+                           settings_map=settings_map,
                            defaults=defaults,
                            feedback=feedback,
                            error=error)

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Equipment Loadout{% endblock %}
+{% block content %}
+<div id="page-content" class="equipment-page cinematic-page">
+    <div class="sheet-kicker">MULTIVERSE PRODUCTION DEPARTMENT // LOADOUT</div>
+    <div class="sheet-header">
+        <div><a href="{{ url_for('character.index') }}" class="back-link">← Character Sheet</a>
+        <h1 class="page-title">Equipment</h1>
+        <p class="sheet-subtitle">Compare props, costumes, and artifacts before entering the next scene.</p></div>
+        <div class="loadout-summary">Inventory {{ player.inventory_count }}/{{ player.inventory_limit }}</div>
+    </div>
+
+    {% if feedback %}<div class="ui-notice success">{{ feedback }}</div>{% endif %}
+    {% if error %}<div class="ui-notice error">{{ error }}</div>{% endif %}
+
+    <section class="loadout-slots" aria-label="Current loadout">
+    {% for slot, item in equipped.items() %}
+        <article class="loadout-card {{ 'filled' if item else 'empty' }}">
+            <div class="loadout-slot">{{ 'OUTFIT' if slot == 'armor' else slot|upper }}</div>
+            {% if item %}
+            <h2>{{ item.name }}</h2>
+            <div class="durability"><span style="width:{{ item.current_durability }}%"></span></div>
+            <small>{{ item.current_durability }}% condition</small>
+            <form method="POST" action="{{ url_for('character.unequip') }}">
+                <input type="hidden" name="slot" value="{{ slot }}"><input type="hidden" name="return_to" value="equipment">
+                <button class="btn-small" type="submit">Unequip</button>
+            </form>
+            {% else %}<h2>Empty Slot</h2><p>No item equipped.</p>{% endif %}
+        </article>
+    {% endfor %}
+    </section>
+
+    <section class="derived-strip" aria-label="Current derived statistics">
+        <span><b>{{ derived.ac }}</b> Armor Class</span><span><b>{{ derived.max_hp }}</b> Max HP</span>
+        <span><b>{{ derived.crit_threshold }}+</b> Critical</span><span><b>{{ derived.daily_ap }}</b> Daily AP</span>
+        <span><b>{{ derived.str }}/{{ derived.end }}/{{ derived.agi }}/{{ derived.lck }}/{{ derived.per }}</b> STR/END/AGI/LCK/PER</span>
+    </section>
+
+    <h2 class="section-title">Available Inventory</h2>
+    <div class="equipment-grid">
+    {% for item in inventory %}
+        <article class="equipment-card {{ 'is-equipped' if item.is_equipped }}">
+            <div class="equipment-type">{{ item.item_type }}</div><h3>{{ item.name }}</h3>
+            <div class="item-properties">
+                {% if item.item_type == 'WEAPON' %}<span>{{ item.weapon_type }}</span><span>{{ item.damage_die }} {{ item.damage_type }}</span>{% endif %}
+                {% if item.item_type == 'ARMOR' %}<span>AC +{{ item.ac_bonus }}</span>{% endif %}
+                {% for stat, label in [('str_bonus','STR'),('end_bonus','END'),('agi_bonus','AGI'),('lck_bonus','LCK'),('per_bonus','PER')] %}
+                    {% if item.get(stat, 0) %}<span class="bonus">{{ label }} {{ '%+d'|format(item.get(stat, 0)) }}</span>{% endif %}
+                {% endfor %}
+                {% if item.get('initiative_bonus', 0) %}<span class="bonus">Initiative +{{ item.initiative_bonus }}</span>{% endif %}
+                {% if item.get('extra_attack', 0) %}<span class="bonus">Extra Attack</span>{% endif %}
+                {% if item.get('xp_multiplier', 0) %}<span class="bonus">XP +{{ (item.xp_multiplier * 100)|int }}%</span>{% endif %}
+                {% if item.get('steal_bonus', 0) %}<span class="bonus">Steal +{{ (item.steal_bonus * 100)|int }}%</span>{% endif %}
+            </div>
+            <div class="equipment-condition"><div class="durability"><span style="width:{{ item.current_durability }}%"></span></div>{{ item.current_durability }}%</div>
+            <div class="equipment-actions">
+            {% if item.is_equipped %}<span class="equipped-badge">EQUIPPED</span>{% else %}
+                <form method="POST" action="{{ url_for('character.equip') }}"><input type="hidden" name="inv_id" value="{{ item.inv_id }}"><input type="hidden" name="return_to" value="equipment"><button class="btn-small" type="submit">Equip</button></form>
+                <form method="POST" action="{{ url_for('character.drop') }}" onsubmit="return confirm('Permanently drop this item?');"><input type="hidden" name="inv_id" value="{{ item.inv_id }}"><input type="hidden" name="return_to" value="equipment"><button class="btn-small danger" type="submit">Drop</button></form>
+            {% endif %}
+            </div>
+        </article>
+    {% else %}<p>Your inventory is empty.</p>{% endfor %}
+    </div>
+</div>
+{% endblock %}

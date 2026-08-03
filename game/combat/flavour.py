@@ -282,4 +282,23 @@ def hp_descriptor(current_hp: int, max_hp: int, observed: bool = False) -> str:
     return "Near Death"
 
 
+def hp_status(current_hp: int, max_hp: int) -> dict:
+    """Return a deliberately imprecise five-segment health display."""
+    pct = (current_hp / max_hp * 100) if max_hp else 0
+    if pct >= 76:
+        segments = 5
+    elif pct >= 51:
+        segments = 4
+    elif pct >= 26:
+        segments = 3
+    elif pct >= 2:
+        segments = 2
+    else:
+        segments = 1 if current_hp > 0 else 0
+    return {
+        "label": hp_descriptor(current_hp, max_hp),
+        "meter": ("■" * segments) + ("□" * (5 - segments)),
+    }
+
+
 ################################################################################

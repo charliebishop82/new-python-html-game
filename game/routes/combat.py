@@ -8,7 +8,7 @@ import logging
 from datetime import datetime
 
 from flask import Blueprint, render_template, request, session, g, has_request_context
-from database import (execute, execute_one, execute_write,
+from database import (execute, execute_one, execute_write, get_player,
                       exclusive_transaction, get_all_settings)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
@@ -180,16 +180,21 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
     forced_stalemate = (not combat_ended and sess["combat_type"] in ("BOSS", "MINION")
                         and reload_sess["current_round"] > hard_cap)
 
+    # Capture the opponent's post-round condition before finalization can reset
+    # a defeated boss instance for its next encounter.
+    state = combat_actions.get_combat_state(session_id)
+    opponent = state.get("defender") or state.get("boss") or state.get("minion")
+    opponent_max_hp = engine.calc_max_hp(opponent) if sess["combat_type"] == "PVP" else opponent["max_hp"]
+    opponent_health = flavour.hp_status(opponent["current_hp"], opponent_max_hp)
+
     # --- Post-combat resolution ---
     final_result = None
     if forced_stalemate:
-        state = combat_actions.get_combat_state(session_id)
         final_result = combat_actions.finalize_stalemate(session_id, state)
         combat_ended = True
         result_type = "STALEMATE"
         _clear_browser_combat_session()
     elif combat_ended and winner_side:
-        state = combat_actions.get_combat_state(session_id)
         final_result = combat_actions.finalize_combat(
             session_id, winner_side, result_type, state
         )
@@ -206,6 +211,7 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
         "attacker_first":  attacker_first,
         "att_init":        att_init,
         "def_init":        def_init,
+        "opponent_health": opponent_health,
     }
 
 
@@ -496,6 +502,9 @@ def handle_combat_resolve(player_id: int, payload: dict) -> dict:
 
 def _render_combat_round(result: dict, session_id: int, player) -> str:
     """Choose which fragment to render based on combat state."""
+    # g.player was loaded before the round changed HP/AP, so refresh it for the
+    # fragment. This prevents the health display from lagging one round behind.
+    player = get_player(player["id"]) or player
     if result.get("combat_ended"):
         return render_template("fragments/combat_result.html",
                                result=result, player=player)

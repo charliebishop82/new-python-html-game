@@ -31,6 +31,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// Classic BBS and Cinematic are presentation layers over the same screens.
+document.addEventListener('DOMContentLoaded', () => {
+    const toggle = document.getElementById('interface-toggle');
+    if (!toggle) return;
+    const refreshLabel = () => {
+        const cinematic = document.documentElement.dataset.interface === 'cinematic';
+        toggle.textContent = cinematic ? 'CLASSIC BBS' : 'CINEMATIC UI';
+        toggle.setAttribute('aria-pressed', cinematic ? 'true' : 'false');
+    };
+    refreshLabel();
+    toggle.addEventListener('click', () => {
+        const next = document.documentElement.dataset.interface === 'cinematic' ? 'classic' : 'cinematic';
+        document.documentElement.dataset.interface = next;
+        try { localStorage.setItem('movie-multiverse-interface', next); } catch (error) {}
+        refreshLabel();
+    });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. TERMINAL ACTION FORM INTERCEPTION
 // All forms with class="terminal-action" are intercepted.
@@ -148,9 +166,16 @@ function appendFeedEntry(entry) {
     if (!terminal) return;
     const div = document.createElement('div');
     const category = (entry.event_category || 'system').toLowerCase();
-    div.className = `term-line term-${category}`;
+    div.className = `term-line feed-entry term-${category}`;
     const ts = entry.occurred_at ? entry.occurred_at.substring(11, 16) : '';
-    div.innerHTML = `<span class="term-ts">[${ts}]</span> ${entry.flavor_text}`;
+    const categoryLabel = category === 'system' ? 'SYSTEM' :
+        category === 'random_event' ? 'YOU · EVENT' :
+        category === 'combat' ? 'YOU · COMBAT' : 'YOU';
+    const scopeClass = category === 'system' ? 'feed-system' : 'feed-you';
+    div.innerHTML = `<span class="term-ts">[${ts}]</span>` +
+        `<span class="feed-entry-scope"><span class="feed-scope ${scopeClass}">${categoryLabel}</span></span>` +
+        `<span class="feed-message"></span>`;
+    div.querySelector('.feed-message').textContent = entry.flavor_text;
     terminal.appendChild(div);
     terminal.scrollTop = terminal.scrollHeight;
 }
@@ -185,12 +210,18 @@ function updateStatusFromFragment(container) {
     const maxHp = el.dataset.maxHp;
     const ap    = el.dataset.ap;
     const maxAp = el.dataset.maxAp;
+    const level = el.dataset.level;
+    const xp    = el.dataset.xp;
+    const xpNext = el.dataset.xpNext;
     const cr    = el.dataset.credits;
 
     if (hp    !== undefined) setEl('status-hp',      hp);
     if (maxHp !== undefined) setEl('status-maxhp',   maxHp);
     if (ap    !== undefined) setEl('status-ap',       ap);
     if (maxAp !== undefined) setEl('status-maxap',    maxAp);
+    if (level !== undefined) setEl('status-level',    level);
+    if (xp !== undefined) setEl('status-xp',          xp);
+    if (xpNext !== undefined) setEl('status-xp-next', xpNext);
     if (cr    !== undefined) setEl('status-credits',  cr);
 }
 
