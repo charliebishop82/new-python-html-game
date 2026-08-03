@@ -616,3 +616,12 @@ tr:nth-child(even) td { background: #0d0d0d; }
 }
 .active-effect-duration { color: var(--grey); font-size: 11px; white-space: nowrap; }
 .active-effects-empty { color: var(--grey); font-size: 12px; }
+/* Shared contextual-help badge. Hover with a mouse or focus with a keyboard. */
+.context-help { position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:15px;height:15px;margin-left:5px;border:1px solid var(--green);border-radius:50%;
+  color:var(--green);font-size:10px;cursor:help;vertical-align:middle; }
+.context-help::after { content:attr(data-help);display:none;position:absolute;z-index:10000;
+  left:18px;top:-8px;width:280px;padding:8px 10px;background:var(--panel-bg,#111);color:var(--text,#eee);
+  border:1px solid var(--green);box-shadow:0 4px 14px #000;text-align:left;white-space:normal;
+  font-size:12px;line-height:1.35;font-weight:normal;text-transform:none;letter-spacing:0; }
+.context-help:hover::after,.context-help:focus::after { display:block; }

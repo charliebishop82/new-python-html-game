@@ -1,3 +1,4 @@
+"""Apply combat actions and post-combat rewards to persistent game state."""
 # combat/actions.py
 # Per-action handlers for all 6 combat actions plus opponent automation.
 # Each handler resolves the action, writes to DB, and returns a result dict.
@@ -396,6 +397,7 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
 
 def _pvp_steal_cascade(attacker_id: int, defender_id: int,
                        steal_bonus: float, settings: dict) -> dict:
+    """Provide the internal pvp steal cascade operation used by this module."""
     steal_cr_pct  = settings.get("STEAL_ACTION_CREDIT_PERCENT", cfg.STEAL_ACTION_CREDIT_PERCENT)
     zero_xp_bonus = settings.get("ZERO_CREDIT_XP_BONUS",        cfg.ZERO_CREDIT_XP_BONUS)
 
@@ -454,6 +456,7 @@ def _pvp_steal_cascade(attacker_id: int, defender_id: int,
 
 
 def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
+    """Provide the internal boss steal result operation used by this module."""
     import random, math
     from datetime import datetime
 
@@ -535,6 +538,7 @@ def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
     return {"credits": credits_stolen}
 
 def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
+    """Process the queued brace action against validated game state."""
     session  = state["session"]
     attacker = state["attacker"]
     settings = get_all_settings()
@@ -582,6 +586,7 @@ def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
+    """Process the queued escape action against validated game state."""
     session  = state["session"]
     attacker = state["attacker"]
     settings = get_all_settings()
@@ -679,6 +684,7 @@ def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def handle_observe(session_id: int, player_id: int, state: dict) -> dict:
+    """Process the queued observe action against validated game state."""
     session  = state["session"]
     attacker = state["attacker"]
 
@@ -746,6 +752,7 @@ def handle_swap_gear(session_id: int, player_id: int, state: dict,
                      new_weapon_inv_id: int | None = None,
                      new_armor_inv_id:  int | None = None,
                      new_special_inv_id: int | None = None) -> dict:
+    """Process the queued swap gear action against validated game state."""
     session  = state["session"]
     attacker = state["attacker"]
     settings = get_all_settings()
@@ -955,6 +962,7 @@ def _boss_action(session_id: int, state: dict) -> dict:
     return primary
 
 def _boss_special_attack(session_id: int, state: dict) -> dict:
+    """Provide the internal boss special attack operation used by this module."""
     boss    = state["boss"]
     session = state["session"]
     player  = state["attacker"]
@@ -992,6 +1000,7 @@ def _boss_special_attack(session_id: int, state: dict) -> dict:
 
 
 def _boss_special_buff(session_id: int, state: dict) -> dict:
+    """Provide the internal boss special buff operation used by this module."""
     boss    = state["boss"]
     session = state["session"]
     buff_type  = boss["special_buff_type"]
@@ -1329,6 +1338,7 @@ def _apply_steal_fail_penalty(session_id: int, side: str):
 
 def _write_combat_log(session_id: int, round_num: int, actor: str,
                       action_type: str, roll_detail: str, outcome_detail: str):
+    """Provide the internal write combat log operation used by this module."""
     execute_write(
         """INSERT INTO combat_logs
            (combat_session_id, round_number, actor, action_type, roll_detail, outcome_detail)

@@ -1,3 +1,4 @@
+"""Character sheet, inventory equipment, item dropping, and combat preferences."""
 # routes/character.py
 # Full-page character sheet with inventory management.
 # Equip, unequip, drop items. Update combat preference.
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 @bp.route("/character")
 def index():
+    """Handle the index workflow."""
     player   = g.player
     settings = get_all_settings()
 
@@ -84,6 +86,7 @@ def _get_active_effects(player_id: int) -> list[dict]:
 
 
 def _get_full_inventory(player: dict) -> list[dict]:
+    """Load full inventory from current database state."""
     equipped_ids = {
         player.get("equipped_weapon_id"),
         player.get("equipped_armor_id"),
@@ -108,12 +111,14 @@ def _get_full_inventory(player: dict) -> list[dict]:
 
 
 def _find_equipped(inventory: list, inv_id) -> dict | None:
+    """Provide the internal find equipped operation used by this module."""
     if inv_id is None:
         return None
     return next((i for i in inventory if i["inv_id"] == inv_id), None)
 
 
 def _get_item_detail(item_type: str, item_id: int) -> dict | None:
+    """Load item detail from current database state."""
     table = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}.get(item_type)
     if not table:
         return None
@@ -186,6 +191,7 @@ def preview():
     settings = get_all_settings()
 
     def load_equipped(inv_id_str):
+        """Handle the load equipped workflow."""
         if not inv_id_str or inv_id_str == "none":
             return None
         try:
@@ -216,6 +222,7 @@ def preview():
 
 @bp.route("/character/equip", methods=["POST"])
 def equip():
+    """Handle the equip workflow."""
     inv_id = request.form.get("inv_id", type=int)
     try:
         enqueue_and_process(session["player_id"], "equip", {"inv_id": inv_id})
@@ -226,6 +233,7 @@ def equip():
 
 @register_handler("equip")
 def handle_equip(player_id: int, payload: dict) -> dict:
+    """Process the queued equip action against validated game state."""
     inv_id = payload["inv_id"]
     player = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
     inv    = execute_one(
@@ -258,6 +266,7 @@ def handle_equip(player_id: int, payload: dict) -> dict:
 
 @bp.route("/character/unequip", methods=["POST"])
 def unequip():
+    """Handle the unequip workflow."""
     slot = request.form.get("slot")  # weapon / armor / special
     try:
         enqueue_and_process(session["player_id"], "unequip", {"slot": slot})
@@ -268,6 +277,7 @@ def unequip():
 
 @register_handler("unequip")
 def handle_unequip(player_id: int, payload: dict) -> dict:
+    """Process the queued unequip action against validated game state."""
     slot = payload.get("slot", "").lower()
     slot_col = {
         "weapon":  "equipped_weapon_id",
@@ -291,6 +301,7 @@ def handle_unequip(player_id: int, payload: dict) -> dict:
 
 @bp.route("/character/drop", methods=["POST"])
 def drop():
+    """Handle the drop workflow."""
     inv_id = request.form.get("inv_id", type=int)
     try:
         enqueue_and_process(session["player_id"], "drop_item", {"inv_id": inv_id})
@@ -301,6 +312,7 @@ def drop():
 
 @register_handler("drop_item")
 def handle_drop_item(player_id: int, payload: dict) -> dict:
+    """Process the queued drop item action against validated game state."""
     inv_id = payload["inv_id"]
     player = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
     inv    = execute_one(
@@ -354,6 +366,7 @@ def handle_drop_item(player_id: int, payload: dict) -> dict:
 
 @bp.route("/character/preference", methods=["POST"])
 def preference():
+    """Handle the preference workflow."""
     pref = request.form.get("preference", "")
     try:
         enqueue_and_process(session["player_id"], "set_preference", {"preference": pref})
@@ -364,6 +377,7 @@ def preference():
 
 @register_handler("set_preference")
 def handle_set_preference(player_id: int, payload: dict) -> dict:
+    """Process the queued set preference action against validated game state."""
     pref = payload.get("preference", "")
     valid = {"Aggressive", "Defensive", "Opportunist", "Balanced"}
     if pref not in valid:

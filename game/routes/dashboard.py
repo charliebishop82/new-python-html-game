@@ -1,3 +1,4 @@
+"""Main player dashboard and context-sensitive action availability."""
 # routes/dashboard.py  (Phase 9 — adds now_iso injection for JS feed polling)
 import logging
 from datetime import datetime
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 @bp.route('/')
 def index():
+    """Handle the index workflow."""
     player   = g.player
     settings = get_all_settings()
     history_count = settings.get('TERMINAL_HISTORY_ENTRIES', cfg.TERMINAL_HISTORY_ENTRIES)
@@ -56,6 +58,7 @@ def index():
 
 
 def _get_button_states(player: dict, settings: dict) -> dict:
+    """Load button states from current database state."""
     in_combat  = player['in_combat']
     current_ap = player['current_ap']
     credits    = player['credits']

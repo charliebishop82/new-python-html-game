@@ -1,3 +1,4 @@
+"""Validate and atomically import the game-content Excel workbook."""
 # importer.py  (Phase 7 — full implementation)
 # Reads the staged Excel file, validates it, diffs against current DB content,
 # and applies changes atomically at midnight reset.
@@ -145,12 +146,14 @@ def validate(raw_data: dict) -> list[str]:
 
 
 def _require(row: dict, fields: list, sheet: str, errors: list, row_name: str = ""):
+    """Provide the internal require operation used by this module."""
     for f in fields:
         if row.get(f) is None or str(row.get(f, "")).strip() == "":
             errors.append(f"[{sheet}] Row '{row_name}': missing required field '{f}'")
 
 
 def _validate_classes(rows: list, errors: list):
+    """Validate classes worksheet rows and report actionable errors."""
     names = set()
     for r in rows:
         name = r.get("Name", "")
@@ -161,6 +164,7 @@ def _validate_classes(rows: list, errors: list):
 
 
 def _validate_bosses(rows: list, errors: list):
+    """Validate bosses worksheet rows and report actionable errors."""
     names = set()
     for r in rows:
         name = r.get("Name", "")
@@ -187,6 +191,7 @@ def _validate_bosses(rows: list, errors: list):
 
 
 def _validate_minions(rows: list, errors: list):
+    """Validate minions worksheet rows and report actionable errors."""
     names = set()
     for r in rows:
         name = r.get("Name", "")
@@ -200,6 +205,7 @@ def _validate_minions(rows: list, errors: list):
 
 
 def _validate_weapons(rows: list, errors: list):
+    """Validate weapons worksheet rows and report actionable errors."""
     names = set()
     for r in rows:
         name = r.get("Name", "")
@@ -214,6 +220,7 @@ def _validate_weapons(rows: list, errors: list):
 
 
 def _validate_armor(rows: list, errors: list):
+    """Validate armor worksheet rows and report actionable errors."""
     names = set()
     for r in rows:
         name = r.get("Name", "")
@@ -224,6 +231,7 @@ def _validate_armor(rows: list, errors: list):
 
 
 def _validate_special_items(rows: list, errors: list):
+    """Validate special items worksheet rows and report actionable errors."""
     names = set()
     for r in rows:
         name = r.get("Name", "")
@@ -236,6 +244,7 @@ def _validate_special_items(rows: list, errors: list):
 
 
 def _validate_random_events(rows: list, errors: list):
+    """Validate random events worksheet rows and report actionable errors."""
     names = set()
     for r in rows:
         name = r.get("Name", "")
@@ -252,6 +261,7 @@ def _validate_random_events(rows: list, errors: list):
 
 
 def _validate_master(raw_data: dict, errors: list):
+    """Validate master worksheet rows and report actionable errors."""
     boss_names    = {r.get("Name") for r in raw_data.get("Bosses", [])}
     minion_names  = {r.get("Name") for r in raw_data.get("Minions", [])}
     weapon_names  = {r.get("Name") for r in raw_data.get("Weapons", [])}
@@ -361,6 +371,7 @@ def _b(val) -> int:
 
 
 def _i(val, default=0) -> int:
+    """Provide the internal i operation used by this module."""
     try:
         return int(val) if val is not None else default
     except (ValueError, TypeError):
@@ -368,6 +379,7 @@ def _i(val, default=0) -> int:
 
 
 def _f(val, default=0.0) -> float:
+    """Provide the internal f operation used by this module."""
     try:
         return float(val) if val is not None else default
     except (ValueError, TypeError):
@@ -375,10 +387,12 @@ def _f(val, default=0.0) -> float:
 
 
 def _s(val, default="") -> str:
+    """Provide the internal s operation used by this module."""
     return str(val).strip() if val is not None else default
 
 
 def _map_class(r: dict) -> dict:
+    """Map a normalized class worksheet row to database fields."""
     return {
         "str_bonus": _i(r.get("STR")), "end_bonus": _i(r.get("END")),
         "agi_bonus": _i(r.get("AGI")), "lck_bonus": _i(r.get("LCK")),
@@ -387,6 +401,7 @@ def _map_class(r: dict) -> dict:
 
 
 def _map_boss(r: dict) -> dict:
+    """Map a normalized boss worksheet row to database fields."""
     return {
         "level": _i(r.get("Level")),
         "str_stat": _i(r.get("STR")), "end_stat": _i(r.get("END")),
@@ -415,6 +430,7 @@ def _map_boss(r: dict) -> dict:
 
 
 def _map_minion(r: dict) -> dict:
+    """Map a normalized minion worksheet row to database fields."""
     return {
         "level": _i(r.get("Level")),
         "str_stat": _i(r.get("STR")), "end_stat": _i(r.get("END")),
@@ -430,6 +446,7 @@ def _map_minion(r: dict) -> dict:
 
 
 def _map_weapon(r: dict) -> dict:
+    """Map a normalized weapon worksheet row to database fields."""
     return {
         "level":       _i(r.get("Level")),
         "weapon_type": _s(r.get("Type")),
@@ -446,6 +463,7 @@ def _map_weapon(r: dict) -> dict:
 
 
 def _map_armor(r: dict) -> dict:
+    """Map a normalized armor worksheet row to database fields."""
     return {
         "level":    _i(r.get("Level")),
         "ac_bonus": _i(r.get("AC_Bonus")),
@@ -461,6 +479,7 @@ def _map_armor(r: dict) -> dict:
 
 
 def _map_special_item(r: dict) -> dict:
+    """Map a normalized special item worksheet row to database fields."""
     return {
         "associated_to":   _s(r.get("AssociatedTo")),
         "association_type": _s(r.get("AssociationType")),
@@ -491,6 +510,7 @@ def _map_special_item(r: dict) -> dict:
 
 
 def _map_random_event(r: dict) -> dict:
+    """Map a normalized random event worksheet row to database fields."""
     return {
         "event_type":    _s(r.get("Type")),
         "rarity":        _s(r.get("Rarity")),
@@ -576,6 +596,7 @@ def _apply_master(master_rows: list):
             continue
 
         def get_id(table, name):
+            """Handle the get id workflow."""
             if not name:
                 return None
             row = execute_one(f"SELECT id FROM {table} WHERE name = ?", (_s(name),))

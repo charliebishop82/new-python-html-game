@@ -1,3 +1,4 @@
+"""SQLite connection, transaction, settings, and player-state helpers."""
 # database.py
 # Single point of contact for all DB operations.
 # Provides: connection management, schema init, query helpers,

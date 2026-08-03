@@ -1,3 +1,4 @@
+"""Read-only public progression, combat, economy, and shame rankings."""
 # routes/scoreboards.py  (Phase 6 — full implementation)
 # Full-page leaderboards. All data computed via live DB queries.
 # Inactive players (7+ days without login) excluded from all boards.
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 @bp.route("/scoreboards")
 def index():
+    """Handle the index workflow."""
     settings      = get_all_settings()
     inactive_days = settings.get("INACTIVE_DAYS_THRESHOLD", cfg.INACTIVE_DAYS_THRESHOLD)
     cutoff_expr   = f"datetime('now', '-{inactive_days} days')"
@@ -40,6 +42,7 @@ def index():
 
 
 def _top_level_xp(cutoff_expr: str, limit: int = 20) -> list:
+    """Query and rank players for the level xp scoreboard."""
     return execute(
         f"""SELECT character_name, level, xp, class_id
             FROM players
@@ -52,6 +55,7 @@ def _top_level_xp(cutoff_expr: str, limit: int = 20) -> list:
 
 
 def _top_pvp_kills(cutoff_expr: str, limit: int = 20) -> list:
+    """Query and rank players for the pvp kills scoreboard."""
     return execute(
         f"""SELECT p.character_name, p.level, ps.pvp_kills
             FROM players p
@@ -65,6 +69,7 @@ def _top_pvp_kills(cutoff_expr: str, limit: int = 20) -> list:
 
 
 def _top_boss_kills_global(cutoff_expr: str, limit: int = 20) -> list:
+    """Query and rank players for the boss kills global scoreboard."""
     return execute(
         f"""SELECT p.character_name, p.level, SUM(bi.kill_count) as total_kills
             FROM players p
@@ -101,6 +106,7 @@ def _top_boss_kills_per_boss(cutoff_expr: str, limit_per: int = 5) -> dict:
 
 
 def _top_minion_kills_global(cutoff_expr: str, limit: int = 20) -> list:
+    """Query and rank players for the minion kills global scoreboard."""
     return execute(
         f"""SELECT p.character_name, p.level, SUM(mi.kill_count) as total_kills
             FROM players p
@@ -115,6 +121,7 @@ def _top_minion_kills_global(cutoff_expr: str, limit: int = 20) -> list:
 
 
 def _top_minion_kills_per_minion(cutoff_expr: str, limit_per: int = 5) -> dict:
+    """Query and rank players for the minion kills per minion scoreboard."""
     minions = execute("SELECT id, name FROM minions WHERE is_active = 1 ORDER BY name")
     result  = {}
     for minion in minions:
@@ -136,6 +143,7 @@ def _top_minion_kills_per_minion(cutoff_expr: str, limit_per: int = 5) -> dict:
 
 
 def _top_credits(cutoff_expr: str, limit: int = 20) -> list:
+    """Query and rank players for the credits scoreboard."""
     return execute(
         f"""SELECT character_name, level, credits
             FROM players
@@ -148,6 +156,7 @@ def _top_credits(cutoff_expr: str, limit: int = 20) -> list:
 
 
 def _shame_board(cutoff_expr: str, limit: int = 20) -> list:
+    """Provide the internal shame board operation used by this module."""
     return execute(
         f"""SELECT p.character_name, p.level, ps.times_reduced_to_1hp
             FROM players p

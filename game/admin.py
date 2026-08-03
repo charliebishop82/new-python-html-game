@@ -1,3 +1,4 @@
+"""Local admin application for operations, diagnostics, balance, and support."""
 # admin.py  (Phase 8)
 # Separate Flask app for admin tools.
 # Run with: flask --app admin:create_admin_app run --port 5001
@@ -30,6 +31,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 # ─────────────────────────────────────────────────────────────────────────────
 
 def create_admin_app() -> Flask:
+    """Handle the create admin app workflow."""
     init_db()
     app = Flask(__name__, template_folder="templates")
     app.secret_key = cfg.SECRET_KEY + "-admin"
@@ -37,6 +39,7 @@ def create_admin_app() -> Flask:
 
     @app.before_request
     def check_admin_auth():
+        """Handle the check admin auth workflow."""
         if not ADMIN_PASSWORD:
             return None
         auth = request.authorization
@@ -52,6 +55,7 @@ def create_admin_app() -> Flask:
 
 
 def _register_routes(app: Flask):
+    """Provide the internal register routes operation used by this module."""
     app.add_url_rule("/", "admin_root", lambda: redirect(url_for("admin_index")))
     app.add_url_rule("/admin",                        "admin_index",        admin_index)
     app.add_url_rule("/admin/import",                 "admin_import",       admin_import,        methods=["GET","POST"])
@@ -83,6 +87,7 @@ def _register_routes(app: Flask):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def admin_index():
+    """Render or process the index administrative workflow."""
     import os
     player_count  = execute_one("SELECT COUNT(*) as cnt FROM players WHERE is_banned = 0")["cnt"]
     active_combat = execute_one("SELECT COUNT(*) as cnt FROM combat_sessions WHERE status='ACTIVE'")["cnt"]
@@ -115,6 +120,7 @@ def admin_index():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def admin_import():
+    """Render or process the import administrative workflow."""
     import os, shutil
     feedback = error = None
 
@@ -137,6 +143,7 @@ def admin_import():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def admin_players():
+    """Render or process the players administrative workflow."""
     players = execute(
         """SELECT p.*, ps.pvp_kills, ps.times_reduced_to_1hp,
                   CASE WHEN np.player_id IS NULL THEN 0 ELSE 1 END AS is_npc
@@ -149,6 +156,7 @@ def admin_players():
 
 
 def _audit(action: str, target_type: str, target_id=None, reason=None, details=None):
+    """Provide the internal audit operation used by this module."""
     execute_write(
         """INSERT INTO admin_audit_log(action,target_type,target_id,reason,details_json)
            VALUES(?,?,?,?,?)""",
@@ -157,6 +165,7 @@ def _audit(action: str, target_type: str, target_id=None, reason=None, details=N
 
 
 def admin_player_activity(pid: int):
+    """Render or process the player activity administrative workflow."""
     player = execute_one("SELECT * FROM players WHERE id=?", (pid,))
     if not player:
         return redirect(url_for("admin_players"))
@@ -183,6 +192,7 @@ def admin_player_activity(pid: int):
 
 
 def admin_health():
+    """Render or process the health administrative workflow."""
     stats = {
         "failed_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='FAILED'")["cnt"],
         "processing_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='PROCESSING'")["cnt"],
@@ -215,6 +225,7 @@ ITEM_EDIT_FIELDS = {
 
 
 def admin_items():
+    """Render or process the items administrative workflow."""
     selected = request.args.get("type", "weapon").lower()
     if selected not in ITEM_TABLES: selected = "weapon"
     items = execute(f"SELECT * FROM {ITEM_TABLES[selected]} ORDER BY is_active DESC,name")
@@ -226,6 +237,7 @@ def admin_items():
 
 
 def admin_item_edit(item_type: str, item_id: int):
+    """Render or process the item edit administrative workflow."""
     item_type = item_type.lower()
     if item_type not in ITEM_TABLES:
         return redirect(url_for("admin_items", error="Unknown item type."))
@@ -259,6 +271,7 @@ def admin_item_edit(item_type: str, item_id: int):
 
 
 def admin_analytics():
+    """Render or process the analytics administrative workflow."""
     action_counts = execute("""SELECT action,status,COUNT(*) cnt FROM player_activity_log
                                GROUP BY action,status ORDER BY cnt DESC LIMIT 30""")
     economy = execute_one("""SELECT COUNT(*) players,COALESCE(SUM(credits),0) credits,
@@ -273,6 +286,7 @@ def admin_analytics():
                            combats=combats, item_events=item_events,
                            npc_decisions=npc_decisions, random_events=random_events)
 def admin_player_detail(pid: int):
+    """Render or process the player detail administrative workflow."""
     player    = execute_one("SELECT * FROM players WHERE id = ?", (pid,))
     if not player:
         return redirect(url_for("admin_players"))
@@ -307,6 +321,7 @@ def admin_player_detail(pid: int):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def admin_ban(pid: int):
+    """Render or process the ban administrative workflow."""
     action = request.form.get("action", "ban")
 
     if action == "unban":
@@ -421,6 +436,7 @@ def admin_edit(pid: int):
 
 # NPC MANAGEMENT
 def admin_npcs():
+    """Render or process the npcs administrative workflow."""
     if request.method == "POST":
         try:
             pid = _create_npc(request.form)
@@ -457,6 +473,7 @@ def admin_npcs():
 
 
 def admin_npc_edit(pid: int):
+    """Render or process the npc edit administrative workflow."""
     fields = {}
     for name in ("player_hunter", "boss_killer", "hoarder", "thief", "aggression",
                  "self_preservation", "repair_tendency"):
@@ -472,6 +489,7 @@ def admin_npc_edit(pid: int):
 
 
 def admin_npc_run(pid: int):
+    """Render or process the npc run administrative workflow."""
     from npc import run_npc_turn
     try:
         result = run_npc_turn(pid)
@@ -484,6 +502,7 @@ def admin_npc_run(pid: int):
 
 
 def admin_npc_spend_ap(pid: int):
+    """Render or process the npc spend ap administrative workflow."""
     from npc import spend_npc_ap_now
     try:
         result = spend_npc_ap_now(pid)
@@ -500,6 +519,7 @@ def admin_npc_spend_ap(pid: int):
 
 
 def admin_npc_retire(pid: int):
+    """Render or process the npc retire administrative workflow."""
     from npc import retire_npc
     retire_npc(pid)
     with exclusive_transaction():
@@ -508,6 +528,7 @@ def admin_npc_retire(pid: int):
 
 
 def admin_npc_grant(pid: int):
+    """Render or process the npc grant administrative workflow."""
     try:
         item_type, raw_item_id = request.form.get("item_key", "").upper().split(":", 1)
         item_id = int(raw_item_id)
@@ -543,6 +564,7 @@ def admin_npc_grant(pid: int):
 
 
 def admin_npc_remove(pid: int, inv_id: int):
+    """Render or process the npc remove administrative workflow."""
     item = execute_one("SELECT * FROM inventory_items WHERE id=? AND player_id=?", (inv_id, pid))
     if not item:
         return redirect(url_for("admin_npcs", error="Inventory item not found."))
@@ -565,6 +587,7 @@ def admin_npc_remove(pid: int, inv_id: int):
 
 
 def _create_npc(form) -> int:
+    """Provide the internal create npc operation used by this module."""
     name = form.get("character_name", "").strip()
     if not name:
         raise ValueError("NPC character name is required.")
@@ -608,18 +631,14 @@ def _create_npc(form) -> int:
 
 
 def _npc_scores_from_form(form):
-    preset = form.get("preset", "custom")
-    presets = {
-        "hunter": (100, 0, 0, 0), "boss": (0, 100, 0, 0),
-        "hoarder": (0, 0, 100, 0), "thief": (0, 0, 0, 100),
-        "hybrid": (60, 60, 60, 0),
-    }
-    motivations = presets.get(preset, tuple(max(0, min(100, form.get(k, type=int, default=0)))
-                                            for k in ("player_hunter", "boss_killer", "hoarder", "thief")))
-    return (*motivations,
-            max(0, min(100, form.get("aggression", type=int, default=50))),
-            max(0, min(100, form.get("self_preservation", type=int, default=50))),
-            max(0, min(100, form.get("repair_tendency", type=int, default=50))))
+    # Presets populate the visible form in the browser. Always save the visible
+    # values so an administrator can select a preset and then customize it.
+    """Provide the internal npc scores from form operation used by this module."""
+    return tuple(max(0, min(100, form.get(key, type=int, default=default)))
+                 for key, default in (
+                     ("player_hunter", 100), ("boss_killer", 0),
+                     ("hoarder", 0), ("thief", 0), ("aggression", 85),
+                     ("self_preservation", 35), ("repair_tendency", 55)))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -627,6 +646,7 @@ def _npc_scores_from_form(form):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def admin_config():
+    """Render or process the config administrative workflow."""
     feedback = error = None
 
     if request.method == "POST":
@@ -659,6 +679,7 @@ def admin_config():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def admin_midnight():
+    """Render or process the midnight administrative workflow."""
     from scheduler import midnight_reset
     try:
         midnight_reset()
@@ -727,9 +748,11 @@ def admin_full_reset():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def admin_logs():
+    """Render or process the logs administrative workflow."""
     import os
 
     def read_tail(path: str, n: int = 100) -> list[str]:
+        """Handle the read tail workflow."""
         if not os.path.exists(path):
             return []
         with open(path, "r") as f:

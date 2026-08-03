@@ -1,3 +1,4 @@
+"""Run UTC AP awards, feed archives, imports, recovery, and midnight maintenance."""
 # scheduler.py  (Phase 7 — full implementation)
 # Replaces the Phase 1 stub with complete midnight_reset and ap_trickle.
 
@@ -60,6 +61,7 @@ def midnight_reset():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _step0_clear_status_effects():
+    """Run the step0 clear status effects portion of scheduled maintenance."""
     with exclusive_transaction():
         deleted = execute_write("DELETE FROM status_effects")
     logger.info("step 0: cleared %d status effects", deleted)
@@ -70,6 +72,7 @@ def _step0_clear_status_effects():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _step2_apply_import():
+    """Run the step2 apply import portion of scheduled maintenance."""
     if not os.path.exists(cfg.PENDING_IMPORT_PATH):
         logger.info("step 2: no pending import")
         return
@@ -87,6 +90,7 @@ def _step2_apply_import():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _step3_archive_and_clear_feeds():
+    """Run the step3 archive and clear feeds portion of scheduled maintenance."""
     settings = get_all_settings()
     if settings.get("LOG_DAILY_ARCHIVE", cfg.LOG_DAILY_ARCHIVE):
         archive_feeds()
@@ -155,6 +159,7 @@ def _step4_5_award_daily_ap():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _step6_restore_midnight_hp():
+    """Run the step6 restore midnight hp portion of scheduled maintenance."""
     settings  = get_all_settings()
     heal_pct  = settings.get("MIDNIGHT_HEAL_PERCENT", cfg.MIDNIGHT_HEAL_PERCENT)
     players   = execute(
@@ -201,6 +206,7 @@ def _step7_midnight_encounters():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _step8_9_10_shop_rotation():
+    """Run the step8 9 10 shop rotation portion of scheduled maintenance."""
     settings      = get_all_settings()
     weapons_count = settings.get("SHOP_WEAPONS_COUNT", cfg.SHOP_WEAPONS_COUNT)
     armor_count   = settings.get("SHOP_ARMOR_COUNT",   cfg.SHOP_ARMOR_COUNT)

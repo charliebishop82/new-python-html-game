@@ -1,3 +1,4 @@
+"""Typed fallback values for gameplay settings that may be overridden in the database."""
 # config_defaults.py
 # Hardcoded fallback constants. database.get_setting() tries the settings DB
 # table first, falls back here if the row is missing, and logs a warning.

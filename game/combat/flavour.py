@@ -1,3 +1,4 @@
+"""Build concise player-facing narrative text for combat outcomes."""
 # combat/flavour.py
 # Generates all flavor text strings for combat logs, feed entries,
 # and event results. Keeps narrative text out of logic files.
@@ -12,6 +13,7 @@ import random
 
 def combat_intro(combat_type: str, opponent_name: str,
                  boss_flavor: str = "", boss_phase: int = 1) -> str:
+    """Build player-facing narrative text for combat intro."""
     if combat_type == "BOSS":
         lines = [
             f"═══ BOSS FIGHT: {opponent_name.upper()} ════════════════════════════════",
@@ -29,11 +31,13 @@ def combat_intro(combat_type: str, opponent_name: str,
 
 
 def round_header(round_num: int) -> str:
+    """Build player-facing narrative text for round header."""
     return f"─── Round {round_num} ─────────────────────────────────────────────────────"
 
 
 def combat_warning(warning_type: str, opponent_name: str = "",
                    level_diff: int = 0) -> str:
+    """Build player-facing narrative text for combat warning."""
     if warning_type == "empty_weapon":
         return "⚠ WARNING: You are unarmed. Fists deal minimal damage."
     elif warning_type == "empty_armor":
@@ -59,6 +63,7 @@ def attack_flavor(attacker_name: str, weapon_name: str,
                   hit: bool, dodged: bool, is_crit: bool,
                   damage: int, damage_type: str,
                   res_note: str = "") -> str:
+    """Build player-facing narrative text for attack flavor."""
     verb = random.choice(ATTACK_VERBS_MELEE if weapon_type == "Melee" else ATTACK_VERBS_RANGED)
 
     if dodged:
@@ -82,6 +87,7 @@ def attack_flavor(attacker_name: str, weapon_name: str,
 
 
 def bonus_damage_flavor(damage: int, damage_type: str, res_note: str = "") -> str:
+    """Build player-facing narrative text for bonus damage flavor."""
     line = f"  → Bonus {damage_type} damage: {damage}"
     if res_note:
         line += f" ({res_note})"
@@ -95,6 +101,7 @@ def bonus_damage_flavor(damage: int, damage_type: str, res_note: str = "") -> st
 def steal_flavor(attacker_name: str, target_name: str, success: bool,
                  item_name: str = "", credits: int = 0,
                  xp_bonus: int = 0, is_vs_boss: bool = False) -> str:
+    """Build player-facing narrative text for steal flavor."""
     if not success:
         return (f"{attacker_name} attempts to steal from {target_name} — "
                 f"caught! AC penalty incoming.")
@@ -123,6 +130,7 @@ def steal_flavor(attacker_name: str, target_name: str, success: bool,
 
 def brace_flavor(player_name: str, hp_restored: int,
                  ac_bonus: int, dodge_bonus: int) -> str:
+    """Build player-facing narrative text for brace flavor."""
     line = f"{player_name} takes a defensive stance, bracing for impact."
     if hp_restored:
         line += f" +{hp_restored} HP."
@@ -136,6 +144,7 @@ def brace_flavor(player_name: str, hp_restored: int,
 
 def escape_flavor(player_name: str, success: bool,
                   credits_lost: int = 0) -> str:
+    """Build player-facing narrative text for escape flavor."""
     if success:
         line = f"{player_name} breaks away and flees the fight!"
         if credits_lost:
@@ -151,6 +160,7 @@ def escape_flavor(player_name: str, success: bool,
 
 def observe_flavor(player_name: str, success: bool,
                    opponent_name: str, revealed: dict | None = None) -> str:
+    """Build player-facing narrative text for observe flavor."""
     if not success:
         return (f"{player_name} tries to read {opponent_name} but reveals nothing.")
     line = f"{player_name} studies {opponent_name} carefully."
@@ -172,6 +182,7 @@ def observe_flavor(player_name: str, success: bool,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def swap_gear_flavor(player_name: str, new_item_name: str) -> str:
+    """Build player-facing narrative text for swap gear flavor."""
     return (f"{player_name} quickly swaps to {new_item_name}. "
             f"Attack and AC reduced this round.")
 
@@ -182,6 +193,7 @@ def swap_gear_flavor(player_name: str, new_item_name: str) -> str:
 
 def boss_special_attack_flavor(boss_name: str, attack_name: str,
                                 damage: int, attack_flavor_text: str = "") -> str:
+    """Build player-facing narrative text for boss special attack flavor."""
     line = f"★ {boss_name.upper()} uses {attack_name}!"
     if attack_flavor_text:
         line += f" {attack_flavor_text}"
@@ -191,6 +203,7 @@ def boss_special_attack_flavor(boss_name: str, attack_name: str,
 
 def boss_special_buff_flavor(boss_name: str, buff_name: str,
                               buff_flavor_text: str = "") -> str:
+    """Build player-facing narrative text for boss special buff flavor."""
     line = f"★ {boss_name.upper()} activates {buff_name}!"
     if buff_flavor_text:
         line += f" {buff_flavor_text}"
@@ -228,6 +241,7 @@ def combat_result_flavor(winner_name: str, loser_name: str,
 
 
 def level_up_flavor(player_name: str, new_level: int) -> str:
+    """Build player-facing narrative text for level up flavor."""
     return f"⬆ {player_name} has reached Level {new_level}!"
 
 

@@ -1,3 +1,4 @@
+"""Main Flask application factory, request guards, and background-job setup."""
 # app.py
 # Main Flask application factory.
 
@@ -23,6 +24,7 @@ _LEVELUP_EXEMPT = {"auth.levelup", "auth.levelup_post", "auth.logout", "static"}
 
 
 def create_app() -> Flask:
+    """Handle the create app workflow."""
     app = Flask(__name__)
     app.secret_key = cfg.SECRET_KEY
 
@@ -42,6 +44,7 @@ def create_app() -> Flask:
 
 
 def _register_blueprints(app: Flask):
+    """Provide the internal register blueprints operation used by this module."""
     from routes.auth        import bp as auth_bp
     from routes.dashboard   import bp as dashboard_bp
     from routes.actions     import bp as actions_bp
@@ -58,6 +61,7 @@ def _register_blueprints(app: Flask):
 
 
 def _context_processor() -> dict:
+    """Provide the internal context processor operation used by this module."""
     player = g.get("player")
     if not player:
         return {}
@@ -65,6 +69,7 @@ def _context_processor() -> dict:
 
 
 def _check_auth():
+    """Provide the internal check auth operation used by this module."""
     if request.endpoint in _AUTH_EXEMPT:
         return None
     if not session.get("player_id"):
@@ -86,6 +91,7 @@ def _load_player():
 
 
 def _check_levelup():
+    """Provide the internal check levelup operation used by this module."""
     if request.endpoint in _LEVELUP_EXEMPT:
         return None
     player = g.get("player")
@@ -95,6 +101,7 @@ def _check_levelup():
 
 
 def _set_blackout_flag():
+    """Provide the internal set blackout flag operation used by this module."""
     settings = get_all_settings()
     blackout_mins = settings.get("MIDNIGHT_BLACKOUT_MINUTES", cfg.MIDNIGHT_BLACKOUT_MINUTES)
     now = datetime.now(timezone.utc)
@@ -103,6 +110,7 @@ def _set_blackout_flag():
 
 
 def _start_scheduler(app: Flask):
+    """Provide the internal start scheduler operation used by this module."""
     from scheduler import midnight_reset, ap_trickle
     from npc import run_due_npc_turns
 
@@ -130,6 +138,7 @@ def _start_scheduler(app: Flask):
 
 
 def _run_with_context(app: Flask, fn):
+    """Provide the internal run with context operation used by this module."""
     with app.app_context():
         from database import execute_write, exclusive_transaction
         started = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()

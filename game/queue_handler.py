@@ -1,3 +1,4 @@
+"""Process auditable player actions synchronously through registered handlers."""
 # queue_handler.py
 # Synchronous action queue: writes a receipt to action_queue, processes inline
 # inside an exclusive DB transaction, marks done or failed.
@@ -24,6 +25,7 @@ def register_handler(action_type: str):
             ...
     """
     def decorator(fn):
+        """Handle the decorator workflow."""
         ACTION_HANDLERS[action_type] = fn
         return fn
     return decorator
@@ -139,6 +141,7 @@ def startup_cleanup():
 
 
 def _ap_cost_for_action(action_type: str) -> int:
+    """Provide the internal ap cost for action operation used by this module."""
     costs = {
         "boss_fight": cfg.AP_COST_BOSS, "boss_confirm": cfg.AP_COST_BOSS,
         "pvp_start": cfg.AP_COST_PVP, "pvp_fight": cfg.AP_COST_PVP,

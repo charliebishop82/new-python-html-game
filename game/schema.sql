@@ -6,6 +6,7 @@
 -- PLAYERS & IDENTITY
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Account identity, character statistics, resources, equipment pointers, and active-state flags.
 CREATE TABLE IF NOT EXISTS players (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     username            TEXT    UNIQUE NOT NULL,
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS players (
     created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Long-lived aggregate player records that do not belong on the core character row.
 CREATE TABLE IF NOT EXISTS player_stats (
     player_id            INTEGER PRIMARY KEY REFERENCES players(id),
     pvp_kills            INTEGER NOT NULL DEFAULT 0,
@@ -44,6 +46,7 @@ CREATE TABLE IF NOT EXISTS player_stats (
 );
 
 -- Automated player characters. A profile row marks a normal player as an NPC.
+-- Automation motivations and scheduling state attached to otherwise normal player characters.
 CREATE TABLE IF NOT EXISTS npc_profiles (
     player_id          INTEGER PRIMARY KEY REFERENCES players(id),
     enabled            INTEGER NOT NULL DEFAULT 1,
@@ -61,6 +64,7 @@ CREATE TABLE IF NOT EXISTS npc_profiles (
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Administrator-readable explanations of automated NPC decisions and outcomes.
 CREATE TABLE IF NOT EXISTS npc_action_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id   INTEGER NOT NULL REFERENCES players(id),
@@ -73,6 +77,7 @@ CREATE TABLE IF NOT EXISTS npc_action_log (
 CREATE INDEX IF NOT EXISTS idx_npc_profiles_active ON npc_profiles(enabled, retired);
 CREATE INDEX IF NOT EXISTS idx_npc_action_log_player ON npc_action_log(player_id, occurred_at);
 
+-- Permanent record of each level-up stat point assigned to a character.
 CREATE TABLE IF NOT EXISTS level_up_history (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id      INTEGER NOT NULL REFERENCES players(id),
@@ -81,6 +86,7 @@ CREATE TABLE IF NOT EXISTS level_up_history (
     timestamp      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Temporary character modifiers, normally cleared by the UTC reset.
 CREATE TABLE IF NOT EXISTS status_effects (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id   INTEGER NOT NULL REFERENCES players(id),
@@ -89,6 +95,7 @@ CREATE TABLE IF NOT EXISTS status_effects (
     created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Round-scoped or combat-scoped modifiers applied to one combat side.
 CREATE TABLE IF NOT EXISTS combat_buffs (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     combat_session_id INTEGER NOT NULL REFERENCES combat_sessions(id),
@@ -104,6 +111,7 @@ CREATE TABLE IF NOT EXISTS combat_buffs (
 -- COMBAT
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Authoritative lifecycle and summary state for PvP, boss, and minion fights.
 CREATE TABLE IF NOT EXISTS combat_sessions (
     id                          INTEGER PRIMARY KEY AUTOINCREMENT,
     combat_type                 TEXT    NOT NULL,
@@ -125,6 +133,7 @@ CREATE TABLE IF NOT EXISTS combat_sessions (
     resolved_at                 TEXT
 );
 
+-- Per-player persistent discovery, HP, phase, and kill state for bosses.
 CREATE TABLE IF NOT EXISTS boss_instances (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id           INTEGER NOT NULL REFERENCES players(id),
@@ -138,6 +147,7 @@ CREATE TABLE IF NOT EXISTS boss_instances (
     UNIQUE(player_id, boss_id)
 );
 
+-- Per-player persistent discovery, HP, and kill state for minions.
 CREATE TABLE IF NOT EXISTS minion_instances (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id     INTEGER NOT NULL REFERENCES players(id),
@@ -148,6 +158,7 @@ CREATE TABLE IF NOT EXISTS minion_instances (
     UNIQUE(player_id, minion_id)
 );
 
+-- Permanent record that a player has learned a boss’s combat information.
 CREATE TABLE IF NOT EXISTS boss_intel (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id  INTEGER NOT NULL REFERENCES players(id),
@@ -156,6 +167,7 @@ CREATE TABLE IF NOT EXISTS boss_intel (
     UNIQUE(player_id, boss_id)
 );
 
+-- Detailed round-by-round audit records for combat actions and outcomes.
 CREATE TABLE IF NOT EXISTS combat_logs (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     combat_session_id INTEGER NOT NULL REFERENCES combat_sessions(id),
@@ -173,6 +185,7 @@ CREATE TABLE IF NOT EXISTS combat_logs (
 -- INVENTORY & ITEMS
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Physical item copies owned by players, including durability and acquisition method.
 CREATE TABLE IF NOT EXISTS inventory_items (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id          INTEGER NOT NULL REFERENCES players(id),
@@ -183,6 +196,7 @@ CREATE TABLE IF NOT EXISTS inventory_items (
     acquired_method    TEXT    NOT NULL
 );
 
+-- Permanent acquisition, sale, theft, drop, grant, and loss history.
 CREATE TABLE IF NOT EXISTS item_history (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id         INTEGER NOT NULL REFERENCES players(id),
@@ -195,6 +209,7 @@ CREATE TABLE IF NOT EXISTS item_history (
     occurred_at       TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Single-source ownership and location state for globally unique special items.
 CREATE TABLE IF NOT EXISTS special_item_registry (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     special_item_id         INTEGER NOT NULL UNIQUE REFERENCES special_items(id),
@@ -211,6 +226,7 @@ CREATE TABLE IF NOT EXISTS special_item_registry (
 -- ECONOMY
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Items currently offered by the system or a player through the Shop.
 CREATE TABLE IF NOT EXISTS shop_listings (
     id                    INTEGER PRIMARY KEY AUTOINCREMENT,
     item_type             TEXT    NOT NULL,
@@ -226,6 +242,7 @@ CREATE TABLE IF NOT EXISTS shop_listings (
 -- FEEDS
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Time-ordered personal and global messages displayed in the terminal interface.
 CREATE TABLE IF NOT EXISTS daily_feed (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     feed_scope        TEXT    NOT NULL,
@@ -240,6 +257,7 @@ CREATE TABLE IF NOT EXISTS daily_feed (
 -- QUEUE
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Auditable receipts for every shared state-changing player or NPC action.
 CREATE TABLE IF NOT EXISTS action_queue (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id    INTEGER NOT NULL REFERENCES players(id),
@@ -250,6 +268,7 @@ CREATE TABLE IF NOT EXISTS action_queue (
     processed_at TEXT
 );
 
+-- Unified per-character success, failure, diagnostic, and action history.
 CREATE TABLE IF NOT EXISTS player_activity_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id   INTEGER NOT NULL REFERENCES players(id),
@@ -263,6 +282,7 @@ CREATE TABLE IF NOT EXISTS player_activity_log (
     occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Permanent reasons and before/after details for significant administrator changes.
 CREATE TABLE IF NOT EXISTS admin_audit_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     action      TEXT NOT NULL,
@@ -273,6 +293,7 @@ CREATE TABLE IF NOT EXISTS admin_audit_log (
     occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Start, completion, failure, and result summaries for background jobs.
 CREATE TABLE IF NOT EXISTS scheduler_run_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     job_name    TEXT NOT NULL,
@@ -286,6 +307,7 @@ CREATE TABLE IF NOT EXISTS scheduler_run_log (
 -- CONTENT TABLES (Excel-imported)
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- Excel-imported class definitions and permanent creation bonuses.
 CREATE TABLE IF NOT EXISTS classes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT    UNIQUE NOT NULL,
@@ -299,6 +321,7 @@ CREATE TABLE IF NOT EXISTS classes (
     imported_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Excel-imported boss statistics, phases, attacks, rewards, and narrative definitions.
 CREATE TABLE IF NOT EXISTS bosses (
     id                          INTEGER PRIMARY KEY AUTOINCREMENT,
     name                        TEXT    UNIQUE NOT NULL,
@@ -344,6 +367,7 @@ CREATE TABLE IF NOT EXISTS bosses (
     imported_at              TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Excel-imported minion statistics and combat definitions.
 CREATE TABLE IF NOT EXISTS minions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     name          TEXT    UNIQUE NOT NULL,
@@ -364,6 +388,7 @@ CREATE TABLE IF NOT EXISTS minions (
     imported_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Weapon balance definitions shared by all inventory copies.
 CREATE TABLE IF NOT EXISTS weapons (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT    UNIQUE NOT NULL,
@@ -384,6 +409,7 @@ CREATE TABLE IF NOT EXISTS weapons (
     imported_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Armor class, resistance, stat, economy, and durability definitions.
 CREATE TABLE IF NOT EXISTS armor (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT    UNIQUE NOT NULL,
@@ -409,6 +435,7 @@ CREATE TABLE IF NOT EXISTS armor (
     imported_at     TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Unique special-item modifiers, associations, economy values, and durability definitions.
 CREATE TABLE IF NOT EXISTS special_items (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     name            TEXT    UNIQUE NOT NULL,
@@ -449,6 +476,7 @@ CREATE TABLE IF NOT EXISTS special_items (
     imported_at         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Weighted good and bad encounters plus their mechanical effects.
 CREATE TABLE IF NOT EXISTS random_events (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     name          TEXT    UNIQUE NOT NULL,
@@ -462,6 +490,7 @@ CREATE TABLE IF NOT EXISTS random_events (
     imported_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Movie-level relationships connecting bosses, minions, protagonists, and their equipment.
 CREATE TABLE IF NOT EXISTS master (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     movie_name              TEXT    UNIQUE NOT NULL,
@@ -481,6 +510,7 @@ CREATE TABLE IF NOT EXISTS master (
     imported_at             TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Database overrides for typed gameplay defaults in config_defaults.py.
 CREATE TABLE IF NOT EXISTS settings (
     constant_name TEXT PRIMARY KEY,
     value         TEXT NOT NULL,

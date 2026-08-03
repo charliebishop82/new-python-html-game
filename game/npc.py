@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 def _ensure_handlers_loaded():
     # Importing these modules registers their queue handlers.
+    """Provide the internal ensure handlers loaded operation used by this module."""
     import routes.actions  # noqa: F401
     import routes.auth  # noqa: F401
     import routes.blacksmith  # noqa: F401
@@ -66,6 +67,7 @@ def run_due_npc_turns(now: datetime | None = None) -> dict:
 
 
 def _npc_is_due(profile: dict, now: datetime) -> bool:
+    """Provide the internal npc is due operation used by this module."""
     last = None
     if profile.get("last_action_at"):
         try:
@@ -84,6 +86,7 @@ def _npc_is_due(profile: dict, now: datetime) -> bool:
 
 
 def run_npc_turn(player_id: int) -> dict:
+    """Handle the run npc turn workflow."""
     _ensure_handlers_loaded()
     profile = execute_one("SELECT * FROM npc_profiles WHERE player_id=?", (player_id,))
     player = get_player(player_id)
@@ -256,6 +259,7 @@ def retire_npc(player_id: int):
 
 def _finish_active_combat(player_id: int, session_id: int | None = None,
                           profile: dict | None = None) -> str:
+    """Provide the internal finish active combat operation used by this module."""
     if session_id is None:
         row = execute_one(
             "SELECT id FROM combat_sessions WHERE attacker_player_id=? AND status='ACTIVE' ORDER BY id DESC LIMIT 1",
@@ -377,6 +381,7 @@ def _finish_thief_combat(player_id: int, session_id: int | None = None) -> str:
 
 
 def _assign_pending_levelup(player_id: int, profile: dict):
+    """Provide the internal assign pending levelup operation used by this module."""
     player = get_player(player_id)
     if not player or not player["pending_levelup"]:
         return
@@ -395,6 +400,7 @@ def _assign_pending_levelup(player_id: int, profile: dict):
 
 
 def _maybe_repair(player: dict, profile: dict):
+    """Provide the internal maybe repair operation used by this module."""
     if random.randint(1, 100) > profile["repair_tendency"]:
         return None
     threshold = 40 + profile["repair_tendency"] // 2
@@ -413,6 +419,7 @@ def _maybe_repair(player: dict, profile: dict):
 
 
 def _maybe_heal(player: dict, profile: dict, settings: dict):
+    """Provide the internal maybe heal operation used by this module."""
     hp_ratio = player["current_hp"] / max(1, player["max_hp"])
     threshold = 0.25 + (profile["self_preservation"] / 200)
     if hp_ratio >= threshold:
@@ -431,6 +438,7 @@ def _maybe_heal(player: dict, profile: dict, settings: dict):
 
 
 def _maybe_hoard(player: dict, profile: dict):
+    """Provide the internal maybe hoard operation used by this module."""
     if profile["hoarder"] <= 0:
         return None
     inv_count = execute_one("SELECT COUNT(*) cnt FROM inventory_items WHERE player_id=?", (player["id"],))["cnt"]
@@ -454,6 +462,7 @@ def _maybe_hoard(player: dict, profile: dict):
 
 
 def _eligible_pvp_targets(player: dict) -> list[dict]:
+    """Provide the internal eligible pvp targets operation used by this module."""
     return execute(
         """SELECT p.* FROM players p WHERE p.id != ? AND p.is_banned=0 AND p.in_combat=0
            AND p.level>=3 AND p.current_hp>1 AND (? - p.level)<=2""",
@@ -478,6 +487,7 @@ def _choose_pvp_target(player: dict, targets: list[dict], aggression: int) -> di
 
 
 def _choose_boss(player: dict):
+    """Provide the internal choose boss operation used by this module."""
     return execute_one(
         """SELECT b.* FROM bosses b LEFT JOIN boss_instances bi
            ON bi.boss_id=b.id AND bi.player_id=? WHERE b.is_active=1
@@ -487,6 +497,7 @@ def _choose_boss(player: dict):
 
 
 def _equip_best_core_items(player_id: int):
+    """Provide the internal equip best core items operation used by this module."""
     updates = {}
     for item_type, table, field in (("WEAPON", "weapons", "equipped_weapon_id"),
                                     ("ARMOR", "armor", "equipped_armor_id")):
@@ -508,6 +519,7 @@ def _equip_best_core_items(player_id: int):
 
 
 def _finish_turn(profile: dict, decision: str, reason: str, result) -> dict:
+    """Provide the internal finish turn operation used by this module."""
     _assign_pending_levelup(profile["player_id"], profile)
     now = datetime.utcnow().isoformat()
     with exclusive_transaction():
@@ -518,6 +530,7 @@ def _finish_turn(profile: dict, decision: str, reason: str, result) -> dict:
 
 
 def _log(player_id: int, decision: str, reason: str, result: str):
+    """Provide the internal log operation used by this module."""
     with exclusive_transaction():
         execute_write(
             "INSERT INTO npc_action_log(player_id,decision,reason,result) VALUES(?,?,?,?)",

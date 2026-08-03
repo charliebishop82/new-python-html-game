@@ -1,3 +1,4 @@
+"""Shop listings plus queued purchases, sales, pricing, and unique-item transfers."""
 # routes/shop.py
 # Full-page shop. Players buy from daily rotation and player-sold listings,
 # and sell unequipped gear back. Every transaction redirects back to GET /shop.
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 @bp.route("/shop")
 def index():
+    """Handle the index workflow."""
     player   = g.player
     settings = get_all_settings()
 
@@ -71,6 +73,7 @@ def _get_listings_with_detail(discount: float) -> list[dict]:
 
 
 def _get_item_detail(item_type: str, item_id: int) -> dict | None:
+    """Load item detail from current database state."""
     table = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}.get(item_type)
     if not table:
         return None
@@ -112,6 +115,7 @@ def _calc_sell_price(item_detail: dict, player: dict) -> int:
 
 
 def _get_special_shop_discount(player: dict) -> float:
+    """Load special shop discount from current database state."""
     if not player.get("equipped_special_id"):
         return 0.0
     inv = execute_one(
@@ -125,6 +129,7 @@ def _get_special_shop_discount(player: dict) -> float:
 
 
 def _get_special_sell_bonus(player: dict) -> float:
+    """Load special sell bonus from current database state."""
     if not player.get("equipped_special_id"):
         return 0.0
     inv = execute_one(
@@ -143,6 +148,7 @@ def _get_special_sell_bonus(player: dict) -> float:
 
 @bp.route("/shop/buy", methods=["POST"])
 def buy():
+    """Handle the buy workflow."""
     listing_id = request.form.get("listing_id", type=int)
     if not listing_id:
         return redirect(url_for("shop.index", error="Invalid listing."))
@@ -156,6 +162,7 @@ def buy():
 
 @register_handler("shop_buy")
 def handle_shop_buy(player_id: int, payload: dict) -> dict:
+    """Process the queued shop buy action against validated game state."""
     listing_id = payload["listing_id"]
     settings   = get_all_settings()
     player     = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
@@ -234,6 +241,7 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
 
 @bp.route("/shop/sell", methods=["POST"])
 def sell():
+    """Handle the sell workflow."""
     inv_id = request.form.get("inv_id", type=int)
     if not inv_id:
         return redirect(url_for("shop.index", error="Invalid item."))
@@ -247,6 +255,7 @@ def sell():
 
 @register_handler("shop_sell")
 def handle_shop_sell(player_id: int, payload: dict) -> dict:
+    """Process the queued shop sell action against validated game state."""
     inv_id   = payload["inv_id"]
     settings = get_all_settings()
     sell_pct = settings.get("SELL_PRICE_PERCENT", cfg.SELL_PRICE_PERCENT)
@@ -317,6 +326,7 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
 
 
 def _get_item_name(item_type: str, item_id: int) -> str:
+    """Load item name from current database state."""
     detail = _get_item_detail(item_type, item_id)
     return detail["name"] if detail else "Unknown Item"
 

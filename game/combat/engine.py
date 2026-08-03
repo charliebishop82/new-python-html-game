@@ -1,3 +1,4 @@
+"""Pure dice, damage, initiative, progression, and opposed-roll calculations."""
 # combat/engine.py
 # Core combat math. All dice rolls, stat modifiers, damage resolution,
 # resistance/weakness checks, dodge, crit, and durability.
@@ -119,6 +120,7 @@ def calc_attack_roll(attacker: dict, weapon: dict) -> tuple[int, int, bool]:
 
 
 def hits_ac(attack_total: int, target_ac: int) -> bool:
+    """Handle the hits ac workflow."""
     return attack_total >= target_ac
 
 

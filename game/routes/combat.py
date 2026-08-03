@@ -1,3 +1,4 @@
+"""Combat request routes that execute complete player/opponent rounds."""
 # routes/combat.py  (Phase 5 — full implementation)
 # All in-combat terminal-fragment POST routes.
 # Each route loads combat state, resolves the action, checks for combat end,
@@ -25,11 +26,13 @@ def _clear_browser_combat_session():
 
 
 def _error_fragment(message: str) -> str:
+    """Provide the internal error fragment operation used by this module."""
     return render_template("fragments/error.html", message=message,
                            player=g.get("player"))
 
 
 def _get_session_id() -> int | None:
+    """Load session id from current database state."""
     return session.get("combat_session_id")
 
 
@@ -39,6 +42,7 @@ def _get_session_id() -> int | None:
 
 @bp.route("/combat/action", methods=["POST"])
 def action():
+    """Handle the action workflow."""
     session_id = _get_session_id()
     if not session_id:
         return _error_fragment("No active combat session.")
@@ -368,6 +372,7 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
 
 @bp.route("/combat/extend", methods=["POST"])
 def extend():
+    """Handle the extend workflow."""
     session_id = _get_session_id()
     if not session_id:
         return _error_fragment("No active combat session.")
@@ -387,6 +392,7 @@ def extend():
 
 @register_handler("combat_extend")
 def handle_combat_extend(player_id: int, payload: dict) -> dict:
+    """Process the queued combat extend action against validated game state."""
     session_id = payload["session_id"]
     settings   = get_all_settings()
     ap_cost    = settings.get("AP_COST_ESCAPE", 1)  # extension costs 1 AP
@@ -417,6 +423,7 @@ def handle_combat_extend(player_id: int, payload: dict) -> dict:
 
 @bp.route("/combat/resolve", methods=["POST"])
 def resolve():
+    """Handle the resolve workflow."""
     session_id = _get_session_id()
     if not session_id:
         return _error_fragment("No active combat session.")

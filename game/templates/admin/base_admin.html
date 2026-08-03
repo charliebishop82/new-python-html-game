@@ -41,6 +41,14 @@
                      text-align: center; }
         .stat-val  { color: #ffaa00; font-size: 18px; display: block; }
         .stat-lbl  { color: #666; font-size: 10px; }
+        .context-help { position:relative;display:inline-flex;align-items:center;justify-content:center;
+                        width:15px;height:15px;margin-left:5px;border:1px solid #4499ff;border-radius:50%;
+                        color:#4499ff;font-size:10px;cursor:help;vertical-align:middle; }
+        .context-help::after { content:attr(data-help);display:none;position:absolute;z-index:10000;
+                        left:18px;top:-8px;width:280px;padding:8px 10px;background:#f3f0e8;color:#111;
+                        border:1px solid #4499ff;box-shadow:0 4px 14px #000;text-align:left;
+                        white-space:normal;font-size:12px;line-height:1.35;font-weight:normal; }
+        .context-help:hover::after,.context-help:focus::after { display:block; }
     </style>
 </head>
 <body>
@@ -74,6 +82,7 @@
         {% block content %}{% endblock %}
     </main>
 </div>
+<script src="/static/help.js"></script>
 </body>
 </html>
 

@@ -1,3 +1,4 @@
+"""Account registration, login, character creation, and level-up routes."""
 # routes/auth.py
 # Handles: login, logout, register, character creation, level-up prompt.
 # All write operations go through enqueue_and_process except auth itself
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 @bp.route("/login", methods=["GET"])
 def login():
+    """Handle the login workflow."""
     if session.get("player_id"):
         return redirect(url_for("dashboard.index"))
     return render_template("auth/login.html")
@@ -33,6 +35,7 @@ def login():
 
 @bp.route("/login", methods=["POST"])
 def login_post():
+    """Handle the login post workflow."""
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
 
@@ -70,6 +73,7 @@ def login_post():
 
 @bp.route("/logout", methods=["POST"])
 def logout():
+    """Handle the logout workflow."""
     session.clear()
     return redirect(url_for("auth.login"))
 
@@ -80,6 +84,7 @@ def logout():
 
 @bp.route("/register", methods=["GET"])
 def register():
+    """Handle the register workflow."""
     if session.get("player_id"):
         return redirect(url_for("dashboard.index"))
     return render_template("auth/register.html")
@@ -87,6 +92,7 @@ def register():
 
 @bp.route("/register", methods=["POST"])
 def register_post():
+    """Handle the register post workflow."""
     username   = request.form.get("username", "").strip()
     password   = request.form.get("password", "")
     email      = request.form.get("email", "").strip().lower()
@@ -140,6 +146,7 @@ def register_post():
 
 @bp.route("/character-create", methods=["GET"])
 def character_create():
+    """Handle the character create workflow."""
     classes = execute("SELECT * FROM classes WHERE is_active = 1 ORDER BY name")
     if not classes:
         return render_template("auth/character_create.html",
@@ -154,6 +161,7 @@ def character_create():
 
 @bp.route("/character-create", methods=["POST"])
 def character_create_post():
+    """Handle the character create post workflow."""
     player_id      = session["player_id"]
     character_name = request.form.get("character_name", "").strip()
     sex            = request.form.get("sex", "").strip()
@@ -278,6 +286,7 @@ def levelup():
 
 @bp.route("/levelup", methods=["POST"])
 def levelup_post():
+    """Handle the levelup post workflow."""
     stat = request.form.get("stat", "").strip().upper()
     if stat not in ("STR", "END", "AGI", "LCK", "PER"):
         return render_template("auth/levelup.html", player=g.player,

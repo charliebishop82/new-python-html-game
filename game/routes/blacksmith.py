@@ -1,3 +1,4 @@
+"""Blacksmith display and queued durability-repair operations."""
 # routes/blacksmith.py
 # Full-page repair interface. Players select damaged items to repair,
 # pay credits per item, with a LCK bonus roll for enhanced restoration.
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 @bp.route("/blacksmith")
 def index():
+    """Handle the index workflow."""
     player   = g.player
     settings = get_all_settings()
 
@@ -85,6 +87,7 @@ def _get_repairable_items(player: dict, settings: dict) -> list[dict]:
 
 
 def _get_item_detail(item_type: str, item_id: int) -> dict | None:
+    """Load item detail from current database state."""
     table = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}.get(item_type)
     if not table:
         return None
@@ -98,6 +101,7 @@ def _get_item_detail(item_type: str, item_id: int) -> dict | None:
 @bp.route("/blacksmith/repair", methods=["POST"])
 def repair():
     # inv_ids is a list of inventory item IDs the player wants to repair
+    """Handle the repair workflow."""
     inv_ids = request.form.getlist("inv_ids", type=int)
     repair_mode = request.form.get("mode", "selected")  # selected / equipped / all
 
@@ -114,6 +118,7 @@ def repair():
 
 @register_handler("blacksmith_repair")
 def handle_blacksmith_repair(player_id: int, payload: dict) -> dict:
+    """Process the queued blacksmith repair action against validated game state."""
     settings    = get_all_settings()
     repair_base = settings.get("REPAIR_BASE_PERCENT",    cfg.REPAIR_BASE_PERCENT)
     lck_mult    = settings.get("REPAIR_LCK_MULTIPLIER",  cfg.REPAIR_LCK_MULTIPLIER)

@@ -1,3 +1,4 @@
+"""HTTP and queued handlers for Tavern, boss, minion, PvP, and random events."""
 # routes/actions.py  (Phase 5 — full implementation)
 # Terminal-fragment POST routes for all AP actions.
 # Replaces the Phase 3 stub with full boss/minion/random event logic.
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _error_fragment(message: str) -> str:
+    """Provide the internal error fragment operation used by this module."""
     return render_template("fragments/error.html", message=message,
                            player=g.get("player"))
 
@@ -37,6 +39,7 @@ def _with_random_event(event: dict | None, player: dict, content: str) -> str:
 
 
 def _check_ap(player: dict, cost: int) -> str | None:
+    """Provide the internal check ap operation used by this module."""
     if player["current_ap"] < cost:
         return _error_fragment(f"Not enough AP. Need {cost}, have {player['current_ap']}.")
     return None
@@ -334,6 +337,7 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
 
 @bp.route("/action/tavern", methods=["POST"])
 def action_tavern():
+    """Handle the action tavern workflow."""
     player   = g.player
     settings = get_all_settings()
     cost_ap  = settings.get("AP_COST_TAVERN",   cfg.AP_COST_TAVERN)
@@ -354,6 +358,7 @@ def action_tavern():
 
 @register_handler("tavern_heal")
 def handle_tavern_heal(player_id: int, payload: dict) -> dict:
+    """Process the queued tavern heal action against validated game state."""
     settings  = get_all_settings()
     cost_ap   = payload["cost_ap"]
     cost_cr   = payload["cost_cr"]
@@ -382,6 +387,7 @@ def handle_tavern_heal(player_id: int, payload: dict) -> dict:
 
 @bp.route("/action/boss", methods=["POST"])
 def action_boss():
+    """Handle the action boss workflow."""
     player   = g.player
     settings = get_all_settings()
     cost_ap  = settings.get("AP_COST_BOSS", cfg.AP_COST_BOSS)
@@ -482,6 +488,7 @@ def action_boss_confirm():
 
 
 def _minion_per_check(player: dict, minion: dict) -> dict:
+    """Provide the internal minion per check operation used by this module."""
     from combat.engine import resolve_opposed_roll
     result = resolve_opposed_roll(
         actor_agi=player["agi_stat"], actor_lck=player["lck_stat"],
@@ -541,6 +548,7 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
 
 @register_handler("start_boss_fight")
 def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
+    """Process the queued start boss fight action against validated game state."""
     opponent_id    = payload["opponent_id"]
     encounter_type = payload["encounter_type"]
     cost_ap        = payload["cost_ap"]
@@ -610,6 +618,7 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
 
 @bp.route("/action/pvp", methods=["POST"])
 def action_pvp():
+    """Handle the action pvp workflow."""
     player   = g.player
     settings = get_all_settings()
     cost_ap  = settings.get("AP_COST_PVP", cfg.AP_COST_PVP)
@@ -681,6 +690,7 @@ def _get_eligible_opponents(player: dict, settings: dict) -> list[dict]:
 
 @bp.route("/action/pvp/fight", methods=["POST"])
 def action_pvp_fight():
+    """Handle the action pvp fight workflow."""
     player     = g.player
     settings   = get_all_settings()
     cost_ap    = settings.get("AP_COST_PVP", cfg.AP_COST_PVP)
@@ -723,6 +733,7 @@ def action_pvp_fight():
 
 @register_handler("start_pvp_fight")
 def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
+    """Process the queued start pvp fight action against validated game state."""
     target_id = payload["target_id"]
     cost_ap   = payload["cost_ap"]
     settings  = get_all_settings()

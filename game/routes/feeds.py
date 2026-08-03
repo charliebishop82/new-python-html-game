@@ -1,3 +1,4 @@
+"""Personal and global feed endpoints used by the terminal interface."""
 # routes/feeds.py
 # Lightweight JSON polling endpoints for the live terminal feed.
 # Called every 5 seconds by terminal.js.

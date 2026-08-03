@@ -11,7 +11,8 @@
             document.documentElement.dataset.theme = 'dark';
         }
     </script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script defer src="{{ url_for('static', filename='help.js') }}"></script>
 </head>
 <body class="{{ 'authenticated' if player else 'auth-page' }} {% block body_class %}{% endblock %}">
 
