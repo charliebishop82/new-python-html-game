@@ -112,7 +112,7 @@ function appendToTerminal(html) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 let lastPersonalTs = (typeof initialTimestamp !== 'undefined') ? initialTimestamp : new Date(0).toISOString();
-let lastGlobalTs   = lastPersonalTs;
+let lastGlobalTs   = new Date(0).toISOString();
 const POLL_INTERVAL = 5000;
 
 function pollFeeds() {
@@ -166,6 +166,7 @@ function appendToTicker(text) {
 
 // Start polling if on dashboard
 if (document.getElementById('terminal')) {
+    pollFeeds();
     setInterval(pollFeeds, POLL_INTERVAL);
 }
 

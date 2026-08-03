@@ -540,43 +540,47 @@ def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
 def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
     """Process the queued brace action against validated game state."""
     session  = state["session"]
-    attacker = state["attacker"]
+    is_defender = (session["combat_type"] == "PVP" and
+                   player_id == session["defender_player_id"])
+    actor = state["defender"] if is_defender else state["attacker"]
+    actor_side = "DEFENDER" if is_defender else "ATTACKER"
+    actor_equipped = state["defender_equipped"] if is_defender else state["attacker_equipped"]
     settings = get_all_settings()
     heal_pct    = settings.get("BRACE_HEAL_PERCENT",      cfg.BRACE_HEAL_PERCENT)
     ac_pct      = settings.get("BRACE_AC_BONUS_PERCENT",  cfg.BRACE_AC_BONUS_PERCENT)
     dodge_bonus = settings.get("BRACE_DODGE_BONUS",       cfg.BRACE_DODGE_BONUS)
 
-    armor    = state["attacker_equipped"].get("armor")
-    current_ac = engine.calc_ac(attacker, armor)
+    armor = actor_equipped.get("armor")
+    current_ac = engine.calc_ac(actor, armor)
     ac_bonus   = int(current_ac * ac_pct)
 
-    max_hp   = engine.calc_max_hp(attacker)
-    missing  = max_hp - attacker["current_hp"]
+    max_hp = engine.calc_max_hp(actor)
+    missing = max_hp - actor["current_hp"]
     heal     = max(0, int(missing * heal_pct))
-    new_hp   = min(attacker["current_hp"] + heal, max_hp)
+    new_hp = min(actor["current_hp"] + heal, max_hp)
 
     with exclusive_transaction():
         execute_write("UPDATE players SET current_hp = ? WHERE id = ?", (new_hp, player_id))
         execute_write(
             """INSERT INTO combat_buffs
                (combat_session_id, side, buff_type, value, expires_on)
-               VALUES (?, 'ATTACKER', 'BRACE_AC_BONUS', ?, 'NEXT_HIT_RESOLVED')""",
-            (session_id, ac_bonus)
+               VALUES (?, ?, 'BRACE_AC_BONUS', ?, 'NEXT_HIT_RESOLVED')""",
+            (session_id, actor_side, ac_bonus)
         )
         execute_write(
             """INSERT INTO combat_buffs
                (combat_session_id, side, buff_type, value, expires_on)
-               VALUES (?, 'ATTACKER', 'BRACE_DODGE_BONUS', ?, 'NEXT_HIT_RESOLVED')""",
-            (session_id, dodge_bonus)
+               VALUES (?, ?, 'BRACE_DODGE_BONUS', ?, 'NEXT_HIT_RESOLVED')""",
+            (session_id, actor_side, dodge_bonus)
         )
         # Armor durability loss on Brace
         if armor:
             _apply_durability_loss(armor["inv_id"], 1, player_id)
-        _write_combat_log(session_id, session["current_round"], "ATTACKER",
+        _write_combat_log(session_id, session["current_round"], actor_side,
                           "BRACE", "Brace action",
                           f"Healed {heal} HP, AC+{ac_bonus}, Dodge+{dodge_bonus}")
 
-    flv = flavour.brace_flavor(attacker["character_name"], heal, ac_bonus, dodge_bonus)
+    flv = flavour.brace_flavor(actor["character_name"], heal, ac_bonus, dodge_bonus)
     return {"action": "BRACE", "new_hp": new_hp, "ac_bonus": ac_bonus,
             "dodge_bonus": dodge_bonus, "heal": heal, "flavor": flv}
 

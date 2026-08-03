@@ -1,4 +1,88 @@
-{% extends "admin/base_admin.html" %}{% block title %}Items{% endblock %}{% block content %}
-<h1>Item Inspector & Balancing</h1><p><a class="btn" href="?type=weapon">Weapons</a> <a class="btn" href="?type=armor">Armor</a> <a class="btn" href="?type=special">Specials</a></p>
-{% for item in items %}<details style="border:1px solid #222;padding:8px;margin:8px 0"><summary>{{ item.name }} · ID {{ item.id }} · {{ 'ACTIVE' if item.is_active else 'DISABLED' }}</summary><form method="POST" action="/admin/items/{{ selected }}/{{ item.id }}/edit" style="display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:8px;margin-top:10px">{% for field in fields %}<label>{{ field }}<br><input name="{{ field }}" value="{{ item[field] if item[field] is not none else '' }}" style="width:100%"></label>{% endfor %}<label style="grid-column:span 3">Required balancing reason<br><input name="reason" required style="width:100%"></label><button class="btn" style="align-self:end">Save Item</button></form></details>{% endfor %}
-<h2>Unique Special Registry</h2><table><tr><th>Special</th><th>Status</th><th>Owner</th><th>Inventory ID</th><th>Price</th><th>Updated</th></tr>{% for r in registry %}<tr><td>{{ r.name }}</td><td>{{ r.status }}</td><td>{{ r.character_name or '' }}</td><td>{{ r.inventory_item_id or '' }}</td><td>{{ r.shop_listing_price or '' }}</td><td>{{ r.updated_at }}</td></tr>{% endfor %}</table>{% endblock %}
+{% extends "admin/base_admin.html" %}
+{% block title %}Items{% endblock %}
+{% block content %}
+<style>
+    .item-effect-value.effect-value-active {
+        background:#10281b;
+        border-color:#00cc66;
+        color:#7dffb3;
+        font-weight:700;
+        box-shadow:inset 3px 0 0 #00cc66;
+    }
+    .effect-field-active { color:#7dffb3; font-weight:700; }
+    :root[data-theme="light"] .item-effect-value.effect-value-active {
+        background:#e5f2e9;
+        border-color:#08783f;
+        color:#075f32;
+        box-shadow:inset 3px 0 0 #08783f;
+    }
+    :root[data-theme="light"] .effect-field-active { color:#075f32; }
+</style>
+
+<h1>Item Inspector & Balancing</h1>
+<p>
+    <a class="btn" href="?type=weapon">Weapons</a>
+    <a class="btn" href="?type=armor">Armor</a>
+    <a class="btn" href="?type=special">Specials</a>
+</p>
+
+{% set effect_fields = (
+    'str_bonus', 'end_bonus', 'agi_bonus', 'lck_bonus', 'per_bonus',
+    'initiative_bonus', 'extra_attack', 'crit_chance_bonus',
+    'crit_dmg_multiplier', 'ac_bonus', 'drop_chance', 'steal_bonus',
+    'xp_multiplier', 'credit_multiplier', 'bonus_ap', 'hp_regen_bonus',
+    'durability_reduction', 'shop_discount', 'sell_bonus', 'encounter_bonus',
+    'res_blade', 'res_blunt', 'res_ballistic', 'res_energy', 'res_arcane',
+    'res_explosive', 'res_venom'
+) %}
+
+{% for item in items %}
+<details style="border:1px solid #222;padding:8px;margin:8px 0">
+    <summary>{{ item.name }} · ID {{ item.id }} · {{ 'ACTIVE' if item.is_active else 'DISABLED' }}</summary>
+    <form method="POST" action="/admin/items/{{ selected }}/{{ item.id }}/edit"
+          style="display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:8px;margin-top:10px">
+        {% for field in fields %}
+        <label class="item-field-label">
+            {{ field }}<br>
+            <input name="{{ field }}"
+                   value="{{ item[field] if item[field] is not none else '' }}"
+                   class="{{ 'item-effect-value' if field in effect_fields else '' }}"
+                   style="width:100%">
+        </label>
+        {% endfor %}
+        <label style="grid-column:span 3">
+            Required balancing reason<br>
+            <input name="reason" required style="width:100%">
+        </label>
+        <button class="btn" style="align-self:end">Save Item</button>
+    </form>
+</details>
+{% endfor %}
+
+<h2>Unique Special Registry</h2>
+<table>
+    <tr><th>Special</th><th>Status</th><th>Owner</th><th>Inventory ID</th><th>Price</th><th>Updated</th></tr>
+    {% for r in registry %}
+    <tr>
+        <td>{{ r.name }}</td><td>{{ r.status }}</td><td>{{ r.character_name or '' }}</td>
+        <td>{{ r.inventory_item_id or '' }}</td><td>{{ r.shop_listing_price or '' }}</td><td>{{ r.updated_at }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<script>
+(() => {
+    const refresh = input => {
+        const active = Number.isFinite(Number(input.value)) && Number(input.value) !== 0;
+        input.classList.toggle('effect-value-active', active);
+        const label = input.closest('.item-field-label');
+        if (label) label.classList.toggle('effect-field-active', active);
+    };
+    document.querySelectorAll('.item-effect-value').forEach(input => {
+        refresh(input);
+        input.addEventListener('input', () => refresh(input));
+        input.addEventListener('change', () => refresh(input));
+    });
+})();
+</script>
+{% endblock %}

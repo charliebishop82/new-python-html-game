@@ -20,7 +20,7 @@ def personal_latest():
     rows = execute(
         """SELECT flavor_text, event_category, occurred_at, combat_session_id
            FROM daily_feed
-           WHERE player_id = ? AND occurred_at > ?
+           WHERE player_id = ? AND datetime(occurred_at) > datetime(?)
            ORDER BY occurred_at ASC""",
         (player_id, since)
     )
@@ -34,10 +34,12 @@ def global_latest():
     since = request.args.get("since", "1970-01-01T00:00:00")
 
     rows = execute(
-        """SELECT flavor_text, event_category, occurred_at
-           FROM daily_feed
-           WHERE feed_scope = 'GLOBAL' AND occurred_at > ?
-           ORDER BY occurred_at ASC""",
+        """SELECT flavor_text, event_category, occurred_at FROM (
+               SELECT flavor_text, event_category, occurred_at
+               FROM daily_feed
+               WHERE feed_scope = 'GLOBAL' AND datetime(occurred_at) > datetime(?)
+               ORDER BY datetime(occurred_at) DESC, id DESC LIMIT 50
+           ) ORDER BY datetime(occurred_at) ASC""",
         (since,)
     )
     return jsonify(rows)

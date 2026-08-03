@@ -52,9 +52,10 @@ def combat_warning(warning_type: str, opponent_name: str = "",
 # ATTACK FLAVOR
 # ─────────────────────────────────────────────────────────────────────────────
 
-ATTACK_VERBS_MELEE  = ["swings", "strikes at", "slashes at", "lunges at", "hammers"]
-ATTACK_VERBS_RANGED = ["fires at", "shoots at", "takes aim at", "blasts", "unleashes on"]
-DODGE_VERBS         = ["sidesteps", "ducks under", "narrowly evades", "deflects", "rolls away from"]
+ATTACK_VERBS_MELEE  = ["swings", "strikes", "slashes", "lunges", "hammers"]
+ATTACK_VERBS_RANGED = ["fires", "shoots", "takes aim", "blasts", "unleashes a shot"]
+DODGE_VERBS         = ["sidesteps the attack", "ducks under the attack",
+                       "narrowly evades", "deflects the blow", "rolls clear"]
 HIT_VERBS           = ["connects with", "lands a hit on", "strikes", "hits"]
 
 

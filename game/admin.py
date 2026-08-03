@@ -164,6 +164,81 @@ def _audit(action: str, target_type: str, target_id=None, reason=None, details=N
     )
 
 
+def _activity_combat_context(pid: int, session_id: int | None) -> dict:
+    """Resolve readable combat context for new and historical activity rows."""
+    if not session_id:
+        return {}
+    combat = execute_one(
+        """SELECT cs.*,att.character_name attacker_name,def.character_name defender_name,
+                  b.name boss_name,m.name minion_name
+           FROM combat_sessions cs
+           LEFT JOIN players att ON att.id=cs.attacker_player_id
+           LEFT JOIN players def ON def.id=cs.defender_player_id
+           LEFT JOIN boss_instances bi ON bi.id=cs.boss_instance_id
+           LEFT JOIN bosses b ON b.id=bi.boss_id
+           LEFT JOIN minion_instances mi ON mi.id=cs.minion_instance_id
+           LEFT JOIN minions m ON m.id=mi.minion_id WHERE cs.id=?""", (session_id,)
+    )
+    if not combat:
+        return {"combat_session_id": session_id}
+    opponent = (combat["defender_name"] if pid == combat["attacker_player_id"]
+                else combat["attacker_name"])
+    if combat["combat_type"] == "BOSS": opponent = combat["boss_name"]
+    if combat["combat_type"] == "MINION": opponent = combat["minion_name"]
+    return {
+        "combat_session_id": session_id, "combat_type": combat["combat_type"],
+        "opponent": opponent, "round": combat["current_round"],
+        "status": combat["status"], "result": combat["result"],
+        "damage_dealt": (combat["attacker_total_damage_dealt"]
+                         if pid == combat["attacker_player_id"] else combat["defender_total_damage_dealt"]),
+        "damage_received": (combat["defender_total_damage_dealt"]
+                            if pid == combat["attacker_player_id"] else combat["attacker_total_damage_dealt"]),
+    }
+
+
+def _format_activity_row(row: dict, pid: int) -> dict:
+    """Turn stored action JSON into a compact audit summary plus pretty detail."""
+    try: stored = json.loads(row.get("details_json") or "{}")
+    except (TypeError, json.JSONDecodeError): stored = {"raw": row.get("details_json")}
+    try: payload = json.loads(row.get("queue_payload") or "{}")
+    except (TypeError, json.JSONDecodeError): payload = {"raw": row.get("queue_payload")}
+
+    raw_result = stored.get("result", stored) if isinstance(stored, dict) else {}
+    result = raw_result if isinstance(raw_result, dict) else {"value": raw_result}
+    context = stored.get("context", {}) if isinstance(stored, dict) else {}
+    session_id = (context.get("combat_session_id") or result.get("session_id")
+                  or payload.get("session_id"))
+    if not session_id and row["action"].startswith("start_"):
+        session_id = result.get("session_id")
+    resolved = _activity_combat_context(pid, session_id)
+    context = {**resolved, **context}
+    if not context.get("opponent") and payload.get("target_id"):
+        target = execute_one("SELECT character_name FROM players WHERE id=?", (payload["target_id"],))
+        if target: context["opponent"] = target["character_name"]
+
+    highlights = []
+    for event in result.get("round_log", []) if isinstance(result, dict) else []:
+        if event.get("flavor"): highlights.append(event["flavor"])
+        elif event.get("outcome_detail"): highlights.append(event["outcome_detail"])
+    final = result.get("final_result") if isinstance(result, dict) else None
+    if isinstance(final, dict) and final.get("flavor"): highlights.append(final["flavor"])
+    if not highlights and context.get("opponent"):
+        highlights.append(f"Opponent: {context['opponent']}")
+    if not highlights and isinstance(stored, dict) and stored.get("reason"):
+        highlights.append(stored["reason"])
+        if stored.get("result"): highlights.append(f"Outcome: {stored['result']}")
+
+    snapshot = stored.get("player_state_after", {}) if isinstance(stored, dict) else {}
+    technical = {"input": payload, "result": result, "context": context}
+    if snapshot: technical["player_state_after"] = snapshot
+    if isinstance(stored, dict) and stored.get("error"): technical["error"] = stored["error"]
+    return {
+        **row, "action_label": row["action"].replace("_", " ").title(),
+        "context": context, "highlights": highlights,
+        "technical_json": json.dumps(technical, indent=2, ensure_ascii=False, default=str),
+    }
+
+
 def admin_player_activity(pid: int):
     """Render or process the player activity administrative workflow."""
     player = execute_one("SELECT * FROM players WHERE id=?", (pid,))
@@ -174,17 +249,20 @@ def admin_player_activity(pid: int):
     category = request.args.get("category", "").strip().upper()
     errors_only = request.args.get("errors_only") == "1"
     page = max(1, request.args.get("page", type=int, default=1))
-    where, params = ["player_id=?"], [pid]
-    if start: where.append("occurred_at>=?"); params.append(start)
-    if end: where.append("occurred_at<?"); params.append(end + " 23:59:59")
-    if category: where.append("category=?"); params.append(category)
-    if errors_only: where.append("status='FAILED'")
+    where, params = ["l.player_id=?"], [pid]
+    if start: where.append("l.occurred_at>=?"); params.append(start)
+    if end: where.append("l.occurred_at<?"); params.append(end + " 23:59:59")
+    if category: where.append("l.category=?"); params.append(category)
+    if errors_only: where.append("l.status='FAILED'")
     clause = " AND ".join(where)
-    total = execute_one(f"SELECT COUNT(*) cnt FROM player_activity_log WHERE {clause}", tuple(params))["cnt"]
+    total = execute_one(f"SELECT COUNT(*) cnt FROM player_activity_log l WHERE {clause}", tuple(params))["cnt"]
     rows = execute(
-        f"SELECT * FROM player_activity_log WHERE {clause} ORDER BY id DESC LIMIT 100 OFFSET ?",
+        f"""SELECT l.*,q.payload AS queue_payload FROM player_activity_log l
+            LEFT JOIN action_queue q ON q.id=l.queue_id
+            WHERE {clause} ORDER BY l.id DESC LIMIT 100 OFFSET ?""",
         (*params, (page - 1) * 100)
     )
+    rows = [_format_activity_row(row, pid) for row in rows]
     categories = execute("SELECT DISTINCT category FROM player_activity_log WHERE player_id=? ORDER BY category", (pid,))
     return render_template("admin/player_activity.html", player=player, rows=rows,
                            categories=categories, page=page, total=total,

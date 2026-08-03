@@ -4,6 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <title>Admin — {% block title %}Dashboard{% endblock %}</title>
+    <script>
+        try {
+            document.documentElement.dataset.theme =
+                localStorage.getItem('movie-multiverse-admin-theme') || 'dark';
+        } catch (error) { document.documentElement.dataset.theme = 'dark'; }
+    </script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Courier New', monospace; background: #0a0a0a;
@@ -49,11 +55,35 @@
                         border:1px solid #4499ff;box-shadow:0 4px 14px #000;text-align:left;
                         white-space:normal;font-size:12px;line-height:1.35;font-weight:normal; }
         .context-help:hover::after,.context-help:focus::after { display:block; }
+        :root[data-theme="light"] { color-scheme: light; }
+        :root[data-theme="light"] body { background:#f4f0e7; color:#28241f; }
+        :root[data-theme="light"] #admin-nav { background:#fff; border-color:#cfc5b4; }
+        :root[data-theme="light"] #admin-nav h2, :root[data-theme="light"] h1 { color:#9a5700; }
+        :root[data-theme="light"] h2 { color:#135fa8; }
+        :root[data-theme="light"] #admin-nav a { color:#6d655b; }
+        :root[data-theme="light"] #admin-nav a:hover { color:#000; }
+        :root[data-theme="light"] th, :root[data-theme="light"] .btn,
+        :root[data-theme="light"] input, :root[data-theme="light"] select,
+        :root[data-theme="light"] textarea { background:#faf7f0; border-color:#b9ad9a; color:#28241f; }
+        :root[data-theme="light"] th { color:#9a5700; }
+        :root[data-theme="light"] td { border-color:#d9d0c2; }
+        :root[data-theme="light"] tr:nth-child(even) td { background:#eee8dc; }
+        :root[data-theme="light"] .btn { color:#08783f; }
+        :root[data-theme="light"] .btn-danger { color:#a82626; }
+        :root[data-theme="light"] .stat-box { background:#fff; border-color:#cfc5b4; }
+        :root[data-theme="light"] .stat-val { color:#9a5700; }
+        :root[data-theme="light"] .stat-lbl { color:#6d655b; }
+        :root[data-theme="light"] pre { color:#28241f; }
+        :root[data-theme="light"] [style*="background:#111"] { background:#fff !important; border-color:#cfc5b4 !important; }
+        :root[data-theme="light"] [style*="background:#0d0d0d"] { background:#eee8dc !important; border-color:#cfc5b4 !important; }
+        #admin-theme-toggle { width:100%; margin:0 0 12px; color:#ffaa00; }
+        :root[data-theme="light"] #admin-theme-toggle { color:#9a5700; }
     </style>
 </head>
 <body>
 <div id="admin-wrap">
     <nav id="admin-nav">
+        <button type="button" class="btn" id="admin-theme-toggle" aria-pressed="false">LIGHT MODE</button>
         <h2>⚙ Admin</h2>
         <a href="/admin">Dashboard</a>
         <a href="/admin/import">Import Excel</a>
@@ -83,6 +113,23 @@
     </main>
 </div>
 <script src="/static/help.js"></script>
+<script>
+    (() => {
+        const toggle = document.getElementById('admin-theme-toggle');
+        const update = () => {
+            const light = document.documentElement.dataset.theme === 'light';
+            toggle.textContent = light ? 'DARK MODE' : 'LIGHT MODE';
+            toggle.setAttribute('aria-pressed', String(light));
+        };
+        update();
+        toggle.addEventListener('click', () => {
+            const theme = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+            document.documentElement.dataset.theme = theme;
+            try { localStorage.setItem('movie-multiverse-admin-theme', theme); } catch (error) {}
+            update();
+        });
+    })();
+</script>
 </body>
 </html>
 

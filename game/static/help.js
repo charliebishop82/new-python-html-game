@@ -126,7 +126,12 @@
     if (!showBadge) return;
     const badge = document.createElement('span'); badge.className = 'context-help'; badge.tabIndex = 0;
     badge.setAttribute('role', 'note'); badge.setAttribute('aria-label', text); badge.dataset.help = text; badge.textContent = '?';
-    element.insertAdjacentElement('afterend', badge);
+    // Table headings must retain exactly one DOM cell per data column. Adding
+    // the badge as a sibling of <th> creates an anonymous extra table cell and
+    // shifts every heading away from its values. Keep badges inside headings
+    // (and label-like elements); ordinary controls may still use a sibling.
+    if (element.matches('th,.label,label')) element.appendChild(badge);
+    else element.insertAdjacentElement('afterend', badge);
   }
   function install() {
     document.querySelectorAll('input[name],select[name],textarea[name]').forEach(control => {

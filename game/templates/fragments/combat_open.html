@@ -5,6 +5,9 @@
      data-max-ap="{{ player.max_ap }}"
      data-credits="{{ player.credits }}">
 
+    <div class="term-line term-amber combat-boundary">
+        ══════════════════════ COMBAT BEGINS ══════════════════════
+    </div>
     <div class="term-line term-amber">
         {% if encounter_type == 'BOSS' %}
         === BOSS FIGHT: {{ opponent.name|upper }} ===

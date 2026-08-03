@@ -1,12 +1,89 @@
 {% extends "admin/base_admin.html" %}
 {% block title %}Activity: {{ player.character_name }}{% endblock %}
 {% block content %}
+<style>
+    .activity-list { display:grid; gap:10px; margin-top:10px; }
+    .activity-entry { border:1px solid #222; background:#0d0d0d; padding:12px; }
+    .activity-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+    .activity-time { color:#888; min-width:145px; }
+    .activity-action { color:#ffaa00; font-weight:700; }
+    .activity-status { border:1px solid currentColor; padding:2px 6px; font-size:10px; }
+    .activity-success { color:#00cc66; }
+    .activity-failed { color:#cc2222; }
+    .activity-category { color:#4499ff; font-size:11px; }
+    .activity-message { margin:5px 0 8px; color:#ddd; }
+    .activity-context { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:7px; }
+    .activity-chip { background:#1a1a1a; border:1px solid #333; padding:3px 7px; color:#bbb; }
+    .activity-chip strong { color:#fff; }
+    .activity-highlights { margin:6px 0 8px 20px; line-height:1.45; }
+    .activity-technical summary { color:#4499ff; cursor:pointer; }
+    .activity-technical pre { white-space:pre-wrap;overflow-wrap:anywhere;max-height:420px;
+                              overflow:auto;background:#080808;border:1px solid #222;
+                              padding:10px;margin-top:7px;line-height:1.35; }
+    :root[data-theme="light"] .activity-entry { background:#fff; border-color:#cfc5b4; }
+    :root[data-theme="light"] .activity-message { color:#28241f; }
+    :root[data-theme="light"] .activity-chip { background:#eee8dc;border-color:#cfc5b4;color:#554d43; }
+    :root[data-theme="light"] .activity-chip strong { color:#111; }
+    :root[data-theme="light"] .activity-technical pre { background:#faf7f0;border-color:#cfc5b4; }
+</style>
+
 <h1>{{ player.character_name }} — Activity Log</h1>
 <form method="GET" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:16px">
-<label>Start<br><input type="date" name="start" value="{{ start }}"></label><label>End<br><input type="date" name="end" value="{{ end }}"></label>
-<label>Category<br><select name="category"><option value="">All</option>{% for c in categories %}<option {% if category==c.category %}selected{% endif %}>{{ c.category }}</option>{% endfor %}</select></label>
-<label><input type="checkbox" name="errors_only" value="1" {% if errors_only %}checked{% endif %}> Errors only</label><button class="btn">Filter</button></form>
-<p style="color:#666">{{ total }} matching entries · page {{ page }}</p>
-<table><tr><th>Time</th><th>Status</th><th>Category</th><th>Action</th><th>Message</th><th>Details</th></tr>{% for row in rows %}<tr><td>{{ row.occurred_at }}</td><td>{{ row.status }}</td><td>{{ row.category }}</td><td>{{ row.action }}</td><td>{{ row.message }}</td><td><details><summary>View</summary><pre style="white-space:pre-wrap;max-width:550px">{{ row.details_json or '' }}</pre></details></td></tr>{% else %}<tr><td colspan="6">No matching activity.</td></tr>{% endfor %}</table>
-<div>{% if page>1 %}<a class="btn" href="?page={{ page-1 }}&start={{ start }}&end={{ end }}&category={{ category }}&errors_only={{ 1 if errors_only else 0 }}">Newer</a>{% endif %} {% if page*100<total %}<a class="btn" href="?page={{ page+1 }}&start={{ start }}&end={{ end }}&category={{ category }}&errors_only={{ 1 if errors_only else 0 }}">Older</a>{% endif %}</div>
+    <label>Start<br><input type="date" name="start" value="{{ start }}"></label>
+    <label>End<br><input type="date" name="end" value="{{ end }}"></label>
+    <label>Category<br>
+        <select name="category"><option value="">All</option>
+        {% for c in categories %}<option {% if category==c.category %}selected{% endif %}>{{ c.category }}</option>{% endfor %}
+        </select>
+    </label>
+    <label><input type="checkbox" name="errors_only" value="1" {% if errors_only %}checked{% endif %}> Errors only</label>
+    <button class="btn">Filter</button>
+</form>
+
+<p style="color:#777">{{ total }} matching entries · page {{ page }}</p>
+<div class="activity-list">
+{% for row in rows %}
+    <section class="activity-entry">
+        <div class="activity-head">
+            <span class="activity-time">{{ row.occurred_at }}</span>
+            <span class="activity-status {{ 'activity-success' if row.status == 'SUCCESS' else 'activity-failed' }}">{{ row.status }}</span>
+            <span class="activity-category">{{ row.category }}</span>
+            <span class="activity-action">{{ row.action_label }}</span>
+        </div>
+
+        <div class="activity-message">{{ row.message }}</div>
+
+        {% if row.context %}
+        <div class="activity-context">
+            {% if row.context.opponent %}<span class="activity-chip">Opponent: <strong>{{ row.context.opponent }}</strong></span>{% endif %}
+            {% if row.context.combat_session_id %}<span class="activity-chip">Combat: <strong>#{{ row.context.combat_session_id }}</strong></span>{% endif %}
+            {% if row.context.combat_type %}<span class="activity-chip">Type: <strong>{{ row.context.combat_type }}</strong></span>{% endif %}
+            {% if row.context.round %}<span class="activity-chip">Round: <strong>{{ row.context.round }}</strong></span>{% endif %}
+            {% if row.context.status %}<span class="activity-chip">Combat status: <strong>{{ row.context.status }}</strong></span>{% endif %}
+            {% if row.context.result %}<span class="activity-chip">Result: <strong>{{ row.context.result }}</strong></span>{% endif %}
+            {% if row.context.damage_dealt is defined %}<span class="activity-chip">Damage dealt: <strong>{{ row.context.damage_dealt }}</strong></span>{% endif %}
+            {% if row.context.damage_received is defined %}<span class="activity-chip">Damage received: <strong>{{ row.context.damage_received }}</strong></span>{% endif %}
+        </div>
+        {% endif %}
+
+        {% if row.highlights %}
+        <ul class="activity-highlights">
+            {% for line in row.highlights %}<li>{{ line }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+
+        <details class="activity-technical">
+            <summary>Technical details · queue #{{ row.queue_id or '—' }}</summary>
+            <pre>{{ row.technical_json }}</pre>
+        </details>
+    </section>
+{% else %}
+    <section class="activity-entry">No matching activity.</section>
+{% endfor %}
+</div>
+
+<div style="margin-top:12px">
+    {% if page>1 %}<a class="btn" href="?page={{ page-1 }}&start={{ start }}&end={{ end }}&category={{ category }}&errors_only={{ 1 if errors_only else 0 }}">Newer</a>{% endif %}
+    {% if page*100<total %}<a class="btn" href="?page={{ page+1 }}&start={{ start }}&end={{ end }}&category={{ category }}&errors_only={{ 1 if errors_only else 0 }}">Older</a>{% endif %}
+</div>
 {% endblock %}

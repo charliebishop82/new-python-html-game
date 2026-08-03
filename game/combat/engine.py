@@ -443,7 +443,8 @@ def resolve_opposed_roll(actor_agi: int, actor_lck: int,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def calc_pvp_score(session: dict, attacker_max_hp: int,
-                   defender_max_hp: int) -> tuple[float, float]:
+                   defender_max_hp: int, attacker_current_hp: int | None = None,
+                   defender_current_hp: int | None = None) -> tuple[float, float]:
     """Tiebreak score formula:
     (HP% * COMBAT_WIN_HP_WEIGHT) + (Damage Dealt% * COMBAT_WIN_DMG_WEIGHT)
     Always produces a winner."""
@@ -451,8 +452,10 @@ def calc_pvp_score(session: dict, attacker_max_hp: int,
     hp_weight  = settings.get("COMBAT_WIN_HP_WEIGHT",  cfg.COMBAT_WIN_HP_WEIGHT)
     dmg_weight = settings.get("COMBAT_WIN_DMG_WEIGHT", cfg.COMBAT_WIN_DMG_WEIGHT)
 
-    att_hp_pct  = session["attacker_hp_start"] / attacker_max_hp if attacker_max_hp else 0
-    def_hp_pct  = session["defender_hp_start"] / defender_max_hp if defender_max_hp else 0
+    att_hp = session["attacker_hp_start"] if attacker_current_hp is None else attacker_current_hp
+    def_hp = session["defender_hp_start"] if defender_current_hp is None else defender_current_hp
+    att_hp_pct = att_hp / attacker_max_hp if attacker_max_hp else 0
+    def_hp_pct = def_hp / defender_max_hp if defender_max_hp else 0
 
     total_dmg = (session["attacker_total_damage_dealt"] +
                  session["defender_total_damage_dealt"])

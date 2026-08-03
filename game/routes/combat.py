@@ -190,6 +190,7 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
         "winner_side":     winner_side,
         "final_result":    final_result,
         "session_id":      session_id,
+        "round_number":    sess["current_round"],
         "attacker_first":  attacker_first,
         "att_init":        att_init,
         "def_init":        def_init,
@@ -361,6 +362,7 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
         "winner_side":    winner_side,
         "final_result":   final_result,
         "session_id":     session_id,
+        "round_number":   sess["current_round"],
         "attacker_first": True,
         "att_init": 0, "def_init": 0,
     }
@@ -451,7 +453,11 @@ def handle_combat_resolve(player_id: int, payload: dict) -> dict:
     att_max_hp = engine.calc_max_hp(attacker)
     def_max_hp = engine.calc_max_hp(defender)
 
-    att_score, def_score = engine.calc_pvp_score(sess, att_max_hp, def_max_hp)
+    att_score, def_score = engine.calc_pvp_score(
+        sess, att_max_hp, def_max_hp,
+        attacker_current_hp=attacker["current_hp"],
+        defender_current_hp=defender["current_hp"],
+    )
     winner_side  = "ATTACKER" if att_score > def_score else "DEFENDER"
     final_result = combat_actions.finalize_combat(
         session_id, winner_side, "SCORE_WIN", state

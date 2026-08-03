@@ -4,6 +4,7 @@ import logging
 import math
 import random
 import hashlib
+import json
 from datetime import datetime, timedelta
 
 import config_defaults as cfg
@@ -695,9 +696,17 @@ def _finish_turn(profile: dict, decision: str, reason: str, result) -> dict:
 
 
 def _log(player_id: int, decision: str, reason: str, result: str):
-    """Provide the internal log operation used by this module."""
+    """Record NPC rationale in both specialist and per-character audit logs."""
     with exclusive_transaction():
         execute_write(
             "INSERT INTO npc_action_log(player_id,decision,reason,result) VALUES(?,?,?,?)",
             (player_id, decision, reason[:500], result[:1000])
+        )
+        execute_write(
+            """INSERT INTO player_activity_log
+               (player_id,category,action,status,message,details_json,source)
+               VALUES(?, 'NPC', ?, 'SUCCESS', ?, ?, 'NPC')""",
+            (player_id, decision, reason[:1000],
+             json.dumps({"decision": decision, "reason": reason,
+                         "result": result}, default=str)[:8000])
         )

@@ -16,6 +16,82 @@ logger = logging.getLogger(__name__)
 ACTION_HANDLERS: dict = {}
 
 
+def _combat_context(player_id: int, session_id: int | None) -> dict:
+    """Return stable names and summary state for an action tied to combat."""
+    if not session_id:
+        return {}
+    row = execute_one(
+        """SELECT cs.id,cs.combat_type,cs.status,cs.result,cs.current_round,
+                  cs.attacker_player_id,cs.defender_player_id,
+                  attacker.character_name AS attacker_name,
+                  defender.character_name AS defender_name,
+                  b.name AS boss_name,m.name AS minion_name
+           FROM combat_sessions cs
+           LEFT JOIN players attacker ON attacker.id=cs.attacker_player_id
+           LEFT JOIN players defender ON defender.id=cs.defender_player_id
+           LEFT JOIN boss_instances bi ON bi.id=cs.boss_instance_id
+           LEFT JOIN bosses b ON b.id=bi.boss_id
+           LEFT JOIN minion_instances mi ON mi.id=cs.minion_instance_id
+           LEFT JOIN minions m ON m.id=mi.minion_id
+           WHERE cs.id=?""", (session_id,)
+    )
+    if not row:
+        return {"combat_session_id": session_id}
+    opponent = (row["defender_name"] if player_id == row["attacker_player_id"]
+                else row["attacker_name"])
+    if row["combat_type"] == "BOSS":
+        opponent = row["boss_name"]
+    elif row["combat_type"] == "MINION":
+        opponent = row["minion_name"]
+    return {
+        "combat_session_id": row["id"], "combat_type": row["combat_type"],
+        "opponent": opponent, "player_role": ("ATTACKER" if player_id == row["attacker_player_id"] else "DEFENDER"),
+        "round": row["current_round"], "combat_status": row["status"],
+        "combat_result": row["result"],
+    }
+
+
+def _activity_details(player_id: int, action_type: str, payload: dict,
+                      result: dict | None = None, error: Exception | None = None) -> dict:
+    """Build structured diagnostic details for the permanent activity log."""
+    result = result or {}
+    session_id = result.get("session_id") or payload.get("session_id")
+    details = {
+        "input": payload,
+        "result": result,
+        "context": _combat_context(player_id, session_id),
+    }
+    if error:
+        details["error"] = {"type": type(error).__name__, "message": str(error)}
+    player = execute_one(
+        "SELECT level,current_hp,current_ap,credits,in_combat FROM players WHERE id=?",
+        (player_id,)
+    )
+    if player:
+        details["player_state_after"] = dict(player)
+    return details
+
+
+def _activity_message(action_type: str, details: dict) -> str:
+    """Create a concise human-readable summary while JSON retains full detail."""
+    context = details.get("context", {})
+    opponent = context.get("opponent")
+    labels = {
+        "start_pvp_fight": "Started PvP combat", "start_boss_fight": "Started boss combat",
+        "combat_action": "Completed a combat round", "combat_steal": "Attempted a combat steal",
+        "combat_resolve": "Resolved combat by score", "combat_extend": "Extended combat",
+        "shop_buy": "Purchased an item", "shop_sell": "Sold an item",
+        "blacksmith_repair": "Repaired equipment", "tavern_heal": "Healed at the Tavern",
+        "assign_levelup": "Assigned a level-up point",
+    }
+    message = labels.get(action_type, action_type.replace("_", " ").capitalize())
+    if opponent:
+        message += f" against {opponent}"
+    if context.get("combat_session_id"):
+        message += f" (combat #{context['combat_session_id']})"
+    return message
+
+
 def register_handler(action_type: str):
     """Decorator to register an action handler function.
 
@@ -48,6 +124,7 @@ def enqueue_and_process(player_id: int, action_type: str, payload: dict) -> dict
             result = ACTION_HANDLERS[action_type](player_id, payload)
 
         with exclusive_transaction():
+            details = _activity_details(player_id, action_type, payload, result=result)
             execute_write(
                 "UPDATE action_queue SET status = 'DONE', processed_at = ? WHERE id = ?",
                 (datetime.utcnow().isoformat(), queue_id)
@@ -56,14 +133,15 @@ def enqueue_and_process(player_id: int, action_type: str, payload: dict) -> dict
                 """INSERT INTO player_activity_log
                    (player_id,category,action,status,message,details_json,queue_id,source)
                    VALUES(?, 'ACTION', ?, 'SUCCESS', ?, ?, ?, 'GAME')""",
-                (player_id, action_type, f"{action_type} completed",
-                 json.dumps(result, default=str)[:8000], queue_id)
+                (player_id, action_type, _activity_message(action_type, details),
+                 json.dumps(details, default=str)[:8000], queue_id)
             )
         return result
 
     except Exception as exc:
         try:
             with exclusive_transaction():
+                details = _activity_details(player_id, action_type, payload, error=exc)
                 execute_write(
                     "UPDATE action_queue SET status = 'FAILED', processed_at = ? WHERE id = ?",
                     (datetime.utcnow().isoformat(), queue_id)
@@ -73,7 +151,7 @@ def enqueue_and_process(player_id: int, action_type: str, payload: dict) -> dict
                        (player_id,category,action,status,message,details_json,queue_id,source)
                        VALUES(?, 'ERROR', ?, 'FAILED', ?, ?, ?, 'GAME')""",
                     (player_id, action_type, str(exc)[:1000],
-                     json.dumps({"exception_type": type(exc).__name__}), queue_id)
+                     json.dumps(details, default=str)[:8000], queue_id)
                 )
         except Exception:
             pass
