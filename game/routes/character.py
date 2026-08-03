@@ -60,6 +60,8 @@ def index():
 def equipment():
     """Render the dedicated equipment comparison and loadout screen."""
     player = g.player
+    if player.get("in_combat"):
+        return redirect(url_for("dashboard.index"))
     inventory = _get_full_inventory(player)
     equipped = {
         "weapon": _find_equipped(inventory, player.get("equipped_weapon_id")),
@@ -268,6 +270,8 @@ def handle_equip(player_id: int, payload: dict) -> dict:
     """Process the queued equip action against validated game state."""
     inv_id = payload["inv_id"]
     player = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
+    if player["in_combat"]:
+        raise ValueError("Use Change Equipment on the combat screen while a fight is active.")
     inv    = execute_one(
         "SELECT * FROM inventory_items WHERE id = ? AND player_id = ?",
         (inv_id, player_id)
@@ -311,6 +315,9 @@ def unequip():
 def handle_unequip(player_id: int, payload: dict) -> dict:
     """Process the queued unequip action against validated game state."""
     slot = payload.get("slot", "").lower()
+    player = execute_one("SELECT * FROM players WHERE id=?", (player_id,))
+    if player["in_combat"]:
+        raise ValueError("Equipment cannot be unequipped outside the combat turn system during a fight.")
     slot_col = {
         "weapon":  "equipped_weapon_id",
         "armor":   "equipped_armor_id",
@@ -347,6 +354,8 @@ def handle_drop_item(player_id: int, payload: dict) -> dict:
     """Process the queued drop item action against validated game state."""
     inv_id = payload["inv_id"]
     player = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
+    if player["in_combat"]:
+        raise ValueError("Items cannot be dropped during combat.")
     inv    = execute_one(
         "SELECT * FROM inventory_items WHERE id = ? AND player_id = ?",
         (inv_id, player_id)

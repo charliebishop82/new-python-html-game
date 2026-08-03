@@ -13,6 +13,7 @@
     {% set fr = result.final_result %}
     {% set won = result.winner_side == 'ATTACKER' %}
     {% set stalemate = fr and fr.result_type == 'STALEMATE' %}
+    {% set escaped = fr and fr.result_type == 'ESCAPE' %}
 
     {# A decisive round used to disappear because this result fragment replaced
        the normal round fragment. Always show the actions that ended the fight. #}
@@ -43,8 +44,8 @@
     {% endfor %}
     {% endif %}
 
-    <div class="term-line term-{{ 'amber' if stalemate else 'good' if won else 'bad' }}">
-        ═══ COMBAT OVER — {{ 'STALEMATE' if stalemate else 'VICTORY!' if won else 'DEFEAT' }} ══════════════════
+    <div class="term-line term-{{ 'amber' if stalemate else 'good' if (won or escaped) else 'bad' }}">
+        ═══ COMBAT OVER — {{ 'ESCAPED' if escaped else 'STALEMATE' if stalemate else 'VICTORY!' if won else 'DEFEAT' }} ══════════════════
     </div>
 
     {% if fr %}

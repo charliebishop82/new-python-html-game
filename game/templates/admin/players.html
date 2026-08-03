@@ -3,6 +3,8 @@
 {% block title %}Players{% endblock %}
 {% block content %}
 <h1>Players ({{ players|length }})</h1>
+{% if feedback %}<p style="color:#00ff99">{{ feedback }}</p>{% endif %}
+{% if error %}<p style="color:#ff5555">{{ error }}</p>{% endif %}
 
 <table>
     <tr>
@@ -34,8 +36,13 @@
             <span style="color:#666">Active</span>
             {% endif %}
         </td>
-        <td>
+        <td style="display:flex;gap:6px;align-items:center;white-space:nowrap;">
             <a href="/admin/players/{{ p.id }}" class="btn">View</a>
+            <form method="POST" action="/admin/players/{{ p.id }}/replenish-ap"
+                  onsubmit="return confirm('Restore {{ p.character_name or p.username }} to their normal maximum AP for testing?');">
+                <button class="btn" title="Restore this character to their normal AP maximum. Does not run the midnight reset."
+                        {% if p.retired_at or p.is_banned %}disabled{% endif %}>Replenish AP</button>
+            </form>
         </td>
     </tr>
     {% endfor %}

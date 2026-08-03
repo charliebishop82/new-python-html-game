@@ -404,7 +404,7 @@ def action_boss():
     if event:
         player = get_player(player["id"]) or player
 
-    # 50/50 boss vs minion roll
+    # A minion can interrupt the attempted boss hunt; otherwise find a boss.
     minion_chance = settings.get("MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE)
     encounter_type = "MINION" if random.random() < minion_chance else "BOSS"
 
@@ -638,11 +638,46 @@ def action_pvp():
     if event:
         player = get_player(player["id"]) or player
 
+    # Roaming minions can interrupt the PvP search before a target is chosen.
+    minion_chance = settings.get("MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE)
+    if random.random() < minion_chance:
+        minion = _choose_minion_for_player(player)
+        if minion:
+            minion_cost = settings.get("AP_COST_BOSS", cfg.AP_COST_BOSS)
+            if player["current_ap"] < minion_cost:
+                return _with_random_event(
+                    event, player, _error_fragment("A minion interrupts you, but you lack the AP to engage.")
+                )
+            per_result = _minion_per_check(player, minion)
+            if per_result["spotted"]:
+                content = render_template("fragments/minion_spotted.html",
+                                          minion=minion, per_result=per_result, player=player)
+            else:
+                content = _start_boss_fight(player, minion, "MINION", minion_cost, settings)
+            return _with_random_event(event, player, content)
+
     # Build eligible opponent list
     opponents = _get_eligible_opponents(player, settings)
     content = render_template("fragments/opponent_list.html",
                               opponents=opponents, player=player)
     return _with_random_event(event, player, content)
+
+
+def _choose_minion_for_player(player: dict) -> dict | None:
+    """Select an undiscovered active minion first, then any active minion."""
+    discovered = execute(
+        "SELECT minion_id FROM minion_instances WHERE player_id=?", (player["id"],)
+    )
+    discovered_ids = [row["minion_id"] for row in discovered]
+    if discovered_ids:
+        placeholders = ",".join("?" for _ in discovered_ids)
+        minion = execute_one(
+            f"SELECT * FROM minions WHERE is_active=1 AND id NOT IN ({placeholders}) "
+            "ORDER BY RANDOM() LIMIT 1", tuple(discovered_ids)
+        )
+        if minion:
+            return minion
+    return execute_one("SELECT * FROM minions WHERE is_active=1 ORDER BY RANDOM() LIMIT 1")
 
 
 def _get_eligible_opponents(player: dict, settings: dict) -> list[dict]:

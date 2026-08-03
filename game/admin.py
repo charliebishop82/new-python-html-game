@@ -64,6 +64,8 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/players/<int:pid>/ban",  "admin_ban",          admin_ban,           methods=["POST"])
     app.add_url_rule("/admin/players/<int:pid>/retire", "admin_retire_player", admin_retire_player, methods=["POST"])
     app.add_url_rule("/admin/players/<int:pid>/edit", "admin_edit",         admin_edit,          methods=["POST"])
+    app.add_url_rule("/admin/players/<int:pid>/replenish-ap", "admin_player_replenish_ap",
+                     admin_player_replenish_ap, methods=["POST"])
     app.add_url_rule("/admin/config",                 "admin_config",       admin_config,        methods=["GET","POST"])
     app.add_url_rule("/admin/reset/midnight",         "admin_midnight",     admin_midnight,      methods=["POST"])
     app.add_url_rule("/admin/reset/full",             "admin_full_reset",   admin_full_reset,    methods=["POST"])
@@ -72,11 +74,17 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/health",                 "admin_health",       admin_health)
     app.add_url_rule("/admin/items",                  "admin_items",        admin_items)
     app.add_url_rule("/admin/items/<item_type>/<int:item_id>/edit", "admin_item_edit", admin_item_edit, methods=["POST"])
+    app.add_url_rule("/admin/shop",                   "admin_shop",         admin_shop)
+    app.add_url_rule("/admin/shop/populate",          "admin_shop_populate", admin_shop_populate, methods=["POST"])
+    app.add_url_rule("/admin/shop/add",               "admin_shop_add",     admin_shop_add, methods=["POST"])
+    app.add_url_rule("/admin/shop/<int:listing_id>/remove", "admin_shop_remove", admin_shop_remove, methods=["POST"])
     app.add_url_rule("/admin/analytics",              "admin_analytics",    admin_analytics)
     app.add_url_rule("/admin/npcs",                   "admin_npcs",         admin_npcs,          methods=["GET","POST"])
+    app.add_url_rule("/admin/npcs/audit",             "admin_npc_audit",    admin_npc_audit)
     app.add_url_rule("/admin/npcs/<int:pid>/edit",    "admin_npc_edit",     admin_npc_edit,      methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/run",     "admin_npc_run",      admin_npc_run,       methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/spend-ap", "admin_npc_spend_ap", admin_npc_spend_ap, methods=["POST"])
+    app.add_url_rule("/admin/npcs/<int:pid>/replenish-ap", "admin_npc_replenish_ap", admin_npc_replenish_ap, methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/retire",  "admin_npc_retire",   admin_npc_retire,    methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/inventory/grant", "admin_npc_grant", admin_npc_grant, methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/inventory/<int:inv_id>/remove", "admin_npc_remove", admin_npc_remove, methods=["POST"])
@@ -152,7 +160,33 @@ def admin_players():
            LEFT JOIN npc_profiles np ON np.player_id = p.id
            ORDER BY p.level DESC, p.xp DESC"""
     )
-    return render_template("admin/players.html", players=players)
+    return render_template(
+        "admin/players.html", players=players,
+        feedback=request.args.get("feedback"), error=request.args.get("error")
+    )
+
+
+def admin_player_replenish_ap(pid: int):
+    """Restore an active player to their calculated AP maximum for testing."""
+    from database import get_player
+    player = get_player(pid)
+    if not player:
+        return redirect(url_for("admin_players", error="Player not found."))
+    if player["retired_at"] or player["is_banned"]:
+        return redirect(url_for(
+            "admin_players", error="A retired or banned player cannot be replenished."
+        ))
+
+    before = player["current_ap"]
+    restored = player["max_ap"]
+    with exclusive_transaction():
+        execute_write("UPDATE players SET current_ap=? WHERE id=?", (restored, pid))
+        _audit("REPLENISH_PLAYER_AP", "PLAYER", pid, "Admin testing refill",
+               {"before": before, "after": restored})
+    return redirect(url_for(
+        "admin_players",
+        feedback=f"{player['character_name'] or player['username']} AP replenished from {before} to {restored}."
+    ))
 
 
 def _audit(action: str, target_type: str, target_id=None, reason=None, details=None):
@@ -387,6 +421,105 @@ def admin_item_edit(item_type: str, item_id: int):
     return redirect(url_for("admin_items", type=item_type, feedback=f"Updated {current['name']}."))
 
 
+def admin_shop():
+    """Display current stock and the item definitions available for manual listing."""
+    listings = execute("SELECT * FROM shop_listings ORDER BY item_type, listed_at, id")
+    tables = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}
+    displayed = []
+    for listing in listings:
+        table = tables.get(listing["item_type"])
+        item = execute_one(f"SELECT name FROM {table} WHERE id=?", (listing["item_id"],)) if table else None
+        seller = (execute_one("SELECT character_name FROM players WHERE id=?", (listing["seller_player_id"],))
+                  if listing.get("seller_player_id") else None)
+        displayed.append({**listing, "name": item["name"] if item else "Missing item definition",
+                          "seller_name": seller["character_name"] if seller else None})
+    choices = {
+        "WEAPON": execute("SELECT id,name,credit_cost FROM weapons WHERE is_active=1 ORDER BY name"),
+        "ARMOR": execute("SELECT id,name,credit_cost FROM armor WHERE is_active=1 ORDER BY name"),
+        "SPECIAL": execute(
+            """SELECT s.id,s.name,s.credit_cost FROM special_items s
+               JOIN special_item_registry r ON r.special_item_id=s.id
+               WHERE s.is_active=1 AND r.status='IN_POOL' ORDER BY s.name"""
+        ),
+    }
+    return render_template("admin/shop.html", listings=displayed, choices=choices)
+
+
+def admin_shop_populate():
+    """Top up system stock to configured rotation sizes without removing existing listings."""
+    from scheduler import _populate_shop_rotation, _populate_special_slots
+    settings = get_all_settings()
+    targets = {
+        "WEAPON": int(settings.get("SHOP_WEAPONS_COUNT", cfg.SHOP_WEAPONS_COUNT)),
+        "ARMOR": int(settings.get("SHOP_ARMOR_COUNT", cfg.SHOP_ARMOR_COUNT)),
+    }
+    added = 0
+    with exclusive_transaction():
+        for item_type, target in targets.items():
+            current = execute_one("SELECT COUNT(*) cnt FROM shop_listings WHERE item_type=?", (item_type,))["cnt"]
+            needed = max(0, target - current)
+            if needed:
+                _populate_shop_rotation("weapons" if item_type == "WEAPON" else "armor", needed)
+                added += needed
+        players = execute_one("SELECT COUNT(*) cnt FROM players WHERE is_banned=0")["cnt"]
+        special_target = players // 2
+        special_current = execute_one("SELECT COUNT(*) cnt FROM shop_listings WHERE item_type='SPECIAL'")["cnt"]
+        special_needed = max(0, special_target - special_current)
+        if special_needed:
+            before = special_current
+            _populate_special_slots(special_needed)
+            after = execute_one("SELECT COUNT(*) cnt FROM shop_listings WHERE item_type='SPECIAL'")["cnt"]
+            added += after - before
+        _audit("POPULATE_SHOP", "SHOP", reason="Admin requested stock top-up",
+               details={"listings_added": added, "targets": {**targets, "SPECIAL": special_target}})
+    return redirect(url_for("admin_shop", feedback=f"Shop populated: {added} listing(s) added."))
+
+
+def admin_shop_add():
+    """Add one administrator-controlled listing while preserving unique-special ownership."""
+    item_type = request.form.get("item_type", "").upper()
+    item_id = request.form.get("item_id", type=int)
+    price = request.form.get("price", type=int)
+    tables = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}
+    if item_type not in tables or not item_id or price is None or price < 0:
+        return redirect(url_for("admin_shop", error="Select an item and enter a non-negative price."))
+    item = execute_one(f"SELECT * FROM {tables[item_type]} WHERE id=? AND is_active=1", (item_id,))
+    if not item:
+        return redirect(url_for("admin_shop", error="That active item could not be found."))
+    with exclusive_transaction():
+        if item_type == "SPECIAL":
+            registry = execute_one("SELECT * FROM special_item_registry WHERE special_item_id=?", (item_id,))
+            if not registry or registry["status"] != "IN_POOL":
+                return redirect(url_for("admin_shop", error="That unique special is no longer in the available pool."))
+        listing_id = execute_write(
+            """INSERT INTO shop_listings(item_type,item_id,listing_source,price)
+               VALUES(?,?,'ADMIN',?)""", (item_type, item_id, price))
+        if item_type == "SPECIAL":
+            execute_write(
+                """UPDATE special_item_registry SET status='IN_SHOP',shop_listing_price=?,updated_at=?
+                   WHERE special_item_id=?""", (price, datetime.utcnow().isoformat(), item_id))
+        _audit("ADD_SHOP_LISTING", item_type, item_id, "Admin manually added shop stock",
+               {"listing_id": listing_id, "name": item["name"], "price": price})
+    return redirect(url_for("admin_shop", feedback=f"Added {item['name']} to the shop."))
+
+
+def admin_shop_remove(listing_id: int):
+    """Remove one listing; unique specials safely return to the global pool."""
+    listing = execute_one("SELECT * FROM shop_listings WHERE id=?", (listing_id,))
+    if not listing:
+        return redirect(url_for("admin_shop", error="Listing not found."))
+    with exclusive_transaction():
+        execute_write("DELETE FROM shop_listings WHERE id=?", (listing_id,))
+        if listing["item_type"] == "SPECIAL":
+            execute_write(
+                """UPDATE special_item_registry SET status='IN_POOL',current_owner_player_id=NULL,
+                   inventory_item_id=NULL,shop_listing_price=NULL,last_released_method='ADMIN_REMOVED',updated_at=?
+                   WHERE special_item_id=?""", (datetime.utcnow().isoformat(), listing["item_id"]))
+        _audit("REMOVE_SHOP_LISTING", listing["item_type"], listing["item_id"],
+               "Admin removed shop stock", {"listing_id": listing_id, "source": listing["listing_source"]})
+    return redirect(url_for("admin_shop", feedback="Listing removed."))
+
+
 def admin_analytics():
     """Render or process the analytics administrative workflow."""
     action_counts = execute("""SELECT action,status,COUNT(*) cnt FROM player_activity_log
@@ -589,6 +722,94 @@ def admin_npcs():
                            inventory=inventory, logs=logs)
 
 
+def admin_npc_audit():
+    """Compare NPC profiles with decisions, combat behavior, and rule warnings."""
+    today = datetime.utcnow().date().isoformat()
+    start = request.args.get("start", today)
+    end = request.args.get("end", today)
+    try:
+        datetime.strptime(start, "%Y-%m-%d")
+        datetime.strptime(end, "%Y-%m-%d")
+    except ValueError:
+        return redirect(url_for("admin_npc_audit", error="Dates must use YYYY-MM-DD."))
+    npc_id = request.args.get("npc_id", type=int)
+    profiles = execute(
+        """SELECT p.id,p.character_name,p.current_ap,p.in_combat,np.*
+           FROM npc_profiles np JOIN players p ON p.id=np.player_id
+           ORDER BY np.retired,p.character_name"""
+    )
+    selected_profiles = [p for p in profiles if not npc_id or p["id"] == npc_id]
+    start_at, end_at = f"{start} 00:00:00", f"{end} 23:59:59"
+    ids = {p["id"] for p in selected_profiles}
+    summaries = {}
+    for profile in selected_profiles:
+        motivations = {"Hunter": profile["player_hunter"], "Boss Killer": profile["boss_killer"],
+                       "Hoarder": profile["hoarder"], "Thief": profile["thief"]}
+        leaders = [name for name, score in motivations.items() if score == max(motivations.values())]
+        summaries[profile["id"]] = {
+            "profile": profile, "archetype": leaders[0] if len(leaders) == 1 else "Hybrid",
+            "decisions": {}, "actions": {}, "results": {}, "combats": 0,
+            "escapes": 0, "round_limits": 0, "round_total": 0, "max_round": 0,
+            "failures": 0, "alerts": [],
+        }
+
+    decision_rows = execute(
+        """SELECT l.*,p.character_name FROM npc_action_log l JOIN players p ON p.id=l.player_id
+           WHERE l.occurred_at BETWEEN ? AND ? ORDER BY l.id DESC""", (start_at, end_at))
+    decision_rows = [row for row in decision_rows if row["player_id"] in ids]
+    for row in decision_rows:
+        summary = summaries[row["player_id"]]
+        summary["decisions"][row["decision"]] = summary["decisions"].get(row["decision"], 0) + 1
+        lowered = row["result"].lower()
+        if any(term in lowered for term in ("not enough", "failed", "remains active", "error")):
+            summary["failures"] += 1
+
+    combat_rows = execute(
+        """SELECT cs.* FROM combat_sessions cs
+           WHERE cs.started_at BETWEEN ? AND ? ORDER BY cs.id DESC""", (start_at, end_at))
+    combat_rows = [row for row in combat_rows if row["attacker_player_id"] in ids]
+    for combat in combat_rows:
+        summary = summaries[combat["attacker_player_id"]]
+        summary["combats"] += 1
+        summary["round_total"] += combat["current_round"]
+        summary["max_round"] = max(summary["max_round"], combat["current_round"])
+        result_label = combat["result"] or combat["status"]
+        summary["results"][result_label] = summary["results"].get(result_label, 0) + 1
+        if combat["result"] == "ESCAPE": summary["escapes"] += 1
+        if combat["result"] == "SCORE_WIN": summary["round_limits"] += 1
+
+    action_rows = execute(
+        """SELECT cs.attacker_player_id,cl.action_type,COUNT(*) cnt
+           FROM combat_logs cl JOIN combat_sessions cs ON cs.id=cl.combat_session_id
+           WHERE cs.started_at BETWEEN ? AND ? AND cl.actor='ATTACKER'
+           GROUP BY cs.attacker_player_id,cl.action_type""", (start_at, end_at))
+    for row in action_rows:
+        if row["attacker_player_id"] in ids:
+            summaries[row["attacker_player_id"]]["actions"][row["action_type"]] = row["cnt"]
+
+    for summary in summaries.values():
+        profile = summary["profile"]
+        if profile["current_ap"] < 0:
+            summary["alerts"].append("Negative AP")
+        if profile["in_combat"] and not execute_one(
+            """SELECT 1 FROM combat_sessions WHERE status='ACTIVE'
+               AND (attacker_player_id=? OR defender_player_id=?)""", (profile["id"], profile["id"])):
+            summary["alerts"].append("Combat flag has no active session")
+        if summary["failures"]:
+            summary["alerts"].append(f"{summary['failures']} failed or blocked decisions")
+        if summary["max_round"] > 20:
+            summary["alerts"].append(f"Combat reached round {summary['max_round']}")
+        summary["avg_round"] = (summary["round_total"] / summary["combats"]
+                                if summary["combats"] else 0)
+
+    return render_template(
+        "admin/npc_audit.html", profiles=profiles, summaries=list(summaries.values()),
+        recent=decision_rows[:100], start=start, end=end, selected_npc=npc_id,
+        total_decisions=len(decision_rows), total_combats=len(combat_rows),
+        total_alerts=sum(len(s["alerts"]) for s in summaries.values()),
+    )
+
+
 def admin_npc_edit(pid: int):
     """Render or process the npc edit administrative workflow."""
     fields = {}
@@ -633,6 +854,27 @@ def admin_npc_spend_ap(pid: int):
     except Exception as exc:
         logger.exception("Immediate NPC AP spending failed for %d", pid)
         return redirect(url_for("admin_npcs", error=str(exc)))
+
+
+def admin_npc_replenish_ap(pid: int):
+    """Restore one active NPC to its normal AP maximum for controlled testing."""
+    from database import get_player
+    profile = execute_one("SELECT * FROM npc_profiles WHERE player_id=?", (pid,))
+    player = get_player(pid)
+    if not profile or not player:
+        return redirect(url_for("admin_npcs", error="NPC not found."))
+    if profile["retired"] or player["is_banned"]:
+        return redirect(url_for("admin_npcs", error="A retired NPC cannot be replenished."))
+    before = player["current_ap"]
+    restored = player["max_ap"]
+    with exclusive_transaction():
+        execute_write("UPDATE players SET current_ap=? WHERE id=?", (restored, pid))
+        _audit("REPLENISH_NPC_AP", "PLAYER", pid, "Admin testing refill",
+               {"before": before, "after": restored})
+    return redirect(url_for(
+        "admin_npcs",
+        feedback=f"{player['character_name']} AP replenished from {before} to {restored}."
+    ))
 
 
 def admin_npc_retire(pid: int):

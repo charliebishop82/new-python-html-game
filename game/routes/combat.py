@@ -217,11 +217,21 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
 
 def _escaped_round_result(round_log, session_id, attacker_first, att_init, def_init):
     """Return immediately after a successful normal Escape action."""
+    combat_session = execute_one(
+        "SELECT current_round FROM combat_sessions WHERE id = ?", (session_id,)
+    )
+    # handle_escape resolves the database session and clears the combat flags.
+    # Also discard the browser-side session reference so the next navigation
+    # cannot try to resume combat that has already ended.
+    _clear_browser_combat_session()
     return {
         "round_log": round_log, "combat_ended": True, "at_round_limit": False,
         "winner_side": None, "final_result": {"result_type": "ESCAPE"},
         "session_id": session_id, "attacker_first": attacker_first,
         "att_init": att_init, "def_init": def_init,
+        # The result fragment replaces the ordinary round fragment, so it needs
+        # the round number in order to display the Escape action and its roll.
+        "round_number": combat_session["current_round"] if combat_session else None,
     }
 
 
@@ -342,6 +352,8 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
         raise ValueError("Combat session is not active.")
 
     round_log = []
+    at_round_limit = False
+    opponent_health = None
     # Player steal attempt
     steal_result = combat_actions.handle_steal(session_id, player_id, state)
     round_log.append(steal_result)
@@ -373,16 +385,42 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
                     (session_id,)
                 )
 
+    # Steal is a complete combat round and must obey the same continuation
+    # limits and provide the same opponent status as every other action.
+    if not ended:
+        settings = get_all_settings()
+        reload_sess = execute_one("SELECT * FROM combat_sessions WHERE id=?", (session_id,))
+        pvp_rounds = settings.get("COMBAT_ROUNDS_DEFAULT", cfg.COMBAT_ROUNDS_DEFAULT)
+        max_rounds = pvp_rounds + (
+            reload_sess["rounds_extended"]
+            * settings.get("COMBAT_ROUNDS_EXTENSION", cfg.COMBAT_ROUNDS_EXTENSION)
+        )
+        at_round_limit = (sess["combat_type"] == "PVP"
+                          and reload_sess["current_round"] > max_rounds)
+        hard_cap = settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP)
+        forced_stalemate = (sess["combat_type"] in ("BOSS", "MINION")
+                            and reload_sess["current_round"] > hard_cap)
+        state = combat_actions.get_combat_state(session_id)
+        opponent = state.get("defender") or state.get("boss") or state.get("minion")
+        opponent_max_hp = (engine.calc_max_hp(opponent) if sess["combat_type"] == "PVP"
+                           else opponent["max_hp"])
+        opponent_health = flavour.hp_status(opponent["current_hp"], opponent_max_hp)
+        if forced_stalemate:
+            final_result = combat_actions.finalize_stalemate(session_id, state)
+            ended = True
+            _clear_browser_combat_session()
+
     return {
         "round_log":      round_log,
         "combat_ended":   ended,
-        "at_round_limit": False,
+        "at_round_limit": at_round_limit,
         "winner_side":    winner_side,
         "final_result":   final_result,
         "session_id":     session_id,
         "round_number":   sess["current_round"],
         "attacker_first": True,
         "att_init": 0, "def_init": 0,
+        "opponent_health": opponent_health,
     }
 
 

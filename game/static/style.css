@@ -710,6 +710,35 @@ tr:nth-child(even) td { background: #0d0d0d; }
 :root[data-interface="cinematic"] .character-sheet>div[style*="display:grid"] { gap:18px!important; }
 :root[data-interface="cinematic"] .character-sheet>div[style*="display:grid"]>div,:root[data-interface="cinematic"] .active-effects-panel {
   padding:18px;border:1px solid rgba(212,160,72,.22);border-radius:12px;background:rgba(10,14,22,.62); }
+
+/* Cinematic light mode must override the cinematic layer's dark translucent
+   surfaces, which appears later in the cascade than the base light palette. */
+:root[data-interface="cinematic"][data-theme="light"] body.authenticated {
+  background:linear-gradient(135deg,#eee8dc,#faf7f0 55%,#f0e5d4);color:var(--white); }
+:root[data-interface="cinematic"][data-theme="light"] #left-col {
+  background:rgba(255,253,248,.98);border-color:#c9b58f;box-shadow:8px 0 24px rgba(70,48,20,.10); }
+:root[data-interface="cinematic"][data-theme="light"] #status-block {
+  border-color:#b9904d;background:linear-gradient(145deg,#fffaf0,#f1e7d6); }
+:root[data-interface="cinematic"][data-theme="light"] .action-btn {
+  background:#fffdf8;border-color:#baaE99;color:var(--green); }
+:root[data-interface="cinematic"][data-theme="light"] .action-btn.disabled,
+:root[data-interface="cinematic"][data-theme="light"] .action-btn:disabled {
+  background:#eee9df;color:#777066; }
+:root[data-interface="cinematic"][data-theme="light"] #left-nav { background:#fffdf8; }
+:root[data-interface="cinematic"][data-theme="light"] #main {
+  background:linear-gradient(145deg,#fbf8f1,#f2ece1 70%); }
+:root[data-interface="cinematic"][data-theme="light"] #terminal {
+  background:rgba(255,255,255,.48); }
+:root[data-interface="cinematic"][data-theme="light"] #terminal-output,
+:root[data-interface="cinematic"][data-theme="light"] .loadout-card,
+:root[data-interface="cinematic"][data-theme="light"] .equipment-card {
+  background:linear-gradient(145deg,#fffdf8,#eee6d8);border-color:#c7ae83;box-shadow:0 10px 22px rgba(70,48,20,.08); }
+:root[data-interface="cinematic"][data-theme="light"] .character-sheet>div[style*="display:grid"]>div,
+:root[data-interface="cinematic"][data-theme="light"] .active-effects-panel {
+  background:rgba(255,253,248,.92);border-color:#c7ae83; }
+:root[data-interface="cinematic"][data-theme="light"] #ticker-wrap,
+:root[data-interface="cinematic"][data-theme="light"] .feed-legend {
+  background:#fffdf8;border-color:#c9bea9; }
 :root[data-interface="cinematic"] .character-inventory-title,:root[data-interface="cinematic"] .character-inventory-table { display:none; }
 .loadout-slots{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}.loadout-card,.equipment-card{border:1px solid var(--border);background:var(--bg-panel);padding:16px}
 :root[data-interface="cinematic"] .loadout-card,:root[data-interface="cinematic"] .equipment-card{border-radius:12px;border-color:rgba(212,160,72,.25);background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(5,8,14,.72));box-shadow:0 12px 28px rgba(0,0,0,.16)}

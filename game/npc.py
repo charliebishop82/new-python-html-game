@@ -130,16 +130,39 @@ def run_npc_turn(player_id: int) -> dict:
     if shop_result:
         return _finish_turn(profile, "SHOP", shop_result[0], shop_result[1])
 
-    pvp_targets = _eligible_pvp_targets(player)
+    # Do not enqueue actions that are already known to be unaffordable. A small
+    # AP remainder is legitimate when no useful legal action fits that balance.
+    pvp_cost = settings.get("AP_COST_PVP", cfg.AP_COST_PVP)
+    boss_cost = settings.get("AP_COST_BOSS", cfg.AP_COST_BOSS)
+    can_pvp = player["current_ap"] >= pvp_cost
+    can_boss = player["current_ap"] >= boss_cost
+    pvp_targets = _eligible_pvp_targets(player) if can_pvp else []
+    if not can_pvp and not can_boss:
+        return _finish_turn(
+            profile, "WAIT", "Remaining AP cannot fund another useful action",
+            f"{player['current_ap']} AP remains; cheapest available combat costs {min(pvp_cost, boss_cost)} AP"
+        )
     if profile["thief"] >= max(profile["player_hunter"], profile["boss_killer"],
                                 profile["hoarder"]):
         last_mode = execute_one(
             """SELECT decision FROM npc_action_log WHERE player_id=?
-               AND decision IN ('PVP_STEAL','BOSS') ORDER BY id DESC LIMIT 1""",
+               AND decision IN ('PVP_STEAL','BOSS','MINION') ORDER BY id DESC LIMIT 1""",
             (player_id,)
         )
-        steal_turn = not last_mode or last_mode["decision"] == "BOSS"
-        if steal_turn and pvp_targets:
+        steal_turn = not last_mode or last_mode["decision"] in ("BOSS", "MINION")
+        if steal_turn and pvp_targets and can_pvp:
+            interrupted = _roll_minion_interruption(player, settings)
+            if interrupted:
+                result = enqueue_and_process(
+                    player_id, "start_boss_fight",
+                    {"opponent_id": interrupted["id"], "encounter_type": "MINION",
+                     "cost_ap": boss_cost}
+                )
+                if result.get("error"):
+                    return _finish_turn(profile, "MINION", "Minion interrupted PvP theft", result["error"])
+                combat = _finish_active_combat(player_id, result["session_id"], profile)
+                return _finish_turn(profile, "MINION",
+                                    f"{interrupted['name']} interrupted PvP theft", combat)
             target = random.choice(pvp_targets)
             result = enqueue_and_process(
                 player_id, "start_pvp_fight",
@@ -149,26 +172,46 @@ def run_npc_turn(player_id: int) -> dict:
                 return _finish_turn(profile, "PVP_STEAL", "Random eligible target selected", result["error"])
             combat = _finish_thief_combat(player_id, result["session_id"])
             return _finish_turn(profile, "PVP_STEAL", f"Attempted theft from {target['character_name']}", combat)
-        # Alternate with a boss fight for XP. If PvP was unavailable, boss is
-        # also the normal fallback under the existing eligibility rules.
-        opponent = _choose_boss(player)
-        if opponent:
+        # Alternate with the same boss/minion encounter roll a human receives
+        # from the Boss action. If PvP is unavailable, this is also the normal
+        # combat fallback under the existing eligibility rules.
+        encounter_type, opponent = _choose_combat_encounter(player, settings)
+        if opponent and can_boss:
             result = enqueue_and_process(
                 player_id, "start_boss_fight",
-                {"opponent_id": opponent["id"], "encounter_type": "BOSS",
+                {"opponent_id": opponent["id"], "encounter_type": encounter_type,
                  "cost_ap": settings.get("AP_COST_BOSS", cfg.AP_COST_BOSS)}
             )
             if not result.get("error"):
                 combat = _finish_active_combat(player_id, result["session_id"], profile)
-                return _finish_turn(profile, "BOSS", f"Alternated to boss {opponent['name']} for XP", combat)
-            return _finish_turn(profile, "BOSS", "Thief's XP-building turn", result["error"])
+                return _finish_turn(profile, encounter_type,
+                                    f"Alternated to {encounter_type.lower()} {opponent['name']} for XP",
+                                    combat)
+            return _finish_turn(profile, encounter_type, "Thief's XP-building turn", result["error"])
 
     pvp_score = profile["player_hunter"] + random.randint(-10, 10)
     boss_score = profile["boss_killer"] + random.randint(-10, 10)
     if not pvp_targets:
         boss_score += profile["player_hunter"]  # hunter fallback
+    if profile["hoarder"] >= max(profile["player_hunter"], profile["boss_killer"],
+                                  profile["thief"]):
+        # When no worthwhile shop transaction is available, hoarders pursue
+        # loot-bearing bosses instead of drifting into arbitrary PvP.
+        boss_score += profile["hoarder"]
 
-    if pvp_targets and pvp_score >= boss_score:
+    if can_pvp and pvp_targets and pvp_score >= boss_score:
+        interrupted = _roll_minion_interruption(player, settings)
+        if interrupted:
+            result = enqueue_and_process(
+                player_id, "start_boss_fight",
+                {"opponent_id": interrupted["id"], "encounter_type": "MINION",
+                 "cost_ap": boss_cost}
+            )
+            if result.get("error"):
+                return _finish_turn(profile, "MINION", "Minion interrupted PvP hunt", result["error"])
+            combat = _finish_active_combat(player_id, result["session_id"], profile)
+            return _finish_turn(profile, "MINION",
+                                f"{interrupted['name']} interrupted PvP hunt", combat)
         target = _choose_pvp_target(player, pvp_targets, profile["aggression"])
         result = enqueue_and_process(
             player_id, "start_pvp_fight",
@@ -179,17 +222,18 @@ def run_npc_turn(player_id: int) -> dict:
         combat = _finish_active_combat(player_id, result["session_id"], profile)
         return _finish_turn(profile, "PVP", f"Targeted {target['character_name']}", combat)
 
-    opponent = _choose_boss(player)
-    if opponent:
+    encounter_type, opponent = _choose_combat_encounter(player, settings)
+    if opponent and can_boss:
         result = enqueue_and_process(
             player_id, "start_boss_fight",
-            {"opponent_id": opponent["id"], "encounter_type": "BOSS",
+            {"opponent_id": opponent["id"], "encounter_type": encounter_type,
              "cost_ap": settings.get("AP_COST_BOSS", cfg.AP_COST_BOSS)}
         )
         if not result.get("error"):
             combat = _finish_active_combat(player_id, result["session_id"], profile)
-            return _finish_turn(profile, "BOSS", f"Hunted {opponent['name']}", combat)
-        return _finish_turn(profile, "BOSS", "Boss hunt selected", result["error"])
+            return _finish_turn(profile, encounter_type,
+                                f"Hunted {encounter_type.lower()} {opponent['name']}", combat)
+        return _finish_turn(profile, encounter_type, "Boss/minion hunt selected", result["error"])
 
     return _finish_turn(profile, "WAIT", "No legal useful action was available", "No action")
 
@@ -422,6 +466,10 @@ def _maybe_repair(player: dict, profile: dict):
     """Provide the internal maybe repair operation used by this module."""
     if random.randint(1, 100) > profile["repair_tendency"]:
         return None
+    settings = get_all_settings()
+    if (player["current_ap"] < settings.get("AP_COST_BLACKSMITH", cfg.AP_COST_BLACKSMITH)
+            or player["credits"] <= 0):
+        return None
     threshold = 40 + profile["repair_tendency"] // 2
     equipped = [player.get("equipped_weapon_id"), player.get("equipped_armor_id")]
     damaged = execute(
@@ -594,6 +642,58 @@ def _choose_boss(player: dict):
            ORDER BY CASE WHEN COALESCE(bi.kill_count,0)=0 THEN 0 ELSE 1 END,
                     ABS(b.level-?) ASC, RANDOM() LIMIT 1""", (player["id"], player["level"])
     )
+
+
+def _choose_combat_encounter(player: dict, settings: dict) -> tuple[str, dict | None]:
+    """Roll and select a boss or minion using the human encounter rules."""
+    minion_chance = max(0.0, min(1.0, settings.get(
+        "MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE
+    )))
+    encounter_type = "MINION" if random.random() < minion_chance else "BOSS"
+    singular = "minion" if encounter_type == "MINION" else "boss"
+    table = "minions" if encounter_type == "MINION" else "bosses"
+    instances = f"{singular}_instances"
+    id_column = f"{singular}_id"
+
+    discovered = execute(
+        f"SELECT {id_column} FROM {instances} WHERE player_id=?",
+        (player["id"],)
+    )
+    discovered_ids = [row[id_column] for row in discovered]
+    if discovered_ids:
+        placeholders = ",".join("?" for _ in discovered_ids)
+        opponent = execute_one(
+            f"SELECT * FROM {table} WHERE is_active=1 "
+            f"AND id NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT 1",
+            tuple(discovered_ids)
+        )
+        if opponent:
+            return encounter_type, opponent
+    return encounter_type, execute_one(
+        f"SELECT * FROM {table} WHERE is_active=1 ORDER BY RANDOM() LIMIT 1"
+    )
+
+
+def _roll_minion_interruption(player: dict, settings: dict) -> dict | None:
+    """Return a minion when an NPC's attempted PvP action is interrupted."""
+    chance = max(0.0, min(1.0, settings.get(
+        "MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE
+    )))
+    if random.random() >= chance:
+        return None
+    discovered = execute(
+        "SELECT minion_id FROM minion_instances WHERE player_id=?", (player["id"],)
+    )
+    ids = [row["minion_id"] for row in discovered]
+    if ids:
+        placeholders = ",".join("?" for _ in ids)
+        minion = execute_one(
+            f"SELECT * FROM minions WHERE is_active=1 AND id NOT IN ({placeholders}) "
+            "ORDER BY RANDOM() LIMIT 1", tuple(ids)
+        )
+        if minion:
+            return minion
+    return execute_one("SELECT * FROM minions WHERE is_active=1 ORDER BY RANDOM() LIMIT 1")
 
 
 def _equip_best_items(player_id: int, profile: dict) -> list[str]:

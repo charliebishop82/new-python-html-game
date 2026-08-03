@@ -775,6 +775,18 @@ def handle_swap_gear(session_id: int, player_id: int, state: dict,
     current_ac = engine.calc_ac(attacker, state["attacker_equipped"].get("armor"))
     ac_penalty = int(current_ac * ac_pen)
 
+    requested = ((new_weapon_inv_id, "WEAPON"), (new_armor_inv_id, "ARMOR"),
+                 (new_special_inv_id, "SPECIAL"))
+    if not any(inv_id for inv_id, _ in requested):
+        raise ValueError("Choose at least one item to equip.")
+    for inv_id, expected_type in requested:
+        if not inv_id:
+            continue
+        owned = execute_one(
+            "SELECT item_type FROM inventory_items WHERE id=? AND player_id=?", (inv_id, player_id))
+        if not owned or owned["item_type"] != expected_type:
+            raise ValueError(f"Selected {expected_type.lower()} is not in your inventory.")
+
     with exclusive_transaction():
         if new_weapon_inv_id:
             execute_write(

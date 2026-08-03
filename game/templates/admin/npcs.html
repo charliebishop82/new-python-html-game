@@ -35,6 +35,7 @@
     <div style="display:flex;gap:8px;margin-bottom:10px">
         <form method="POST" action="/admin/npcs/{{ npc.player_id }}/run"><button class="btn" {% if npc.retired %}disabled{% endif %}>Run One Turn</button></form>
         <form method="POST" action="/admin/npcs/{{ npc.player_id }}/spend-ap" onsubmit="return confirm('Let {{ npc.character_name }} act repeatedly to spend available AP?');"><button class="btn" {% if npc.retired or not npc.enabled %}disabled{% endif %}>Spend AP Now</button></form>
+        <form method="POST" action="/admin/npcs/{{ npc.player_id }}/replenish-ap" onsubmit="return confirm('Restore {{ npc.character_name }} to their normal maximum AP for testing?');"><button class="btn" title="Restore only this NPC to its normal AP maximum. Does not run the midnight reset." {% if npc.retired %}disabled{% endif %}>Replenish AP</button></form>
         <a class="btn" href="/admin/players/{{ npc.player_id }}">Full Player Record</a>
         {% if not npc.retired %}<form method="POST" action="/admin/npcs/{{ npc.player_id }}/retire" onsubmit="return confirm('Retire {{ npc.character_name }} and return all specials?');"><button class="btn btn-danger">Retire</button></form>{% endif %}
     </div>

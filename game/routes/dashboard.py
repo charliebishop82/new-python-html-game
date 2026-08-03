@@ -2,7 +2,7 @@
 # routes/dashboard.py  (Phase 9 — adds now_iso injection for JS feed polling)
 import logging
 from datetime import datetime
-from flask import Blueprint, render_template, g
+from flask import Blueprint, render_template, g, session
 from database import execute, get_all_settings
 import config_defaults as cfg
 
@@ -73,6 +73,7 @@ def index():
         f"{label_map.get(e['effect_type'], e['effect_type'])} {int(abs(e['value']))}"
         for e in active_effects
     ]
+    active_combat = _load_active_combat(player)
 
     return render_template(
         'dashboard.html',
@@ -81,7 +82,45 @@ def index():
         blackout=g.get('blackout', False),
         now_iso=now_iso,
         effect_labels=effect_labels,
+        active_combat=active_combat,
     )
+
+
+def _load_active_combat(player: dict) -> dict | None:
+    """Restore a player-controlled active fight after navigation or reconnecting."""
+    if not player.get("in_combat"):
+        return None
+    rows = execute(
+        """SELECT * FROM combat_sessions
+           WHERE attacker_player_id=? AND status='ACTIVE' ORDER BY id DESC LIMIT 1""",
+        (player["id"],),
+    )
+    if not rows:
+        return None
+    combat_session = rows[0]
+    session["combat_session_id"] = combat_session["id"]
+    from combat.actions import get_combat_state
+    from combat.flavour import hp_status
+    from combat.engine import calc_max_hp
+    state = get_combat_state(combat_session["id"])
+    encounter_type = combat_session["combat_type"]
+    opponent = state["defender"] if encounter_type == "PVP" else state["boss"] or state["minion"]
+    opponent_max_hp = calc_max_hp(opponent) if encounter_type == "PVP" else opponent["max_hp"]
+    inventory = execute(
+        """SELECT ii.id inv_id,ii.item_type,
+                  CASE ii.item_type WHEN 'WEAPON' THEN w.name WHEN 'ARMOR' THEN a.name ELSE s.name END name
+           FROM inventory_items ii
+           LEFT JOIN weapons w ON ii.item_type='WEAPON' AND w.id=ii.item_id
+           LEFT JOIN armor a ON ii.item_type='ARMOR' AND a.id=ii.item_id
+           LEFT JOIN special_items s ON ii.item_type='SPECIAL' AND s.id=ii.item_id
+           WHERE ii.player_id=? ORDER BY ii.item_type,name""", (player["id"],))
+    return {
+        "opponent": opponent, "encounter_type": encounter_type,
+        "session_id": combat_session["id"], "intel": None, "intel_detail": None,
+        "opponent_health": hp_status(opponent["current_hp"], opponent_max_hp),
+        "boss_flavor": opponent.get("flavor_text", ""),
+        "boss_phase": opponent.get("current_phase", 1), "inventory": inventory,
+    }
 
 
 def _get_button_states(player: dict, settings: dict) -> dict:

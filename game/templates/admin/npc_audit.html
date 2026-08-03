@@ -1,0 +1,36 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}NPC Behavior Audit{% endblock %}
+{% block content %}
+<h1>NPC Behavior Audit</h1>
+<p style="color:#777;margin-bottom:14px">Compare configured motivations with actual decisions and surface rule or automation warnings.</p>
+<form method="GET" style="display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:18px">
+    <label>Start<br><input type="date" name="start" value="{{ start }}"></label>
+    <label>End<br><input type="date" name="end" value="{{ end }}"></label>
+    <label>NPC<br><select name="npc_id"><option value="">All NPCs</option>{% for npc in profiles %}<option value="{{ npc.id }}" {% if selected_npc == npc.id %}selected{% endif %}>{{ npc.character_name }}</option>{% endfor %}</select></label>
+    <button class="btn">Apply</button>
+</form>
+<div class="stat-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+    <div class="stat-box"><span class="stat-val">{{ total_decisions }}</span><span class="stat-lbl">DECISIONS</span></div>
+    <div class="stat-box"><span class="stat-val">{{ total_combats }}</span><span class="stat-lbl">COMBATS</span></div>
+    <div class="stat-box"><span class="stat-val">{{ total_alerts }}</span><span class="stat-lbl">AUDIT WARNINGS</span></div>
+</div>
+
+{% for summary in summaries %}
+<section style="border:1px solid var(--border,#333);padding:12px;margin:12px 0;background:var(--bg-panel,#111)">
+    <h2 style="margin-top:0">{{ summary.profile.character_name }} · {{ summary.archetype }}</h2>
+    <p style="color:#777;margin-bottom:8px">Hunter {{ summary.profile.player_hunter }} · Boss {{ summary.profile.boss_killer }} · Hoarder {{ summary.profile.hoarder }} · Thief {{ summary.profile.thief }} · AP {{ summary.profile.current_ap }}</p>
+    {% if summary.alerts %}<div class="error">⚠ {{ summary.alerts|join(' · ') }}</div>{% else %}<div class="feedback">✓ No audit warnings in this range.</div>{% endif %}
+    <table><tr><th>Decision Mix</th><th>Combat Choices</th><th>Results</th></tr><tr>
+        <td>{% for name,count in summary.decisions|dictsort(by='value', reverse=true) %}<div>{{ name }}: <strong>{{ count }}</strong></div>{% else %}No decisions{% endfor %}</td>
+        <td>{% for name,count in summary.actions|dictsort(by='value', reverse=true) %}<div>{{ name }}: <strong>{{ count }}</strong></div>{% else %}No combat actions{% endfor %}</td>
+        <td>Combats: {{ summary.combats }} · Escapes: {{ summary.escapes }}<br>{% for name,count in summary.results|dictsort(by='value', reverse=true) %}{{ name }}: <strong>{{ count }}</strong><br>{% endfor %}Round-limit results: {{ summary.round_limits }}<br>Average rounds: {{ '%.1f'|format(summary.avg_round) }} · Longest: {{ summary.max_round }}</td>
+    </tr></table>
+    <a class="btn" href="/admin/players/{{ summary.profile.id }}/activity?start={{ start }}&end={{ end }}">Detailed Activity</a>
+</section>
+{% else %}<p>No NPCs match this filter.</p>{% endfor %}
+
+<h2>Recent Decision Trace</h2>
+<table><tr><th>Time</th><th>NPC</th><th>Decision</th><th>Reason</th><th>Result</th></tr>
+{% for row in recent %}<tr><td>{{ row.occurred_at }}</td><td>{{ row.character_name }}</td><td>{{ row.decision }}</td><td>{{ row.reason }}</td><td>{{ row.result }}</td></tr>
+{% else %}<tr><td colspan="5">No decisions in this range.</td></tr>{% endfor %}</table>
+{% endblock %}

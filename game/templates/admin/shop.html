@@ -1,0 +1,69 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Shop{% endblock %}
+{% block content %}
+<h1>Shop Control</h1>
+<p style="margin-bottom:14px;color:#888">
+    Manage the live shop inventory. Populate adds stock up to the configured targets without clearing existing listings.
+    <span class="context-help" tabindex="0" data-help="Player-sold listings remain in place. Unique specials can only be listed while they are in the global pool.">?</span>
+</p>
+
+<form method="POST" action="/admin/shop/populate" style="margin-bottom:22px"
+      onsubmit="return confirm('Top up the shop to its configured stock levels?');">
+    <button class="btn">Populate Shop</button>
+</form>
+
+<h2>Add One Item</h2>
+<form method="POST" action="/admin/shop/add"
+      style="display:grid;grid-template-columns:160px minmax(280px,1fr) 150px auto;gap:10px;align-items:end;margin-bottom:24px">
+    <label>Type<br>
+        <select name="item_type" id="shop-item-type" style="width:100%">
+            <option value="WEAPON">Weapon</option><option value="ARMOR">Armor</option><option value="SPECIAL">Special</option>
+        </select>
+    </label>
+    <label>Item<br>
+        <select name="item_id" id="shop-item-id" style="width:100%" required></select>
+    </label>
+    <label>Price<br><input type="number" name="price" id="shop-price" min="0" required style="width:100%"></label>
+    <button class="btn">Add Listing</button>
+</form>
+
+<h2>Current Listings ({{ listings|length }})</h2>
+<table>
+    <tr><th>ID</th><th>Item</th><th>Type</th><th>Price</th><th>Source</th><th>Seller</th><th>Durability</th><th>Listed</th><th></th></tr>
+    {% for listing in listings %}
+    <tr>
+        <td>{{ listing.id }}</td><td>{{ listing.name }}</td><td>{{ listing.item_type }}</td>
+        <td>{{ listing.price }}</td><td>{{ listing.listing_source }}</td><td>{{ listing.seller_name or '—' }}</td>
+        <td>{{ listing.durability_at_listing if listing.durability_at_listing is not none else 'New' }}</td>
+        <td>{{ listing.listed_at }}</td>
+        <td><form method="POST" action="/admin/shop/{{ listing.id }}/remove"
+                  onsubmit="return confirm('Remove {{ listing.name|e }} from the shop?');">
+            <button class="btn btn-danger">Remove</button>
+        </form></td>
+    </tr>
+    {% else %}<tr><td colspan="9">The shop is empty.</td></tr>{% endfor %}
+</table>
+
+<script>
+(() => {
+    const choices = {{ choices|tojson }};
+    const type = document.getElementById('shop-item-type');
+    const item = document.getElementById('shop-item-id');
+    const price = document.getElementById('shop-price');
+    const refresh = () => {
+        item.innerHTML = '';
+        (choices[type.value] || []).forEach(entry => {
+            const option = document.createElement('option');
+            option.value = entry.id;
+            option.textContent = `${entry.name} (base ${entry.credit_cost} credits)`;
+            option.dataset.price = entry.credit_cost;
+            item.appendChild(option);
+        });
+        price.value = item.selectedOptions[0]?.dataset.price || '';
+    };
+    type.addEventListener('change', refresh);
+    item.addEventListener('change', () => price.value = item.selectedOptions[0]?.dataset.price || '');
+    refresh();
+})();
+</script>
+{% endblock %}

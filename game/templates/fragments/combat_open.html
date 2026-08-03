@@ -6,7 +6,7 @@
      data-credits="{{ player.credits }}">
 
     <div class="term-line term-amber combat-boundary">
-        ══════════════════════ COMBAT BEGINS ══════════════════════
+        ══════════════════════ {{ 'COMBAT RESUMED' if resumed|default(false) else 'COMBAT BEGINS' }} ══════════════════════
     </div>
     <div class="term-line term-amber">
         {% if encounter_type == 'BOSS' %}
@@ -47,5 +47,21 @@
         <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="escape"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Escape</button></form>
         <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="observe"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Observe</button></form>
     </div>
+    {% if combat_inventory is defined and combat_inventory %}
+    <details class="combat-gear-swap" style="margin-top:10px">
+        <summary>Change Equipment (uses your turn)</summary>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"
+              style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:end">
+            <input type="hidden" name="action_type" value="swap_gear">
+            {% for kind, field in [('WEAPON','new_weapon_id'),('ARMOR','new_armor_id'),('SPECIAL','new_special_id')] %}
+            <label>{{ kind|title }}<br><select name="{{ field }}"><option value="">Keep current</option>
+                {% for item in combat_inventory if item.item_type == kind %}<option value="{{ item.inv_id }}">{{ item.name }}</option>{% endfor %}
+            </select></label>
+            {% endfor %}
+            <button type="submit" class="action-btn" style="width:auto;padding:6px 14px">Use Turn to Swap</button>
+        </form>
+        <div class="term-line term-grey" style="font-size:11px">Changing equipment lets your opponent act and temporarily penalizes accuracy and defense.</div>
+    </details>
+    {% endif %}
 </div>
 <script>window._combatSessionId = {{ session_id }};</script>

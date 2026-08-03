@@ -37,6 +37,15 @@
         ⚠ Midnight reset approaching — combat unavailable for a few minutes.
     </div>
     {% endif %}
+    {% if active_combat %}
+        {% with opponent=active_combat.opponent, encounter_type=active_combat.encounter_type,
+                session_id=active_combat.session_id, intel=active_combat.intel,
+                intel_detail=active_combat.intel_detail, opponent_health=active_combat.opponent_health,
+                boss_flavor=active_combat.boss_flavor, boss_phase=active_combat.boss_phase,
+                combat_inventory=active_combat.inventory, resumed=true %}
+            {% include "fragments/combat_open.html" %}
+        {% endwith %}
+    {% endif %}
 </div>
 {% endblock %}
 
