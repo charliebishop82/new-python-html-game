@@ -561,6 +561,13 @@ body.auth-page #main {
     cursor: pointer;
 }
 .stat-choice:hover { border-color: var(--green); }
+.stat-choice.selected,
+.stat-choice:has(input[type=radio]:checked) {
+    border-color: var(--green);
+    background: color-mix(in srgb, var(--green) 14%, var(--bg-input));
+    box-shadow: 0 0 0 1px var(--green), 0 0 18px rgba(0, 204, 102, 0.18);
+}
+.stat-choice.selected .stat-name { color: var(--green); }
 .stat-choice input[type=radio] { display: none; }
 .stat-name    { color: var(--amber); display: block; font-size: 13px; }
 .stat-current { color: var(--green); display: block; font-size: 12px; }

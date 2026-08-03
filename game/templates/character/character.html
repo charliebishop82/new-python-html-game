@@ -97,6 +97,21 @@
         {% endif %}
     </section>
 
+    <section class="active-effects-panel level-history-panel" aria-labelledby="level-history-title">
+        <h3 id="level-history-title">Level Bonuses</h3>
+        <p class="active-effects-empty" style="margin-bottom:8px;">Each level grants one permanent stat increase.</p>
+        {% if level_history %}
+        <div class="active-effects-list">
+            {% for entry in level_history %}
+            <div class="active-effect effect-good">
+                <span>Level {{ entry.level_reached }} · +1 {{ entry.stat_increased }}</span>
+                <span class="active-effect-duration">{{ entry.timestamp[:10] }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}<p class="active-effects-empty">No level bonuses assigned yet.</p>{% endif %}
+    </section>
+
     <!-- INVENTORY TABLE -->
     <h3 class="character-inventory-title" style="color:var(--amber);margin-bottom:10px;">
         Inventory

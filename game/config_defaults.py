@@ -24,6 +24,7 @@ AP_COST_TAVERN                         = 2
 AP_COST_BLACKSMITH                     = 2
 AP_COST_SHOP                           = 1
 AP_COST_ESCAPE                         = 1
+AP_COST_COMBAT_EXTENSION               = 1
 TRICKLE_AP_AMOUNT                      = 3
 TRICKLE_AP_INTERVAL_HOURS              = 6
 COMBAT_EXTENSION_TIMEOUT               = 20
@@ -108,7 +109,8 @@ XP_CURVE = {
 SETTING_TYPES = {
     "BASE_DAILY_AP": int, "AP_CARRYOVER_CAP": int, "AP_COST_BOSS": int,
     "AP_COST_PVP": int, "AP_COST_TAVERN": int, "AP_COST_BLACKSMITH": int,
-    "AP_COST_SHOP": int, "AP_COST_ESCAPE": int, "TRICKLE_AP_AMOUNT": int,
+    "AP_COST_SHOP": int, "AP_COST_ESCAPE": int, "AP_COST_COMBAT_EXTENSION": int,
+    "TRICKLE_AP_AMOUNT": int,
     "TRICKLE_AP_INTERVAL_HOURS": int, "COMBAT_EXTENSION_TIMEOUT": int,
     "MIDNIGHT_BLACKOUT_MINUTES": int, "STARTING_CREDITS": int,
     "STARTING_STAT_POINTS": int, "BASE_HP": int, "HP_PER_LEVEL": int,

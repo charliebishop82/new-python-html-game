@@ -98,6 +98,13 @@ def _check_levelup():
     player = g.get("player")
     if player and player.get("pending_levelup") and not player.get("in_combat"):
         return redirect(url_for("auth.levelup"))
+    if player and not player.get("in_combat"):
+        threshold = cfg.XP_CURVE.get(player["level"] + 1)
+        if threshold is not None and player["xp"] >= threshold:
+            from combat.engine import check_level_up
+            if check_level_up(player["id"], player["xp"], player["level"]):
+                g.player = get_player(player["id"])
+                return redirect(url_for("auth.levelup"))
     return None
 
 

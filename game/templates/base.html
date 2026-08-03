@@ -50,11 +50,11 @@
         </div>
         <div class="status-line">
             <span class="label">XP</span>
-            <span id="status-xp">{{ player.xp }}</span>
+            <span><span id="status-xp">{{ player.xp }}</span><span id="status-xp-threshold">{% if player.get('next_level_xp') is not none %}/{{ player.get('next_level_xp') }}{% endif %}</span></span>
         </div>
         <div class="status-line" title="Experience still needed to reach level {{ player.level + 1 }}">
             <span class="label">NEXT</span>
-            <span id="status-xp-next">{{ player.xp_to_next_level if player.xp_to_next_level is not none else 'MAX' }}</span>
+            <span id="status-xp-next">{% if player.get('xp_to_next_level') is none %}MAX{% elif player.get('xp_to_next_level') <= 0 %}LEVEL UP{% else %}{{ player.get('xp_to_next_level') }} XP{% endif %}</span>
         </div>
         <div class="status-line">
             <span class="label">HP</span>
@@ -151,6 +151,7 @@
 {% endif %}
 
 {% block scripts %}{% endblock %}
+{% if player %}<script>window.globalFeedUrl = "{{ url_for('feeds.global_latest') }}";</script>{% endif %}
 <script src="{{ url_for('static', filename='terminal.js') }}"></script>
 
 </body>

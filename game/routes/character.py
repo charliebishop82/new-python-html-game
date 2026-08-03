@@ -37,6 +37,11 @@ def index():
     }
     derived = _calc_derived_stats(player, equipped, settings)
     active_effects = _get_active_effects(player["id"])
+    level_history = execute(
+        """SELECT level_reached, stat_increased, timestamp
+           FROM level_up_history WHERE player_id = ? ORDER BY level_reached DESC, id DESC""",
+        (player["id"],)
+    )
 
     return render_template(
         "character/character.html",
@@ -44,6 +49,7 @@ def index():
         equipped=equipped,
         derived=derived,
         active_effects=active_effects,
+        level_history=level_history,
         preferences=["Aggressive", "Defensive", "Opportunist", "Balanced"],
         feedback=request.args.get("feedback"),
         error=request.args.get("error"),

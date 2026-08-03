@@ -1,0 +1,13 @@
+<div class="fragment" data-combat-resumed="true"
+     data-hp="{{ player.current_hp }}" data-max-hp="{{ player.max_hp }}"
+     data-ap="{{ player.current_ap }}" data-max-ap="{{ player.max_ap }}"
+     data-credits="{{ player.credits }}">
+    <div class="term-line term-good">Combat extended by {{ extension_rounds }} rounds. Choose your next action.</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="attack"><button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">⚔ Attack</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.steal') }}" method="POST"><button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">💰 Steal</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="brace"><button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">🛡 Brace</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="escape"><button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">🚪 Escape</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="observe"><button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">🔍 Observe</button></form>
+    </div>
+</div>

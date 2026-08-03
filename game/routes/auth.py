@@ -311,27 +311,42 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
     new_stat_val = player[col] + 1
     new_level    = player["level"]
 
-    # Recalculate max HP with new stat (end may have just increased)
+    next_threshold = cfg.XP_CURVE.get(new_level + 1)
+    has_another_level = next_threshold is not None and player["xp"] >= next_threshold
+    target_level = new_level + 1 if has_another_level else new_level
+
+    # Recalculate max HP with the assigned stat and any immediately queued level.
     new_end = new_stat_val if stat == "end" else player["end_stat"]
-    new_max_hp = 10 + new_end + (5 * new_level)
+    new_max_hp = 10 + new_end + (5 * target_level)
 
     with exclusive_transaction():
         execute_write(f"UPDATE players SET {col} = ? WHERE id = ?", (new_stat_val, player_id))
         # Always fully restore HP on level up
         execute_write(
-            "UPDATE players SET current_hp = ?, pending_levelup = 0 WHERE id = ?",
-            (new_max_hp, player_id)
+            "UPDATE players SET current_hp = ?, pending_levelup = ?, level = ? WHERE id = ?",
+            (new_max_hp, 1 if has_another_level else 0,
+             target_level, player_id)
         )
         execute_write(
             """INSERT INTO level_up_history (player_id, level_reached, stat_increased)
                VALUES (?, ?, ?)""",
             (player_id, new_level, stat.upper())
         )
+        stat_names = {"str": "Strength", "end": "Endurance", "agi": "Agility",
+                      "lck": "Luck", "per": "Perception"}
+        execute_write(
+            """INSERT INTO daily_feed
+               (feed_scope, player_id, flavor_text, event_category)
+               VALUES ('PERSONAL', ?, ?, 'LEVEL_UP')""",
+            (player_id,
+             f"{player['character_name']} reached Level {new_level} and increased "
+             f"{stat_names[stat]} to {new_stat_val}.")
+        )
 
     logger.info("Player %d assigned level-up stat point to %s (now %d)",
                 player_id, stat.upper(), new_stat_val)
     return {"stat": stat.upper(), "new_value": new_stat_val,
-            "level": new_level}
+            "level": new_level, "another_level_pending": has_another_level}
 
 
 ################################################################################

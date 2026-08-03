@@ -1199,6 +1199,14 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
             potential_win_xp = engine.calc_xp_reward(base_xp, attacker["level"],
                                                        attacker["level"], xp_mult)
             xp_penalty = max(0, potential_win_xp // xp_loss_div)
+            defender = state["defender"]
+            defender_special = state["defender_equipped"].get("special")
+            defender_xp_mult = (defender_special.get("xp_multiplier", 0.0)
+                                if defender_special else 0.0)
+            defender_xp = engine.calc_xp_reward(
+                80 * attacker["level"], defender["level"], attacker["level"],
+                defender_xp_mult
+            )
             with exclusive_transaction():
                 execute_write(
                     "UPDATE players SET xp = MAX(0, xp - ?) WHERE id = ?",
@@ -1210,6 +1218,8 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                     "UPDATE player_stats SET times_reduced_to_1hp = times_reduced_to_1hp + 1 WHERE player_id = ?",
                     (attacker["id"],)
                 )
+                execute_write("UPDATE players SET xp = xp + ? WHERE id = ?",
+                              (defender_xp, defender["id"]))
 
         # Step 2: Credits stolen
         if winner and loser:
@@ -1239,6 +1249,13 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                         "UPDATE players SET credits = credits + ? WHERE id = ?",
                         (credits_stolen, winner["id"])
                     )
+
+        winner_progress = execute_one(
+            "SELECT xp, level FROM players WHERE id = ?", (winner["id"],)
+        )
+        engine.check_level_up(
+            winner["id"], winner_progress["xp"], winner_progress["level"]
+        )
 
         # Step 3: Durability hits on loser's gear (before item steal)
         if loser:

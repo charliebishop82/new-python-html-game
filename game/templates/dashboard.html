@@ -44,8 +44,7 @@
 <script>
     // Inject the current timestamp so feed polling knows where to start
     const initialTimestamp = "{{ now_iso }}";
-    const personalFeedUrl  = "{{ url_for('feeds.personal_latest') }}";
-    const globalFeedUrl    = "{{ url_for('feeds.global_latest') }}";
+    window.personalFeedUrl = "{{ url_for('feeds.personal_latest') }}";
 </script>
 {% endblock %}
 

@@ -402,12 +402,10 @@ def extend():
     )
     if result.get("error"):
         return _error_fragment(result["error"])
-    settings = get_all_settings()
-    timeout  = settings.get("COMBAT_EXTENSION_TIMEOUT", cfg.COMBAT_EXTENSION_TIMEOUT)
-    return render_template("fragments/combat_extend.html",
-                           session_id=session_id,
-                           timeout=timeout,
-                           player=player)
+    player = get_player(player["id"]) or player
+    return render_template("fragments/combat_resume.html",
+                           session_id=session_id, player=player,
+                           extension_rounds=result["extension_rounds"])
 
 
 @register_handler("combat_extend")
@@ -415,15 +413,25 @@ def handle_combat_extend(player_id: int, payload: dict) -> dict:
     """Process the queued combat extend action against validated game state."""
     session_id = payload["session_id"]
     settings   = get_all_settings()
-    ap_cost    = settings.get("AP_COST_ESCAPE", 1)  # extension costs 1 AP
+    ap_cost = settings.get("AP_COST_COMBAT_EXTENSION", cfg.AP_COST_COMBAT_EXTENSION)
 
     player = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
     if player["current_ap"] < ap_cost:
         return {"error": f"Not enough AP to extend. Need {ap_cost}."}
 
     sess = execute_one("SELECT * FROM combat_sessions WHERE id = ?", (session_id,))
+    if not sess or sess["status"] != "ACTIVE":
+        return {"error": "This combat is no longer active."}
+    if sess["attacker_player_id"] != player_id:
+        return {"error": "You are not the attacker in this combat."}
     if sess["combat_type"] != "PVP":
         return {"error": "Round extension is only available in PvP."}
+
+    base_rounds = settings.get("COMBAT_ROUNDS_DEFAULT", cfg.COMBAT_ROUNDS_DEFAULT)
+    extension_rounds = settings.get("COMBAT_ROUNDS_EXTENSION", cfg.COMBAT_ROUNDS_EXTENSION)
+    current_limit = base_rounds + (sess["rounds_extended"] * extension_rounds)
+    if sess["current_round"] <= current_limit:
+        return {"error": "Combat has already been extended. Choose your next action."}
 
     with exclusive_transaction():
         execute_write(
@@ -434,7 +442,7 @@ def handle_combat_extend(player_id: int, payload: dict) -> dict:
             "UPDATE combat_sessions SET rounds_extended = rounds_extended + 1 WHERE id = ?",
             (session_id,)
         )
-    return {"success": True}
+    return {"success": True, "extension_rounds": extension_rounds}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -451,6 +459,8 @@ def resolve():
     result = enqueue_and_process(
         player["id"], "combat_resolve", {"session_id": session_id}
     )
+    if result.get("error"):
+        return _error_fragment(result["error"])
     return _render_combat_round(result, session_id, player)
 
 
@@ -465,6 +475,14 @@ def handle_combat_resolve(player_id: int, payload: dict) -> dict:
         raise ValueError("Session not active.")
     if sess["combat_type"] != "PVP":
         raise ValueError("Score resolution only applies to PvP.")
+    if sess["attacker_player_id"] != player_id:
+        raise ValueError("You are not the attacker in this combat.")
+    settings = get_all_settings()
+    current_limit = (settings.get("COMBAT_ROUNDS_DEFAULT", cfg.COMBAT_ROUNDS_DEFAULT) +
+                     sess["rounds_extended"] * settings.get(
+                         "COMBAT_ROUNDS_EXTENSION", cfg.COMBAT_ROUNDS_EXTENSION))
+    if sess["current_round"] <= current_limit:
+        raise ValueError("Combat is still active; choose a combat action.")
 
     attacker = state["attacker"]
     defender = state["defender"]

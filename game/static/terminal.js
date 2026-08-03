@@ -58,7 +58,20 @@ document.addEventListener('DOMContentLoaded', () => {
 document.addEventListener('DOMContentLoaded', () => {
     bindTerminalForms();
     bindClassSelection();
+    bindLevelUpSelection();
 });
+
+function bindLevelUpSelection() {
+    const choices = document.querySelectorAll('.stat-choice');
+    if (!choices.length) return;
+    const update = () => choices.forEach(choice => {
+        const radio = choice.querySelector('input[type="radio"]');
+        choice.classList.toggle('selected', Boolean(radio && radio.checked));
+        choice.setAttribute('aria-selected', String(Boolean(radio && radio.checked)));
+    });
+    choices.forEach(choice => choice.addEventListener('change', update));
+    update();
+}
 
 function bindClassSelection() {
     const options = document.querySelectorAll('.class-option');
@@ -103,6 +116,10 @@ function bindTerminalForms() {
                 appendToTerminal(`<div class="term-line term-error">Action failed (${response.status}). Please try again or check the server log.</div>`);
                 return;
             }
+            const sourceFragment = form.closest('.fragment');
+            if (sourceFragment) {
+                sourceFragment.querySelectorAll('button').forEach(button => { button.disabled = true; });
+            }
             appendToTerminal(html);
             // Rebind any new terminal-action forms inside the fragment
             bindTerminalForms();
@@ -119,6 +136,12 @@ function appendToTerminal(html) {
     terminal.scrollTop = terminal.scrollHeight;
     // Extract and apply any status updates embedded in the fragment
     updateStatusFromFragment(div);
+    const extensionPrompt = div.querySelector('[data-extension-timeout]');
+    if (extensionPrompt) {
+        startExtensionTimer(Number(extensionPrompt.dataset.extensionTimeout),
+            extensionPrompt.dataset.resolveUrl, extensionPrompt);
+    }
+    if (div.querySelector('[data-combat-resumed]')) cancelExtensionTimer();
 }
 
 
@@ -135,8 +158,8 @@ const POLL_INTERVAL = 5000;
 
 function pollFeeds() {
     // Personal feed → terminal
-    if (typeof personalFeedUrl !== 'undefined') {
-        fetch(`${personalFeedUrl}?since=${encodeURIComponent(lastPersonalTs)}`)
+    if (document.getElementById('terminal') && window.personalFeedUrl) {
+        fetch(`${window.personalFeedUrl}?since=${encodeURIComponent(lastPersonalTs)}`)
             .then(r => r.json())
             .then(entries => {
                 entries.forEach(entry => {
@@ -148,10 +171,14 @@ function pollFeeds() {
     }
 
     // Global feed → ticker
-    if (typeof globalFeedUrl !== 'undefined') {
-        fetch(`${globalFeedUrl}?since=${encodeURIComponent(lastGlobalTs)}`)
+    if (window.globalFeedUrl) {
+        fetch(`${window.globalFeedUrl}?since=${encodeURIComponent(lastGlobalTs)}`)
             .then(r => r.json())
             .then(entries => {
+                const ticker = document.getElementById('ticker-content');
+                if (!entries.length && ticker && ticker.textContent === 'Loading global feed...') {
+                    ticker.textContent = 'No world announcements yet.';
+                }
                 entries.forEach(entry => {
                     appendToTicker(entry.flavor_text);
                     lastGlobalTs = entry.occurred_at;
@@ -189,8 +216,9 @@ function appendToTicker(text) {
     ticker.textContent += '  ·  ' + text;
 }
 
-// Start polling if on dashboard
-if (document.getElementById('terminal')) {
+// The world ticker is shared by every authenticated page; the personal feed
+// is appended only when the dashboard terminal is present.
+if (document.getElementById('terminal') || document.getElementById('ticker-content')) {
     pollFeeds();
     setInterval(pollFeeds, POLL_INTERVAL);
 }
@@ -212,6 +240,7 @@ function updateStatusFromFragment(container) {
     const maxAp = el.dataset.maxAp;
     const level = el.dataset.level;
     const xp    = el.dataset.xp;
+    const xpThreshold = el.dataset.xpThreshold;
     const xpNext = el.dataset.xpNext;
     const cr    = el.dataset.credits;
 
@@ -221,6 +250,7 @@ function updateStatusFromFragment(container) {
     if (maxAp !== undefined) setEl('status-maxap',    maxAp);
     if (level !== undefined) setEl('status-level',    level);
     if (xp !== undefined) setEl('status-xp',          xp);
+    if (xpThreshold !== undefined) setEl('status-xp-threshold', xpThreshold);
     if (xpNext !== undefined) setEl('status-xp-next', xpNext);
     if (cr    !== undefined) setEl('status-credits',  cr);
 }
@@ -240,20 +270,25 @@ function setEl(id, value) {
 
 let _extensionTimer = null;
 
-function startExtensionTimer(seconds, resolveUrl) {
-    // Clear any existing timer (safety)
+function cancelExtensionTimer() {
     if (_extensionTimer) clearInterval(_extensionTimer);
+    _extensionTimer = null;
+}
+
+function startExtensionTimer(seconds, resolveUrl, container) {
+    // Clear any existing timer (safety)
+    cancelExtensionTimer();
 
     let remaining = seconds;
-    const timerEl = document.getElementById('extend-timer');
+    const timerEl = container ? container.querySelector('#extend-timer') : null;
 
     _extensionTimer = setInterval(() => {
         remaining--;
         if (timerEl) timerEl.textContent = remaining;
 
         if (remaining <= 0) {
-            clearInterval(_extensionTimer);
-            _extensionTimer = null;
+            cancelExtensionTimer();
+            if (container) container.querySelectorAll('button').forEach(button => { button.disabled = true; });
             // Auto-resolve: POST to /combat/resolve
             fetch(resolveUrl, {
                 method: 'POST',
