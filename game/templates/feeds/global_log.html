@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}World Log{% endblock %}
+{% block content %}
+<main class="world-log-page">
+    <header class="world-log-header">
+        <div>
+            <div class="sheet-kicker">MOVIE MULTIVERSE // PUBLIC RECORD</div>
+            <h1 class="page-title">World Log</h1>
+            <p class="sheet-subtitle">Public announcements visible to every player. Newest entries appear first.</p>
+        </div>
+        <a class="btn-small" href="{{ url_for('dashboard.index') }}">Back to Dashboard</a>
+    </header>
+
+    <section class="world-log-list" aria-label="Global announcement history">
+        {% for entry in entries %}
+        <article class="world-log-entry">
+            <time class="world-log-time" datetime="{{ entry.occurred_at }}">{{ entry.occurred_at[5:10] }}<br>{{ entry.occurred_at[11:16] }}</time>
+            <span class="world-log-category">{{ entry.event_category or 'WORLD' }}</span>
+            <span class="world-log-text">{{ entry.flavor_text }}</span>
+        </article>
+        {% else %}
+        <p class="active-effects-empty">No world announcements have been recorded yet.</p>
+        {% endfor %}
+    </section>
+</main>
+{% endblock %}

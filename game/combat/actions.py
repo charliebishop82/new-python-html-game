@@ -36,6 +36,7 @@ def get_combat_state(session_id: int) -> dict:
     # effects influence combat instead of appearing only on the dashboard.
     attacker = get_player(session["attacker_player_id"])
     attacker_equipped = _load_equipped(attacker)
+    attacker = apply_equipped_stat_bonuses(attacker, attacker_equipped)
 
     # Load defender (player, boss, or minion)
     defender = defender_equipped = boss = minion = None
@@ -43,6 +44,7 @@ def get_combat_state(session_id: int) -> dict:
     if session["combat_type"] == "PVP":
         defender = get_player(session["defender_player_id"])
         defender_equipped = _load_equipped(defender)
+        defender = apply_equipped_stat_bonuses(defender, defender_equipped)
 
     elif session["combat_type"] == "BOSS":
         instance = execute_one(
@@ -104,6 +106,39 @@ def _load_equipped(player: dict) -> dict:
                     result[slot] = {**item, "inv_id": inv_id,
                                     "current_durability": inv["current_durability"]}
     return result
+
+
+def apply_equipped_stat_bonuses(player: dict, equipped: dict | None = None) -> dict:
+    """Return a player copy with every equipped item's stat bonuses applied.
+
+    ``get_player`` already includes temporary random-event modifiers.  Equipment
+    bonuses are applied here exactly once so every combat action uses the same
+    effective STR, END, AGI, LCK, and PER values shown by equipment management.
+    The stored HP is not increased merely by equipping END gear; only its cap is.
+    """
+    if player is None:
+        return player
+    if player.get("_equipment_bonuses_applied"):
+        return dict(player)
+    equipped = equipped or _load_equipped(player)
+    effective = dict(player)
+    for column, bonus_key in (
+        ("str_stat", "str_bonus"),
+        ("end_stat", "end_bonus"),
+        ("agi_stat", "agi_bonus"),
+        ("lck_stat", "lck_bonus"),
+        ("per_stat", "per_bonus"),
+    ):
+        effective[column] = player[column] + sum(
+            int((item or {}).get(bonus_key, 0) or 0)
+            for item in equipped.values()
+        )
+    effective["max_hp"] = engine.calc_max_hp(effective)
+    effective["hp_pct"] = round(
+        effective["current_hp"] / effective["max_hp"] * 100, 1
+    ) if effective["max_hp"] else 0
+    effective["_equipment_bonuses_applied"] = True
+    return effective
 
 
 def check_combat_end(state: dict) -> tuple[bool, str | None]:

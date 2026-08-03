@@ -463,7 +463,7 @@ def _assign_pending_levelup(player_id: int, profile: dict):
 
 
 def _maybe_repair(player: dict, profile: dict):
-    """Provide the internal maybe repair operation used by this module."""
+    """Repair equipped gear only when the NPC can afford the complete action."""
     if random.randint(1, 100) > profile["repair_tendency"]:
         return None
     settings = get_all_settings()
@@ -471,12 +471,33 @@ def _maybe_repair(player: dict, profile: dict):
             or player["credits"] <= 0):
         return None
     threshold = 40 + profile["repair_tendency"] // 2
-    equipped = [player.get("equipped_weapon_id"), player.get("equipped_armor_id")]
+    equipped = [
+        player.get("equipped_weapon_id"),
+        player.get("equipped_armor_id"),
+        player.get("equipped_special_id"),
+    ]
     damaged = execute(
-        "SELECT id,current_durability FROM inventory_items WHERE player_id=? AND id IN (?,?)",
-        (player["id"], equipped[0] or -1, equipped[1] or -1)
+        """SELECT id,item_type,item_id,current_durability
+           FROM inventory_items WHERE player_id=? AND id IN (?,?,?)
+           AND current_durability < 100""",
+        (player["id"], *(inv_id or -1 for inv_id in equipped))
     )
     if not any(item["current_durability"] < threshold for item in damaged):
+        return None
+
+    # The blacksmith repairs every damaged equipped item in this mode.  Check
+    # that complete price before entering the queue so an unaffordable repair
+    # is not logged as a failed action and retried without spending AP.
+    item_tables = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}
+    cost_pct = settings.get("REPAIR_COST_PERCENT", cfg.REPAIR_COST_PERCENT)
+    total_cost = 0
+    for item in damaged:
+        table = item_tables.get(item["item_type"])
+        detail = execute_one(f"SELECT credit_cost FROM {table} WHERE id=?", (item["item_id"],)) if table else None
+        if detail:
+            missing = 100 - item["current_durability"]
+            total_cost += max(0, int(detail["credit_cost"] * cost_pct * (missing / 100)))
+    if player["credits"] < total_cost:
         return None
     try:
         result = enqueue_and_process(player["id"], "blacksmith_repair", {"mode": "equipped", "inv_ids": []})

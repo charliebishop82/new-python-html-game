@@ -47,6 +47,8 @@ def _check_ap(player: dict, cost: int) -> str | None:
 
 def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict):
     """Deduct AP cost and apply passive HP regen. Must be inside exclusive_transaction."""
+    # AP-triggered healing and its HP cap use the same effective END as combat.
+    player = combat_actions.apply_equipped_stat_bonuses(player)
     ap_regen    = settings.get("AP_PASSIVE_HP_REGEN",   cfg.AP_PASSIVE_HP_REGEN)
     end_divisor = settings.get("END_HP_REGEN_DIVISOR",  cfg.END_HP_REGEN_DIVISOR)
     hp_regen    = ap_regen + math.floor(player["end_stat"] / end_divisor)
@@ -338,7 +340,7 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
 @bp.route("/action/tavern", methods=["POST"])
 def action_tavern():
     """Handle the action tavern workflow."""
-    player   = g.player
+    player   = combat_actions.apply_equipped_stat_bonuses(g.player)
     settings = get_all_settings()
     cost_ap  = settings.get("AP_COST_TAVERN",   cfg.AP_COST_TAVERN)
     cost_cr  = settings.get("TAVERN_HEAL_COST", cfg.TAVERN_HEAL_COST)
@@ -363,8 +365,8 @@ def handle_tavern_heal(player_id: int, payload: dict) -> dict:
     cost_ap   = payload["cost_ap"]
     cost_cr   = payload["cost_cr"]
     heal_pct  = settings.get("TAVERN_HEAL_PERCENT", cfg.TAVERN_HEAL_PERCENT)
-    player    = get_player(player_id)
-    max_hp    = 10 + player["end_stat"] + (5 * player["level"])
+    player    = combat_actions.apply_equipped_stat_bonuses(get_player(player_id))
+    max_hp    = engine.calc_max_hp(player)
     missing   = max_hp - player["current_hp"]
     if missing <= 0:
         raise ValueError("Already at full health.")
@@ -511,6 +513,11 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
 
     session["combat_session_id"] = result["session_id"]
 
+    # Starting combat spends AP and may passively heal the player.  Reload the
+    # committed values so the opening panel never displays the pre-action state.
+    player = get_player(player["id"]) or player
+    player = combat_actions.apply_equipped_stat_bonuses(player)
+
     opponent_full = execute_one(
         f"SELECT * FROM {'bosses' if encounter_type == 'BOSS' else 'minions'} WHERE id = ?",
         (opponent["id"],)
@@ -556,7 +563,7 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
     encounter_type = payload["encounter_type"]
     cost_ap        = payload["cost_ap"]
 
-    player   = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
+    player   = get_player(player_id)
     settings = get_all_settings()
 
     if player["in_combat"]:
@@ -760,6 +767,13 @@ def action_pvp_fight():
 
     session["combat_session_id"] = result["session_id"]
 
+    # Show the AP/HP values committed by start_pvp_fight, including equipment
+    # stat bonuses used by the combat engine.
+    player = get_player(player["id"]) or player
+    player = combat_actions.apply_equipped_stat_bonuses(player)
+    target = get_player(target["id"]) or target
+    target = combat_actions.apply_equipped_stat_bonuses(target)
+
     return render_template("fragments/combat_open.html",
                            opponent=target,
                            encounter_type="PVP",
@@ -778,8 +792,8 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
     cost_ap   = payload["cost_ap"]
     settings  = get_all_settings()
 
-    player  = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
-    target  = execute_one("SELECT * FROM players WHERE id = ?", (target_id,))
+    player  = get_player(player_id)
+    target  = combat_actions.apply_equipped_stat_bonuses(get_player(target_id))
 
     if player["in_combat"] or target["in_combat"]:
         return {"error": "A player is already in combat."}

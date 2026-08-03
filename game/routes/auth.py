@@ -43,7 +43,8 @@ def login_post():
         return render_template("auth/login.html", error="Username and password required.")
 
     player = execute_one(
-        "SELECT id, password_hash, is_banned, retired_at FROM players WHERE username = ?",
+        """SELECT id, password_hash, is_banned, retired_at, last_login_at
+           FROM players WHERE username = ?""",
         (username,)
     )
 
@@ -55,6 +56,9 @@ def login_post():
     if player["is_banned"]:
         return render_template("auth/login.html", error="This account has been banned.")
 
+    previous_login = player.get("last_login_at")
+    first_login_today = not previous_login or previous_login[:10] != datetime.utcnow().date().isoformat()
+
     # Update last_login_at
     with exclusive_transaction():
         execute_write(
@@ -64,6 +68,7 @@ def login_post():
 
     session.clear()
     session["player_id"] = player["id"]
+    session["show_daily_tutorial"] = first_login_today
     return redirect(url_for("dashboard.index"))
 
 
@@ -238,7 +243,9 @@ def character_create_post():
 
     # Award starter gear (random level 1 weapon + armor)
     _award_starter_gear(player_id)
-    _write_tutorial_feed(player_id)
+    # Show onboarding once on this first character-session dashboard. It is
+    # transient rather than permanent feed history, so reloads do not repeat it.
+    session["show_daily_tutorial"] = True
 
     return redirect(url_for("dashboard.index"))
 
@@ -352,10 +359,9 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
 ################################################################################
 
 
-def _write_tutorial_feed(player_id: int):
-    """Write onboarding feed entries so the terminal has context on first login."""
-    from datetime import datetime, timedelta
-    messages = [
+def get_tutorial_messages() -> list[tuple[str, str]]:
+    """Return the transient tutorial shown on a player's first login each day."""
+    return [
         ("SYSTEM",       "Welcome. The world is dangerous. Here is what you need to know."),
         ("SYSTEM",       "AP (Action Points) fuel everything. You earn a daily allotment at midnight plus trickle bonuses every 6 hours. Spend them wisely."),
         ("SYSTEM",       "BOSS — Challenge a movie villain. Defeat them for XP, credits, and gear. Watch for phase transitions as their HP drops."),
@@ -368,13 +374,3 @@ def _write_tutorial_feed(player_id: int):
         ("SYSTEM",       "You have been given starter gear. Visit your Character Sheet to equip it before your first fight."),
         ("RANDOM_EVENT", "Good luck out there. You will need it."),
     ]
-    base_time = datetime.utcnow()
-    with exclusive_transaction():
-        for i, (category, text) in enumerate(messages):
-            ts = (base_time + timedelta(seconds=i)).isoformat()
-            execute_write(
-                """INSERT INTO daily_feed
-                   (feed_scope, player_id, flavor_text, event_category, occurred_at)
-                   VALUES ('PERSONAL', ?, ?, ?, ?)""",
-                (player_id, text, category, ts)
-            )

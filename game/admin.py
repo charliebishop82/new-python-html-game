@@ -360,7 +360,11 @@ def admin_health():
                OR (r.status='IN_POOL' AND (r.current_owner_player_id IS NOT NULL OR r.inventory_item_id IS NOT NULL))""")["cnt"],
     }
     scheduler_runs = execute("SELECT * FROM scheduler_run_log ORDER BY id DESC LIMIT 30")
-    failures = execute("""SELECT q.*,p.character_name FROM action_queue q JOIN players p ON p.id=q.player_id
+    failures = execute("""SELECT q.*,p.character_name,
+                          (SELECT l.message FROM player_activity_log l
+                           WHERE l.queue_id=q.id AND l.status='FAILED'
+                           ORDER BY l.id DESC LIMIT 1) AS error_message
+                          FROM action_queue q JOIN players p ON p.id=q.player_id
                           WHERE q.status='FAILED' ORDER BY q.id DESC LIMIT 30""")
     audits = execute("SELECT * FROM admin_audit_log ORDER BY id DESC LIMIT 30")
     return render_template("admin/health.html", stats=stats, scheduler_runs=scheduler_runs,

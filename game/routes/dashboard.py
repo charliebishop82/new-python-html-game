@@ -1,7 +1,7 @@
 """Main player dashboard and context-sensitive action availability."""
 # routes/dashboard.py  (Phase 9 — adds now_iso injection for JS feed polling)
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Blueprint, render_template, g, session
 from database import execute, get_all_settings
 import config_defaults as cfg
@@ -26,6 +26,28 @@ def index():
         (player['id'], history_count)
     )
     terminal_history = list(reversed(terminal_history))
+
+    # Tutorial lines used to be permanent feed rows, which caused them to
+    # reappear on every dashboard load. Hide those historical copies and add a
+    # transient copy only on the first successful login of each UTC day.
+    from routes.auth import get_tutorial_messages
+    tutorial_messages = get_tutorial_messages()
+    tutorial_text = {text for _, text in tutorial_messages}
+    terminal_history = [
+        entry for entry in terminal_history
+        if not (entry['feed_scope'] == 'PERSONAL' and entry['flavor_text'] in tutorial_text)
+    ]
+    if session.pop("show_daily_tutorial", False):
+        base_time = datetime.utcnow()
+        terminal_history.extend({
+            "id": None,
+            "feed_scope": "PERSONAL",
+            "player_id": player["id"],
+            "flavor_text": text,
+            "event_category": category,
+            "occurred_at": (base_time + timedelta(seconds=index)).isoformat(),
+            "combat_session_id": None,
+        } for index, (category, text) in enumerate(tutorial_messages))
 
     # A completed fight writes a private result and an identical public world
     # announcement. Show the private copy in the terminal and leave the public

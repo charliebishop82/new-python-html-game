@@ -4,10 +4,21 @@
 # Called every 5 seconds by terminal.js.
 # These are the only two JSON-returning routes in the main app.
 
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, render_template, request, session
 from database import execute
 
 bp = Blueprint("feeds", __name__)
+
+
+@bp.route("/feed/global")
+def global_log():
+    """Render a readable, scrollable history of public world announcements."""
+    rows = execute(
+        """SELECT id,flavor_text,event_category,occurred_at,combat_session_id
+           FROM daily_feed WHERE feed_scope='GLOBAL'
+           ORDER BY datetime(occurred_at) DESC,id DESC LIMIT 500"""
+    )
+    return render_template("feeds/global_log.html", entries=rows)
 
 
 @bp.route("/feed/personal/latest")

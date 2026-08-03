@@ -224,7 +224,7 @@ def combat_result_flavor(winner_name: str, loser_name: str,
     if combat_type == "BOSS":
         line = f"{winner_name} has defeated {loser_name}!"
     elif combat_type == "MINION":
-        line = f"{winner_name} dispatched a {loser_name}."
+        line = f"{winner_name} dispatched {loser_name}."
     else:  # PVP
         if result_type == "ESCAPE":
             return f"{loser_name} fled a fight with {winner_name}."
