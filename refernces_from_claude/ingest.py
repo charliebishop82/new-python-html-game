@@ -334,6 +334,12 @@ def main():
 
     for b in sorted(snippet_blocks, key=lambda x: (x['phase'], x['seq'])):
         target = b['target']
+        # A later complete file already contains the final integrated version.
+        # Older snippets must not be re-applied on top of it: doing so violates
+        # the documented highest-phase-wins rule and can duplicate old patches.
+        winning_full = best_full.get(target)
+        if winning_full and b['phase'] < winning_full['phase']:
+            continue
         chunks = split_into_defs(b['content'])
         for name, chunk in chunks:
             if name is None:

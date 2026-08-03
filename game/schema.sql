@@ -42,6 +42,36 @@ CREATE TABLE IF NOT EXISTS player_stats (
     updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Automated player characters. A profile row marks a normal player as an NPC.
+CREATE TABLE IF NOT EXISTS npc_profiles (
+    player_id          INTEGER PRIMARY KEY REFERENCES players(id),
+    enabled            INTEGER NOT NULL DEFAULT 1,
+    retired            INTEGER NOT NULL DEFAULT 0,
+    player_hunter      INTEGER NOT NULL DEFAULT 0 CHECK(player_hunter BETWEEN 0 AND 100),
+    boss_killer        INTEGER NOT NULL DEFAULT 0 CHECK(boss_killer BETWEEN 0 AND 100),
+    hoarder            INTEGER NOT NULL DEFAULT 0 CHECK(hoarder BETWEEN 0 AND 100),
+    thief              INTEGER NOT NULL DEFAULT 0 CHECK(thief BETWEEN 0 AND 100),
+    aggression         INTEGER NOT NULL DEFAULT 50 CHECK(aggression BETWEEN 0 AND 100),
+    self_preservation  INTEGER NOT NULL DEFAULT 50 CHECK(self_preservation BETWEEN 0 AND 100),
+    repair_tendency    INTEGER NOT NULL DEFAULT 50 CHECK(repair_tendency BETWEEN 0 AND 100),
+    actions_per_day    INTEGER NOT NULL DEFAULT 4 CHECK(actions_per_day BETWEEN 1 AND 24),
+    actions_today      INTEGER NOT NULL DEFAULT 0,
+    last_action_at     TEXT,
+    created_at         TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS npc_action_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id   INTEGER NOT NULL REFERENCES players(id),
+    decision    TEXT NOT NULL,
+    reason      TEXT NOT NULL,
+    result      TEXT NOT NULL,
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_npc_profiles_active ON npc_profiles(enabled, retired);
+CREATE INDEX IF NOT EXISTS idx_npc_action_log_player ON npc_action_log(player_id, occurred_at);
+
 CREATE TABLE IF NOT EXISTS level_up_history (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id      INTEGER NOT NULL REFERENCES players(id),

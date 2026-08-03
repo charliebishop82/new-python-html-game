@@ -52,6 +52,11 @@ def init_db():
         conn.execute("PRAGMA foreign_keys = ON")
         with open(schema_path, "r") as f:
             conn.executescript(f.read())
+        # CREATE TABLE IF NOT EXISTS does not add new columns to an existing
+        # installation. Keep small additive migrations safe and repeatable.
+        npc_columns = {row[1] for row in conn.execute("PRAGMA table_info(npc_profiles)")}
+        if "thief" not in npc_columns:
+            conn.execute("ALTER TABLE npc_profiles ADD COLUMN thief INTEGER NOT NULL DEFAULT 0")
     logger.info("Database initialised at %s", cfg.DB_PATH)
 
 

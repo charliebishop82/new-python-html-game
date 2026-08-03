@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 
-from flask import Blueprint, render_template, request, session, g
+from flask import Blueprint, render_template, request, session, g, has_request_context
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings)
 from queue_handler import enqueue_and_process, register_handler
@@ -16,6 +16,12 @@ import config_defaults as cfg
 
 bp = Blueprint("combat", __name__)
 logger = logging.getLogger(__name__)
+
+
+def _clear_browser_combat_session():
+    """Clear browser-only state when a human request context exists."""
+    if has_request_context():
+        session.pop("combat_session_id", None)
 
 
 def _error_fragment(message: str) -> str:
@@ -111,6 +117,8 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
             session_id, player_id, action_type, state, settings
         )
         round_log.append(first_result)
+        if first_result.get("escaped"):
+            return _escaped_round_result(round_log, session_id, attacker_first, att_init, def_init)
         ended, winner_side = combat_actions.check_combat_end(state)
         if ended:
             combat_ended = True
@@ -135,6 +143,8 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
                 session_id, player_id, action_type, state, settings
             )
         round_log.append(second_result)
+        if second_result.get("escaped"):
+            return _escaped_round_result(round_log, session_id, attacker_first, att_init, def_init)
         ended, winner_side = combat_actions.check_combat_end(state)
         if ended:
             combat_ended = True
@@ -167,7 +177,7 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
         final_result = combat_actions.finalize_combat(
             session_id, winner_side, result_type, state
         )
-        session.pop("combat_session_id", None)
+        _clear_browser_combat_session()
 
     return {
         "round_log":       round_log,
@@ -179,6 +189,16 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
         "attacker_first":  attacker_first,
         "att_init":        att_init,
         "def_init":        def_init,
+    }
+
+
+def _escaped_round_result(round_log, session_id, attacker_first, att_init, def_init):
+    """Return immediately after a successful normal Escape action."""
+    return {
+        "round_log": round_log, "combat_ended": True, "at_round_limit": False,
+        "winner_side": None, "final_result": {"result_type": "ESCAPE"},
+        "session_id": session_id, "attacker_first": attacker_first,
+        "att_init": att_init, "def_init": def_init,
     }
 
 
@@ -309,7 +329,7 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
     if ended:
         state = combat_actions.get_combat_state(session_id)
         final_result = combat_actions.finalize_combat(session_id, winner_side, "1HP_WIN", state)
-        session.pop("combat_session_id", None)
+        _clear_browser_combat_session()
     else:
         # Opponent counter-acts
         state = combat_actions.get_combat_state(session_id)
@@ -321,7 +341,7 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
             final_result = combat_actions.finalize_combat(
                 session_id, winner_side, "1HP_WIN", state
             )
-            session.pop("combat_session_id", None)
+            _clear_browser_combat_session()
         else:
             _apply_end_of_round(session_id, state, get_all_settings())
             with exclusive_transaction():
@@ -429,7 +449,7 @@ def handle_combat_resolve(player_id: int, payload: dict) -> dict:
     final_result = combat_actions.finalize_combat(
         session_id, winner_side, "SCORE_WIN", state
     )
-    session.pop("combat_session_id", None)
+    _clear_browser_combat_session()
 
     return {
         "round_log":      [],

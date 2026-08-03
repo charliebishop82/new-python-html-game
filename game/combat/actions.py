@@ -318,40 +318,44 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
-    """Resolve a steal attempt by the player (attacker side only)."""
+    """Resolve a steal attempt by either PvP side using that actor's stats."""
     session  = state["session"]
-    attacker = state["attacker"]
     settings = get_all_settings()
+    is_defender = (session["combat_type"] == "PVP" and
+                   player_id == session["defender_player_id"])
+    actor = state["defender"] if is_defender else state["attacker"]
+    actor_side = "DEFENDER" if is_defender else "ATTACKER"
+    actor_equipped = state["defender_equipped"] if is_defender else state["attacker_equipped"]
 
-    special     = state["attacker_equipped"].get("special")
+    special     = actor_equipped.get("special")
     steal_bonus = special.get("steal_bonus", 0.0) if special else 0.0
 
     if session["combat_type"] == "PVP":
-        defender = state["defender"]
+        defender = state["attacker"] if is_defender else state["defender"]
         roll_result = engine.resolve_opposed_roll(
-            actor_agi=attacker["agi_stat"],
-            actor_lck=attacker["lck_stat"],
+            actor_agi=actor["agi_stat"],
+            actor_lck=actor["lck_stat"],
             defender_agi=defender["agi_stat"],
             defender_lck=defender["lck_stat"],
             steal_bonus_pct=steal_bonus,
             tie_goes_to="defender"
         )
         if not roll_result["success"]:
-            _apply_steal_fail_penalty(session_id, "ATTACKER")
+            _apply_steal_fail_penalty(session_id, actor_side)
             return {"action": "STEAL", "success": False,
                     "roll_detail": roll_result["detail"],
                     "flavor": flavour.steal_flavor(
-                        attacker["character_name"], defender["character_name"], False)}
+                        actor["character_name"], defender["character_name"], False)}
 
         # Cascade: item → credits → XP
-        result = _pvp_steal_cascade(player_id, session["defender_player_id"],
+        result = _pvp_steal_cascade(player_id, defender["id"],
                                     steal_bonus, settings)
-        _write_combat_log(session_id, session["current_round"], "ATTACKER",
+        _write_combat_log(session_id, session["current_round"], actor_side,
                           "STEAL", roll_result["detail"], str(result))
         return {"action": "STEAL", "success": True,
                 "roll_detail": roll_result["detail"],
                 "flavor": flavour.steal_flavor(
-                    attacker["character_name"], defender["character_name"], True,
+                    actor["character_name"], defender["character_name"], True,
                     item_name=result.get("item_name", ""),
                     credits=result.get("credits", 0),
                     xp_bonus=result.get("xp_bonus", 0))}
@@ -362,8 +366,8 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
         opp_agi  = opponent["agi_stat"]
         opp_lck  = opponent["lck_stat"]
         roll_result = engine.resolve_opposed_roll(
-            actor_agi=attacker["agi_stat"],
-            actor_lck=attacker["lck_stat"],
+            actor_agi=actor["agi_stat"],
+            actor_lck=actor["lck_stat"],
             defender_agi=opp_agi,
             defender_lck=opp_lck,
             steal_bonus_pct=steal_bonus,
@@ -374,7 +378,7 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
             return {"action": "STEAL", "success": False,
                     "roll_detail": roll_result["detail"],
                     "flavor": flavour.steal_flavor(
-                        attacker["character_name"], opponent["name"], False,
+                        actor["character_name"], opponent["name"], False,
                         is_vs_boss=True)}
 
         result = _boss_steal_result(player_id, opponent, steal_bonus, settings,
@@ -384,7 +388,7 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
         return {"action": "STEAL", "success": True,
                 "roll_detail": roll_result["detail"],
                 "flavor": flavour.steal_flavor(
-                    attacker["character_name"], opponent["name"], True,
+                    actor["character_name"], opponent["name"], True,
                     item_name=result.get("item_name", ""),
                     credits=result.get("credits", 0),
                     is_vs_boss=True)}

@@ -104,6 +104,7 @@ def _set_blackout_flag():
 
 def _start_scheduler(app: Flask):
     from scheduler import midnight_reset, ap_trickle
+    from npc import run_due_npc_turns
 
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(
@@ -117,6 +118,12 @@ def _start_scheduler(app: Flask):
         trigger=CronTrigger(hour="3,9,15,21", minute=0, timezone="UTC"),
         id="ap_trickle", name="AP Trickle",
         replace_existing=True, misfire_grace_time=300,
+    )
+    scheduler.add_job(
+        func=lambda: _run_with_context(app, run_due_npc_turns),
+        trigger=CronTrigger(minute="*/5", timezone="UTC"),
+        id="npc_turns", name="NPC Turns",
+        replace_existing=True, misfire_grace_time=240,
     )
     scheduler.start()
     logger.info("APScheduler started")

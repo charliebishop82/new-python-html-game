@@ -14,7 +14,7 @@
     <tr>
         <td style="color:#666">{{ p.id }}</td>
         <td>{{ p.username }}</td>
-        <td>{{ p.character_name }}</td>
+        <td>{{ p.character_name }} {% if p.is_npc %}<span style="color:#4499ff">[NPC]</span>{% endif %}</td>
         <td>{{ p.level }}</td>
         <td>{{ p.current_hp }}</td>
         <td>{{ p.current_ap }}</td>

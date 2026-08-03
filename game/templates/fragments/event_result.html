@@ -11,9 +11,11 @@
     <div class="term-line term-{{ 'good' if event.event_type == 'Good' else 'bad' }}">
         {{ event.flavor_text }}
     </div>
+    {% if event.effect_summary is defined %}
     <div class="term-line term-system random-event-effect">
         <strong>Effect:</strong> {{ event.effect_summary }}
     </div>
+    {% endif %}
     {% if event.duration == 'UntilMidnight' %}
     <div class="term-line term-system">
         Effect lasts until midnight reset.

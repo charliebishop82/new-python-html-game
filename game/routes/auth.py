@@ -319,7 +319,8 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
 
     logger.info("Player %d assigned level-up stat point to %s (now %d)",
                 player_id, stat.upper(), new_stat_val)
-    return {"redirect": url_for("dashboard.index")}
+    return {"stat": stat.upper(), "new_value": new_stat_val,
+            "level": new_level}
 
 
 ################################################################################

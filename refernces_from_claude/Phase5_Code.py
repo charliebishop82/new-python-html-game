@@ -39,7 +39,7 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, session, g
 from database import (execute, execute_one, execute_write,
-                      exclusive_transaction, get_all_settings)
+                      exclusive_transaction, get_all_settings, get_player)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 from combat import flavour
@@ -56,6 +56,14 @@ logger = logging.getLogger(__name__)
 def _error_fragment(message: str) -> str:
     return render_template("fragments/error.html", message=message,
                            player=g.get("player"))
+
+
+def _with_random_event(event: dict | None, player: dict, content: str) -> str:
+    """Prepend a triggered event without replacing the requested action."""
+    if not event:
+        return content
+    event_html = render_template("fragments/event_result.html", event=event, player=player)
+    return event_html + content
 
 
 def _check_ap(player: dict, cost: int) -> str | None:
@@ -397,7 +405,7 @@ def action_boss():
     # Random event check (fires before AP deducted)
     event = check_random_event(player, settings)
     if event:
-        return render_template("fragments/event_result.html", event=event, player=player)
+        player = get_player(player["id"]) or player
 
     # 50/50 boss vs minion roll
     minion_chance = settings.get("MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE)
@@ -425,30 +433,30 @@ def action_boss():
     else:
         result = execute(f"SELECT * FROM {tbl} WHERE is_active = 1 ORDER BY RANDOM() LIMIT 1")
         if not result:
-            return _error_fragment("No content available yet. Ask the admin to import game content.")
+            return _with_random_event(event, player,
+                _error_fragment("No content available yet. Ask the admin to import game content."))
         opponent = result[0]
 
     # Level warning check
     warn_threshold = settings.get("BOSS_LEVEL_WARNING_THRESHOLD", cfg.BOSS_LEVEL_WARNING_THRESHOLD)
     level_diff     = opponent["level"] - player["level"]
     if level_diff >= warn_threshold:
-        return render_template("fragments/boss_confirm.html",
-                               opponent=opponent,
-                               encounter_type=encounter_type,
-                               level_diff=level_diff,
-                               player=player)
+        content = render_template("fragments/boss_confirm.html",
+                                  opponent=opponent, encounter_type=encounter_type,
+                                  level_diff=level_diff, player=player)
+        return _with_random_event(event, player, content)
 
     # Minion: PER check
     if encounter_type == "MINION":
         per_result = _minion_per_check(player, opponent)
         if per_result["spotted"]:
-            return render_template("fragments/minion_spotted.html",
-                                   minion=opponent,
-                                   per_result=per_result,
-                                   player=player)
+            content = render_template("fragments/minion_spotted.html",
+                                      minion=opponent, per_result=per_result, player=player)
+            return _with_random_event(event, player, content)
 
     # Start the fight
-    return _start_boss_fight(player, opponent, encounter_type, cost_ap, settings)
+    content = _start_boss_fight(player, opponent, encounter_type, cost_ap, settings)
+    return _with_random_event(event, player, content)
 
 
 @bp.route("/action/boss/confirm", methods=["POST"])
@@ -603,12 +611,13 @@ def action_pvp():
     # Random event check
     event = check_random_event(player, settings)
     if event:
-        return render_template("fragments/event_result.html", event=event, player=player)
+        player = get_player(player["id"]) or player
 
     # Build eligible opponent list
     opponents = _get_eligible_opponents(player, settings)
-    return render_template("fragments/opponent_list.html",
-                           opponents=opponents, player=player)
+    content = render_template("fragments/opponent_list.html",
+                              opponents=opponents, player=player)
+    return _with_random_event(event, player, content)
 
 
 def _get_eligible_opponents(player: dict, settings: dict) -> list[dict]:
@@ -1215,9 +1224,11 @@ def _render_combat_round(result: dict, session_id: int, player) -> str:
     <div class="term-line term-{{ 'good' if event.event_type == 'Good' else 'bad' }}">
         {{ event.flavor_text }}
     </div>
+    {% if event.effect_summary is defined %}
     <div class="term-line term-system random-event-effect">
         <strong>Effect:</strong> {{ event.effect_summary }}
     </div>
+    {% endif %}
     {% if event.duration == 'UntilMidnight' %}
     <div class="term-line term-system">
         Effect lasts until midnight reset.

@@ -1,0 +1,53 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}NPCs{% endblock %}
+{% block content %}
+<h1>Automated Player Characters</h1>
+<p style="color:#666;margin-bottom:16px;">NPC wake times are staggered through the UTC day. AP alone limits their actions, with catch-up attempts during the final hour.</p>
+
+<h2>Create NPC</h2>
+<form method="POST" action="/admin/npcs" style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;background:#111;padding:12px;border:1px solid #222;">
+    <label>Name<br><input name="character_name" required></label>
+    <label>Class<br><select name="class_id" required>{% for c in classes %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <label>Starting level<br><select name="level"><option value="3">3</option><option value="2">2</option></select></label>
+    <label>Preset<br><select name="preset"><option value="hunter">Player Hunter</option><option value="boss">Boss Killer</option><option value="hoarder">Hoarder</option><option value="thief">Thief</option><option value="hybrid">Hybrid</option><option value="custom">Custom</option></select></label>
+    <label>Player Hunter 0-100<br><input type="number" name="player_hunter" min="0" max="100" value="50"></label>
+    <label>Boss Killer 0-100<br><input type="number" name="boss_killer" min="0" max="100" value="50"></label>
+    <label>Hoarder 0-100<br><input type="number" name="hoarder" min="0" max="100" value="50"></label>
+    <label>Thief 0-100<br><input type="number" name="thief" min="0" max="100" value="0"></label>
+    <label>Aggression 0-100<br><input type="number" name="aggression" min="0" max="100" value="50"></label>
+    <label>Self-preservation 0-100<br><input type="number" name="self_preservation" min="0" max="100" value="50"></label>
+    <label>Repair tendency 0-100<br><input type="number" name="repair_tendency" min="0" max="100" value="60"></label>
+    <div style="align-self:end"><button class="btn" type="submit">Create NPC</button></div>
+</form>
+
+{% for npc in npcs %}
+<section style="margin-top:20px;padding:12px;border:1px solid #333;background:#0d0d0d;opacity:{{ '0.55' if npc.retired else '1' }}">
+    <h2 style="margin-top:0">{{ npc.character_name }} <span style="color:#666">Level {{ npc.level }} {{ npc.class_name or '' }} · {{ 'RETIRED' if npc.retired else ('ENABLED' if npc.enabled else 'PAUSED') }}</span></h2>
+    <form method="POST" action="/admin/npcs/{{ npc.player_id }}/edit" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end">
+        {% for field,label in [('player_hunter','Hunter'),('boss_killer','Boss'),('hoarder','Hoarder'),('thief','Thief'),('aggression','Aggression'),('self_preservation','Safety'),('repair_tendency','Repair')] %}
+        <label>{{ label }}<br><input style="width:70px" type="number" name="{{ field }}" min="0" max="100" value="{{ npc[field] }}"></label>
+        {% endfor %}
+        <label><input type="checkbox" name="enabled" {% if npc.enabled %}checked{% endif %}> Enabled</label>
+        <button class="btn">Save</button>
+    </form>
+    <p style="color:#666;margin:8px 0">AP: {{ npc.current_ap }} · Specials: {{ npc.special_count }} · Last action: {{ npc.last_action_at or 'Never' }}</p>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+        <form method="POST" action="/admin/npcs/{{ npc.player_id }}/run"><button class="btn" {% if npc.retired %}disabled{% endif %}>Run One Turn</button></form>
+        <form method="POST" action="/admin/npcs/{{ npc.player_id }}/spend-ap" onsubmit="return confirm('Let {{ npc.character_name }} act repeatedly to spend available AP?');"><button class="btn" {% if npc.retired or not npc.enabled %}disabled{% endif %}>Spend AP Now</button></form>
+        <a class="btn" href="/admin/players/{{ npc.player_id }}">Full Player Record</a>
+        {% if not npc.retired %}<form method="POST" action="/admin/npcs/{{ npc.player_id }}/retire" onsubmit="return confirm('Retire {{ npc.character_name }} and return all specials?');"><button class="btn btn-danger">Retire</button></form>{% endif %}
+    </div>
+    {% if not npc.retired %}
+    <form method="POST" action="/admin/npcs/{{ npc.player_id }}/inventory/grant" style="margin-bottom:8px">
+        <select name="item_key">{% for item in items %}<option value="{{ item.item_type }}:{{ item.id }}">{{ item.item_type }} · L{{ item.level }} · {{ item.name }}</option>{% endfor %}</select>
+        <button class="btn">Grant Item</button>
+    </form>
+    {% endif %}
+    <table><tr><th>Inventory Item</th><th>Type</th><th>Durability</th><th></th></tr>
+    {% for item in inventory if item.player_id == npc.player_id %}<tr><td>{{ item.item_name }}</td><td>{{ item.item_type }}</td><td>{{ item.current_durability }}%</td><td>{% if not npc.retired %}<form method="POST" action="/admin/npcs/{{ npc.player_id }}/inventory/{{ item.id }}/remove"><button class="btn btn-danger">Remove</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="4" style="color:#666">No inventory</td></tr>{% endfor %}</table>
+</section>
+{% else %}<p style="color:#666;margin-top:20px">No NPCs created yet.</p>{% endfor %}
+
+<h2>Recent NPC Decisions</h2>
+<table><tr><th>Time</th><th>NPC</th><th>Decision</th><th>Reason</th><th>Result</th></tr>{% for log in logs %}<tr><td>{{ log.occurred_at[:16] }}</td><td>{{ log.character_name }}</td><td>{{ log.decision }}</td><td>{{ log.reason }}</td><td>{{ log.result }}</td></tr>{% endfor %}</table>
+{% endblock %}
