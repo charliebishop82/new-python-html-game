@@ -176,12 +176,7 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
                   "damage_type": "Blunt", "name": "Fists",
                   "str_bonus": 0, "credit_cost": 0}
 
-    # Brace dodge bonus for defender
-    brace_dodge = sum(
-        int(b["value"]) for b in def_buffs
-        if b["buff_type"] == "BRACE_DODGE_BONUS"
-    )
-
+    creature_defender = boss or minion
     result = engine.resolve_full_attack(
         attacker=attacker,
         defender=opponent,
@@ -189,8 +184,8 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
         attacker_special=special,
         defender_armor=armor,
         defender_special=def_special,
-        boss=boss,
-        brace_dodge_bonus=brace_dodge,
+        boss=creature_defender,
+        brace_dodge_bonus=0,
         active_buffs=def_buffs,
         is_player_attacker=is_attacker,
     )
@@ -206,7 +201,7 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
             defender_armor=armor,
             defender_special=def_special,
             boss=boss,
-            brace_dodge_bonus=brace_dodge,
+            brace_dodge_bonus=0,
             active_buffs=def_buffs,
             is_player_attacker=is_attacker,
         )
@@ -546,7 +541,6 @@ def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
     settings = get_all_settings()
     heal_pct    = settings.get("BRACE_HEAL_PERCENT",      cfg.BRACE_HEAL_PERCENT)
     ac_pct      = settings.get("BRACE_AC_BONUS_PERCENT",  cfg.BRACE_AC_BONUS_PERCENT)
-    dodge_bonus = settings.get("BRACE_DODGE_BONUS",       cfg.BRACE_DODGE_BONUS)
 
     armor = actor_equipped.get("armor")
     current_ac = engine.calc_ac(actor, armor)
@@ -560,7 +554,7 @@ def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
     with exclusive_transaction():
         execute_write("UPDATE players SET current_hp = ? WHERE id = ?", (new_hp, player_id))
         # Brace refreshes the side's defensive stance; it must never stack into
-        # an ever-growing AC or dodge modifier across repeated rounds.
+        # an ever-growing AC modifier across repeated rounds.
         execute_write(
             """DELETE FROM combat_buffs WHERE combat_session_id=? AND side=?
                AND buff_type IN ('BRACE_AC_BONUS','BRACE_DODGE_BONUS')""",
@@ -572,22 +566,16 @@ def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
                VALUES (?, ?, 'BRACE_AC_BONUS', ?, 'NEXT_HIT_RESOLVED')""",
             (session_id, actor_side, ac_bonus)
         )
-        execute_write(
-            """INSERT INTO combat_buffs
-               (combat_session_id, side, buff_type, value, expires_on)
-               VALUES (?, ?, 'BRACE_DODGE_BONUS', ?, 'NEXT_HIT_RESOLVED')""",
-            (session_id, actor_side, dodge_bonus)
-        )
         # Armor durability loss on Brace
         if armor:
             _apply_durability_loss(armor["inv_id"], 1, player_id)
         _write_combat_log(session_id, session["current_round"], actor_side,
                           "BRACE", "Brace action",
-                          f"Healed {heal} HP, AC+{ac_bonus}, Dodge+{dodge_bonus}")
+                          f"Healed {heal} HP, AC+{ac_bonus}")
 
-    flv = flavour.brace_flavor(actor["character_name"], heal, ac_bonus, dodge_bonus)
+    flv = flavour.brace_flavor(actor["character_name"], heal, ac_bonus)
     return {"action": "BRACE", "new_hp": new_hp, "ac_bonus": ac_bonus,
-            "dodge_bonus": dodge_bonus, "heal": heal, "flavor": flv}
+            "heal": heal, "flavor": flv}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -835,13 +823,104 @@ def handle_swap_gear(session_id: int, player_id: int, state: dict,
 # ─────────────────────────────────────────────────────────────────────────────
 
 def handle_opponent_action(session_id: int, state: dict) -> dict:
-    """Automated opponent action for PvP defender (offline) or boss."""
+    """Automated opponent action for a PvP defender, boss, or minion."""
     session = state["session"]
 
     if session["combat_type"] == "PVP":
         return _pvp_defender_action(session_id, state)
-    else:
+    if session["combat_type"] == "BOSS":
         return _boss_action(session_id, state)
+    if session["combat_type"] == "MINION":
+        return _minion_action(session_id, state)
+    raise ValueError(f"Unsupported combat type: {session['combat_type']}")
+
+
+def _minion_action(session_id: int, state: dict) -> dict:
+    """Resolve a minion's normal weapon attack against the player."""
+    minion = state["minion"]
+    session = state["session"]
+    player = state["attacker"]
+    player_armor = state["attacker_equipped"].get("armor")
+    player_special = state["attacker_equipped"].get("special")
+    player_buffs = state["attacker_buffs"]
+    weapon = _get_minion_weapon(minion)
+
+    result = engine.resolve_full_attack(
+        attacker=minion,
+        defender=player,
+        attacker_weapon=weapon,
+        attacker_special=None,
+        defender_armor=player_armor,
+        defender_special=player_special,
+        boss=None,
+        brace_dodge_bonus=0,
+        active_buffs=player_buffs,
+        is_player_attacker=False,
+    )
+
+    with exclusive_transaction():
+        if result["hit"]:
+            new_hp = max(1, player["current_hp"] - result["damage_total"])
+            execute_write(
+                "UPDATE players SET current_hp=? WHERE id=?",
+                (new_hp, session["attacker_player_id"])
+            )
+            execute_write(
+                """UPDATE combat_sessions
+                   SET defender_total_damage_dealt=defender_total_damage_dealt+?
+                   WHERE id=?""",
+                (result["damage_total"], session_id)
+            )
+            if player_armor:
+                _apply_durability_loss(
+                    player_armor["inv_id"], 1, session["attacker_player_id"]
+                )
+            execute_write(
+                """DELETE FROM combat_buffs
+                   WHERE combat_session_id=? AND side='ATTACKER'
+                   AND expires_on='NEXT_HIT_RESOLVED'""",
+                (session_id,)
+            )
+        _write_combat_log(
+            session_id, session["current_round"], "DEFENDER", "ATTACK",
+            result["roll_detail"], result["outcome_detail"]
+        )
+
+    flavor_text = flavour.attack_flavor(
+        attacker_name=minion["name"],
+        weapon_name=weapon.get("name", "attack"),
+        weapon_type=weapon.get("weapon_type", "Melee"),
+        hit=result["hit"],
+        dodged=result["dodged"],
+        is_crit=result["is_crit"],
+        damage=result["damage_total"],
+        damage_type=weapon.get("damage_type", "Blunt"),
+    )
+    return {
+        "action": "ATTACK",
+        "hit": result["hit"],
+        "dodged": result["dodged"],
+        "damage_total": result["damage_total"],
+        "roll_detail": result["roll_detail"],
+        "flavor": flavor_text,
+    }
+
+
+def _get_minion_weapon(minion: dict) -> dict:
+    """Load the weapon assigned to a minion, with an unarmed fallback."""
+    master = execute_one(
+        "SELECT minion_weapon_id FROM master WHERE minion_id=?", (minion["id"],)
+    )
+    if master and master.get("minion_weapon_id"):
+        weapon = execute_one(
+            "SELECT * FROM weapons WHERE id=?", (master["minion_weapon_id"],)
+        )
+        if weapon:
+            return weapon
+    return {
+        "weapon_type": "Melee", "damage_die": "d4", "damage_type": "Blunt",
+        "name": "Fists", "str_bonus": 0,
+    }
 
 
 def _pvp_defender_action(session_id: int, state: dict) -> dict:
@@ -1630,10 +1709,6 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
     att_armor        = state["attacker_equipped"].get("armor")
     att_special      = state["attacker_equipped"].get("special")
     att_buffs        = state["attacker_buffs"]
-    brace_dodge      = sum(
-        int(b["value"]) for b in att_buffs if b["buff_type"] == "BRACE_DODGE_BONUS"
-    )
-
     result = engine.resolve_full_attack(
         attacker=boss_as_attacker,
         defender=attacker_player,
@@ -1642,7 +1717,7 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
         defender_armor=att_armor,
         defender_special=att_special,
         boss=None,
-        brace_dodge_bonus=brace_dodge,
+        brace_dodge_bonus=0,
         active_buffs=att_buffs,
         is_player_attacker=False,
     )

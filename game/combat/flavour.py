@@ -129,13 +129,12 @@ def steal_flavor(attacker_name: str, target_name: str, success: bool,
 # BRACE FLAVOR
 # ─────────────────────────────────────────────────────────────────────────────
 
-def brace_flavor(player_name: str, hp_restored: int,
-                 ac_bonus: int, dodge_bonus: int) -> str:
+def brace_flavor(player_name: str, hp_restored: int, ac_bonus: int) -> str:
     """Build player-facing narrative text for brace flavor."""
     line = f"{player_name} takes a defensive stance, bracing for impact."
     if hp_restored:
         line += f" +{hp_restored} HP."
-    line += f" AC+{ac_bonus}, Dodge+{dodge_bonus} until next hit."
+    line += f" AC+{ac_bonus} until the next attack resolves."
     return line
 
 

@@ -121,6 +121,9 @@ def _get_active_effects(player_id: int) -> list[dict]:
 
 def _get_full_inventory(player: dict) -> list[dict]:
     """Load full inventory from current database state."""
+    # Use the Shop's authoritative resale calculation so the equipment screen
+    # never advertises a different value than the player will actually receive.
+    from routes.shop import _calc_sell_price
     equipped_ids = {
         player.get("equipped_weapon_id"),
         player.get("equipped_armor_id"),
@@ -140,6 +143,7 @@ def _get_full_inventory(player: dict) -> list[dict]:
             **inv, **detail,
             "inv_id":     inv["id"],
             "is_equipped": inv["id"] in equipped_ids,
+            "sell_price": _calc_sell_price(detail, player),
         })
     return result
 

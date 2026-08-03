@@ -1,7 +1,7 @@
 """Pure dice, damage, initiative, progression, and opposed-roll calculations."""
 # combat/engine.py
 # Core combat math. All dice rolls, stat modifiers, damage resolution,
-# resistance/weakness checks, dodge, crit, and durability.
+# resistance/weakness checks, crit, and durability.
 # Stateless pure functions — takes input dicts, returns result dicts.
 # Never writes to the DB directly.
 
@@ -241,13 +241,12 @@ def resolve_full_attack(attacker: dict, defender: dict,
     Returns a result dict with all details for combat log rendering.
 
     Sequence:
-    1. Dodge check (player defenders only)
-    2. Attack roll vs AC
-    3. Crit check
-    4. Weapon damage roll + stat mod
-    5. Resistance + weakness resolution
-    6. Special item bonus damage (separate resistance check)
-    7. Durability effects
+    1. Attack roll vs AC
+    2. Crit check
+    3. Weapon damage roll + stat mod
+    4. Resistance + weakness resolution
+    5. Special item bonus damage (separate resistance check)
+    6. Durability effects
     Returns:
         hit, dodged, damage_total, is_crit,
         weapon_durability_loss, armor_durability_loss,
@@ -269,24 +268,19 @@ def resolve_full_attack(attacker: dict, defender: dict,
             if buff.get("buff_type") == "BOSS_ATTACK_BONUS":
                 attack_bonus += int(buff.get("value", 0))
 
-    # --- Step 1: Dodge check (only when defender is a player) ---
-    defender_is_player = boss is None
-    dodged      = False
-    dodge_detail = ""
-    if defender_is_player:
-        dodged, dodge_detail = resolve_dodge(defender, attacker, brace_dodge_bonus)
-        if dodged:
-            return {
-                "hit": False, "dodged": True, "damage_total": 0, "is_crit": False,
-                "weapon_durability_loss": 0, "armor_durability_loss": 0,
-                "roll_detail": dodge_detail, "outcome_detail": "Attack dodged — no damage.",
-                "damage_breakdown": []
-            }
-
-    # --- Step 2: Attack roll vs AC ---
+    # --- Step 1: Attack roll vs AC ---
     attack_total, raw_d20, attack_mod = calc_attack_roll(attacker, attacker_weapon)
     attack_total += attack_bonus
     defender_ac   = calc_ac(defender, defender_armor)
+    if active_buffs:
+        defender_ac += sum(
+            int(buff.get("value", 0)) for buff in active_buffs
+            if buff.get("buff_type") == "BRACE_AC_BONUS"
+        )
+        defender_ac -= sum(
+            int(buff.get("value", 0)) for buff in active_buffs
+            if buff.get("buff_type") == "SWAP_GEAR_AC_PENALTY"
+        )
 
     # Apply over-encumbered attack penalty if attacker is a player
     if is_player_attacker and attacker.get("is_overencumbered"):
