@@ -561,6 +561,13 @@ def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
 
     with exclusive_transaction():
         execute_write("UPDATE players SET current_hp = ? WHERE id = ?", (new_hp, player_id))
+        # Brace refreshes the side's defensive stance; it must never stack into
+        # an ever-growing AC or dodge modifier across repeated rounds.
+        execute_write(
+            """DELETE FROM combat_buffs WHERE combat_session_id=? AND side=?
+               AND buff_type IN ('BRACE_AC_BONUS','BRACE_DODGE_BONUS')""",
+            (session_id, actor_side)
+        )
         execute_write(
             """INSERT INTO combat_buffs
                (combat_session_id, side, buff_type, value, expires_on)
@@ -666,6 +673,10 @@ def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
             execute_write("DELETE FROM combat_buffs WHERE combat_session_id = ?", (session_id,))
         else:
             # Fail: AC penalty
+            execute_write(
+                """DELETE FROM combat_buffs WHERE combat_session_id=? AND side='ATTACKER'
+                   AND buff_type='ESCAPE_FAIL_AC_PENALTY'""", (session_id,)
+            )
             execute_write(
                 """INSERT INTO combat_buffs
                    (combat_session_id, side, buff_type, value, expires_on)
@@ -1021,6 +1032,12 @@ def _boss_special_buff(session_id: int, state: dict) -> dict:
                 (restore, boss["max_hp"], inst_id)
             )
         else:
+            # A phase reset may allow the named special again, but persistent
+            # boss buffs refresh rather than multiply their mechanical value.
+            execute_write(
+                """DELETE FROM combat_buffs WHERE combat_session_id=? AND side='DEFENDER'
+                   AND buff_type=?""", (session_id, f"BOSS_{buff_type}")
+            )
             execute_write(
                 """INSERT INTO combat_buffs
                    (combat_session_id, side, buff_type, damage_type, value, expires_on)
@@ -1057,6 +1074,41 @@ def _get_boss_weapon(boss: dict) -> dict:
 # ─────────────────────────────────────────────────────────────────────────────
 # POST-COMBAT RESOLUTION
 # ─────────────────────────────────────────────────────────────────────────────
+
+def finalize_stalemate(session_id: int, state: dict) -> dict:
+    """End an abnormally long boss/minion fight without rewards or penalties."""
+    session = state["session"]
+    now = datetime.utcnow().isoformat()
+    flavor_text = "Combat ended as a stalemate after reaching the configured round safety limit."
+    with exclusive_transaction():
+        if session["combat_type"] == "BOSS":
+            execute_write(
+                """UPDATE boss_instances SET
+                       current_hp=(SELECT max_hp FROM bosses WHERE id=boss_id),
+                       special_attack_used=0,special_buff_used=0,current_phase=1
+                   WHERE id=?""", (session["boss_instance_id"],)
+            )
+        elif session["combat_type"] == "MINION":
+            execute_write(
+                """UPDATE minion_instances SET
+                       current_hp=(SELECT max_hp FROM minions WHERE id=minion_id)
+                   WHERE id=?""", (session["minion_instance_id"],)
+            )
+        execute_write("UPDATE players SET in_combat=0 WHERE id=?", (session["attacker_player_id"],))
+        execute_write(
+            """UPDATE combat_sessions SET status='RESOLVED',result='STALEMATE',resolved_at=?
+               WHERE id=?""", (now, session_id)
+        )
+        execute_write("DELETE FROM combat_buffs WHERE combat_session_id=?", (session_id,))
+        execute_write(
+            """INSERT INTO daily_feed
+               (feed_scope,player_id,flavor_text,event_category,combat_session_id)
+               VALUES('PERSONAL',?,?, 'COMBAT',?)""",
+            (session["attacker_player_id"], flavor_text, session_id)
+        )
+    return {"result_type": "STALEMATE", "flavor": flavor_text,
+            "xp_earned": 0, "credits_stolen": 0, "item_stolen": None, "drops": None}
+
 
 def finalize_combat(session_id: int, winner_side: str, result_type: str,
                     state: dict) -> dict:

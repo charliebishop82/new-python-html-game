@@ -196,6 +196,41 @@ def _activity_combat_context(pid: int, session_id: int | None) -> dict:
     }
 
 
+def _combat_progress_at_queue(pid: int, session_id: int, queue_id: int | None) -> dict:
+    """Reconstruct round and cumulative damage at a historical queued action."""
+    if not queue_id:
+        return {}
+    round_number = 0
+    for queued in execute(
+        """SELECT id,payload FROM action_queue WHERE id<=?
+           AND action_type IN ('combat_action','combat_steal') ORDER BY id""", (queue_id,)
+    ):
+        try: queued_payload = json.loads(queued["payload"] or "{}")
+        except (TypeError, json.JSONDecodeError): continue
+        if queued_payload.get("session_id") == session_id:
+            round_number += 1
+    if not round_number:
+        return {}
+
+    session = execute_one(
+        "SELECT attacker_player_id FROM combat_sessions WHERE id=?", (session_id,)
+    )
+    player_side = "ATTACKER" if session and session["attacker_player_id"] == pid else "DEFENDER"
+    dealt = received = 0
+    for event in execute(
+        """SELECT actor,outcome_detail FROM combat_logs
+           WHERE combat_session_id=? AND round_number<=?""", (session_id, round_number)
+    ):
+        match = re.search(
+            r"(?:→|->)?\s*(\d+)\s+(?:[A-Za-z]+\s+)?damage",
+            event.get("outcome_detail") or "",
+        )
+        damage = int(match.group(1)) if match else 0
+        if event["actor"] == player_side: dealt += damage
+        else: received += damage
+    return {"round": round_number, "damage_dealt": dealt, "damage_received": received}
+
+
 def _format_activity_row(row: dict, pid: int) -> dict:
     """Turn stored action JSON into a compact audit summary plus pretty detail."""
     try: stored = json.loads(row.get("details_json") or "{}")
@@ -212,6 +247,10 @@ def _format_activity_row(row: dict, pid: int) -> dict:
         session_id = result.get("session_id")
     resolved = _activity_combat_context(pid, session_id)
     context = {**resolved, **context}
+    if session_id:
+        historical = _combat_progress_at_queue(pid, session_id, row.get("queue_id"))
+        context.update(historical)
+        context["status"] = ("RESOLVED" if result.get("combat_ended") else "ACTIVE")
     if not context.get("opponent") and payload.get("target_id"):
         target = execute_one("SELECT character_name FROM players WHERE id=?", (payload["target_id"],))
         if target: context["opponent"] = target["character_name"]

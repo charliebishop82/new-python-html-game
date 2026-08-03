@@ -174,9 +174,21 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
                       sess["combat_type"] == "PVP" and
                       reload_sess["current_round"] > max_rounds)
 
+    # Boss and minion fights normally continue until someone falls, but a hard
+    # cap prevents corrupted balance or modifiers from creating endless combat.
+    hard_cap = settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP)
+    forced_stalemate = (not combat_ended and sess["combat_type"] in ("BOSS", "MINION")
+                        and reload_sess["current_round"] > hard_cap)
+
     # --- Post-combat resolution ---
     final_result = None
-    if combat_ended and winner_side:
+    if forced_stalemate:
+        state = combat_actions.get_combat_state(session_id)
+        final_result = combat_actions.finalize_stalemate(session_id, state)
+        combat_ended = True
+        result_type = "STALEMATE"
+        _clear_browser_combat_session()
+    elif combat_ended and winner_side:
         state = combat_actions.get_combat_state(session_id)
         final_result = combat_actions.finalize_combat(
             session_id, winner_side, result_type, state

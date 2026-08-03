@@ -284,7 +284,23 @@ def _finish_active_combat(player_id: int, session_id: int | None = None,
         if final.get("at_round_limit"):
             enqueue_and_process(player_id, "combat_resolve", {"session_id": session_id})
             return f"Combat {session_id} resolved at round limit"
-    return f"Combat {session_id} remains active after safety limit"
+    # An automated character cannot leave an unbounded fight active forever.
+    # After the normal batch, attempt the same AP-backed Escape action available
+    # to a human player. A failed roll leaves combat active for a later turn.
+    session_row = execute_one("SELECT status,current_round FROM combat_sessions WHERE id=?", (session_id,))
+    player = get_player(player_id)
+    settings = get_all_settings()
+    escape_cost = settings.get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE)
+    if session_row and session_row["status"] == "ACTIVE" and player and player["current_ap"] >= escape_cost:
+        escaped = enqueue_and_process(
+            player_id, "combat_action", {"session_id": session_id, "action_type": "escape"}
+        )
+        escape_event = next((event for event in escaped.get("round_log", [])
+                             if event.get("action") == "ESCAPE"), {})
+        if escape_event.get("escaped"):
+            return f"Combat {session_id} exceeded the safety window; NPC escaped"
+        return f"Combat {session_id} exceeded the safety window; escape attempt failed"
+    return f"Combat {session_id} remains active after safety limit; insufficient AP to escape"
 
 
 def _choose_combat_action(player_id: int, session_id: int, profile: dict | None) -> str:
