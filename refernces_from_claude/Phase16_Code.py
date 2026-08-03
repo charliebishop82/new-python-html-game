@@ -1,4 +1,4 @@
-# Phase 16: AP-driven NPCs, variable combat, thief behavior, and admin controls
+# Phase 16: operations logging, item inspection, analytics, AP-driven NPCs, and admin controls
 
 # FILE: schema.sql
 -- schema.sql
@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS players (
     pending_levelup     INTEGER NOT NULL DEFAULT 0,
     combat_preference   TEXT    NOT NULL DEFAULT "Balanced",
     is_banned           INTEGER NOT NULL DEFAULT 0,
+    retired_at          TEXT,
     last_login_at       TEXT,
     created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -250,6 +251,38 @@ CREATE TABLE IF NOT EXISTS action_queue (
     status       TEXT    NOT NULL DEFAULT "PROCESSING",
     created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     processed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS player_activity_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id   INTEGER NOT NULL REFERENCES players(id),
+    category    TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    details_json TEXT,
+    queue_id    INTEGER REFERENCES action_queue(id),
+    source      TEXT NOT NULL DEFAULT 'GAME',
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    action      TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id   INTEGER,
+    reason      TEXT,
+    details_json TEXT,
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS scheduler_run_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_name    TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    result_summary TEXT,
+    started_at  TEXT NOT NULL,
+    finished_at TEXT
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -475,6 +508,10 @@ CREATE INDEX IF NOT EXISTS idx_daily_feed_global       ON daily_feed(feed_scope,
 CREATE INDEX IF NOT EXISTS idx_boss_instances_player   ON boss_instances(player_id);
 CREATE INDEX IF NOT EXISTS idx_minion_instances_player ON minion_instances(player_id);
 CREATE INDEX IF NOT EXISTS idx_action_queue_status     ON action_queue(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_activity_date    ON player_activity_log(player_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_player_activity_status  ON player_activity_log(status, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_date        ON admin_audit_log(occurred_at);
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_date      ON scheduler_run_log(job_name, started_at);
 CREATE INDEX IF NOT EXISTS idx_item_history_player     ON item_history(player_id);
 CREATE INDEX IF NOT EXISTS idx_special_registry_status ON special_item_registry(status);
 
@@ -538,6 +575,9 @@ def init_db():
         npc_columns = {row[1] for row in conn.execute("PRAGMA table_info(npc_profiles)")}
         if "thief" not in npc_columns:
             conn.execute("ALTER TABLE npc_profiles ADD COLUMN thief INTEGER NOT NULL DEFAULT 0")
+        player_columns = {row[1] for row in conn.execute("PRAGMA table_info(players)")}
+        if "retired_at" not in player_columns:
+            conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
     logger.info("Database initialised at %s", cfg.DB_PATH)
 
 
@@ -726,6 +766,170 @@ def get_all_settings() -> dict:
 
 ################################################################################
 
+# FILE: queue_handler.py
+# queue_handler.py
+# Synchronous action queue: writes a receipt to action_queue, processes inline
+# inside an exclusive DB transaction, marks done or failed.
+# On server restart, startup_cleanup() handles any orphaned PROCESSING rows.
+
+import json
+import logging
+from datetime import datetime, timedelta
+
+from database import execute, execute_one, execute_write, exclusive_transaction
+import config_defaults as cfg
+
+logger = logging.getLogger(__name__)
+
+ACTION_HANDLERS: dict = {}
+
+
+def register_handler(action_type: str):
+    """Decorator to register an action handler function.
+
+    Usage:
+        @register_handler('tavern_heal')
+        def handle_tavern_heal(player_id, payload):
+            ...
+    """
+    def decorator(fn):
+        ACTION_HANDLERS[action_type] = fn
+        return fn
+    return decorator
+
+
+def enqueue_and_process(player_id: int, action_type: str, payload: dict) -> dict:
+    """Main entry point for all player write actions.
+    Writes receipt, processes inline, marks done or failed."""
+    if action_type not in ACTION_HANDLERS:
+        raise ValueError(f"Unknown action_type: '{action_type}'")
+
+    with exclusive_transaction():
+        queue_id = execute_write(
+            "INSERT INTO action_queue (player_id, action_type, payload, status) VALUES (?, ?, ?, 'PROCESSING')",
+            (player_id, action_type, json.dumps(payload))
+        )
+
+    try:
+        with exclusive_transaction():
+            result = ACTION_HANDLERS[action_type](player_id, payload)
+
+        with exclusive_transaction():
+            execute_write(
+                "UPDATE action_queue SET status = 'DONE', processed_at = ? WHERE id = ?",
+                (datetime.utcnow().isoformat(), queue_id)
+            )
+            execute_write(
+                """INSERT INTO player_activity_log
+                   (player_id,category,action,status,message,details_json,queue_id,source)
+                   VALUES(?, 'ACTION', ?, 'SUCCESS', ?, ?, ?, 'GAME')""",
+                (player_id, action_type, f"{action_type} completed",
+                 json.dumps(result, default=str)[:8000], queue_id)
+            )
+        return result
+
+    except Exception as exc:
+        try:
+            with exclusive_transaction():
+                execute_write(
+                    "UPDATE action_queue SET status = 'FAILED', processed_at = ? WHERE id = ?",
+                    (datetime.utcnow().isoformat(), queue_id)
+                )
+                execute_write(
+                    """INSERT INTO player_activity_log
+                       (player_id,category,action,status,message,details_json,queue_id,source)
+                       VALUES(?, 'ERROR', ?, 'FAILED', ?, ?, ?, 'GAME')""",
+                    (player_id, action_type, str(exc)[:1000],
+                     json.dumps({"exception_type": type(exc).__name__}), queue_id)
+                )
+        except Exception:
+            pass
+        logger.exception("Action '%s' FAILED for player %d (queue_id=%d)", action_type, player_id, queue_id)
+        raise RuntimeError(f"Action '{action_type}' failed: {exc}") from exc
+
+
+def startup_cleanup():
+    """Called once at app startup. Cleans up any PROCESSING rows from a prior crash.
+    Refunds AP, clears in_combat, marks FAILED, logs to orphan log."""
+    import sqlite3, os
+
+    conn = sqlite3.connect(cfg.DB_PATH)
+    conn.row_factory = lambda c, r: {col[0]: val for col, val in zip(c.description, r)}
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    orphans = conn.execute("SELECT * FROM action_queue WHERE status = 'PROCESSING'").fetchall()
+    if not orphans:
+        conn.close()
+        return
+
+    logger.warning("startup_cleanup: %d orphaned actions found", len(orphans))
+    os.makedirs(os.path.dirname(cfg.ORPHAN_LOG), exist_ok=True)
+
+    with open(cfg.ORPHAN_LOG, "a") as log_file:
+        for orphan in orphans:
+            pid = orphan["player_id"]
+            log_file.write(
+                f"{datetime.utcnow().isoformat()} | ORPHAN | player={pid} "
+                f"action={orphan['action_type']} queue_id={orphan['id']}\n"
+            )
+            ap_refund = _ap_cost_for_action(orphan["action_type"])
+            conn.execute("BEGIN EXCLUSIVE")
+            try:
+                if ap_refund > 0:
+                    conn.execute(
+                        "UPDATE players SET current_ap = MIN(current_ap + ?, ?) WHERE id = ?",
+                        (ap_refund, cfg.AP_CARRYOVER_CAP, pid)
+                    )
+                session = conn.execute(
+                    """SELECT id, defender_player_id FROM combat_sessions
+                       WHERE (attacker_player_id = ? OR defender_player_id = ?) AND status = 'ACTIVE'""",
+                    (pid, pid)
+                ).fetchone()
+                if session:
+                    conn.execute(
+                        "UPDATE players SET in_combat = 0 WHERE id IN (?, ?)",
+                        (pid, session["defender_player_id"] or pid)
+                    )
+                    conn.execute(
+                        "UPDATE combat_sessions SET status = 'CANCELLED', result = 'CANCELLED' WHERE id = ?",
+                        (session["id"],)
+                    )
+                conn.execute(
+                    "UPDATE action_queue SET status = 'FAILED', processed_at = ? WHERE id = ?",
+                    (datetime.utcnow().isoformat(), orphan["id"])
+                )
+                conn.execute("COMMIT")
+            except Exception:
+                conn.execute("ROLLBACK")
+                logger.exception("startup_cleanup failed on queue_id=%d", orphan["id"])
+
+    conn.close()
+    logger.info("startup_cleanup: cleaned %d orphaned actions", len(orphans))
+
+
+def _ap_cost_for_action(action_type: str) -> int:
+    costs = {
+        "boss_fight": cfg.AP_COST_BOSS, "boss_confirm": cfg.AP_COST_BOSS,
+        "pvp_start": cfg.AP_COST_PVP, "pvp_fight": cfg.AP_COST_PVP,
+        "tavern_heal": cfg.AP_COST_TAVERN,
+        "shop_buy": cfg.AP_COST_SHOP, "shop_sell": cfg.AP_COST_SHOP,
+        "blacksmith_repair": cfg.AP_COST_BLACKSMITH,
+    }
+    return costs.get(action_type, 0)
+
+
+def purge_old_done_rows():
+    """Delete DONE rows older than 7 days. Called during midnight reset."""
+    cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    with exclusive_transaction():
+        deleted = execute_write(
+            "DELETE FROM action_queue WHERE status = 'DONE' AND created_at < ?", (cutoff,)
+        )
+    logger.info("purge_old_done_rows: deleted %d rows", deleted)
+
+
+################################################################################
+
 # FILE: app.py
 # app.py
 # Main Flask application factory.
@@ -860,9 +1064,26 @@ def _start_scheduler(app: Flask):
 
 def _run_with_context(app: Flask, fn):
     with app.app_context():
+        from database import execute_write, exclusive_transaction
+        started = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        with exclusive_transaction():
+            run_id = execute_write(
+                "INSERT INTO scheduler_run_log(job_name,status,started_at) VALUES(?, 'RUNNING', ?)",
+                (fn.__name__, started)
+            )
         try:
-            fn()
-        except Exception:
+            result = fn()
+            with exclusive_transaction():
+                execute_write(
+                    "UPDATE scheduler_run_log SET status='SUCCESS',result_summary=?,finished_at=? WHERE id=?",
+                    (str(result)[:2000], datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), run_id)
+                )
+        except Exception as exc:
+            with exclusive_transaction():
+                execute_write(
+                    "UPDATE scheduler_run_log SET status='FAILED',result_summary=?,finished_at=? WHERE id=?",
+                    (str(exc)[:2000], datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), run_id)
+                )
             logger.exception("Scheduled job '%s' raised an exception", fn.__name__)
 
 
@@ -1183,9 +1404,11 @@ def _step11_pending_feed_entries():
 # Localhost only — never expose publicly.
 
 import math
+import json
 import logging
 import os
 import re
+import sqlite3
 import uuid
 from datetime import datetime
 
@@ -1229,16 +1452,23 @@ def create_admin_app() -> Flask:
 
 
 def _register_routes(app: Flask):
+    app.add_url_rule("/", "admin_root", lambda: redirect(url_for("admin_index")))
     app.add_url_rule("/admin",                        "admin_index",        admin_index)
     app.add_url_rule("/admin/import",                 "admin_import",       admin_import,        methods=["GET","POST"])
     app.add_url_rule("/admin/players",                "admin_players",      admin_players)
     app.add_url_rule("/admin/players/<int:pid>",      "admin_player_detail",admin_player_detail)
     app.add_url_rule("/admin/players/<int:pid>/ban",  "admin_ban",          admin_ban,           methods=["POST"])
+    app.add_url_rule("/admin/players/<int:pid>/retire", "admin_retire_player", admin_retire_player, methods=["POST"])
     app.add_url_rule("/admin/players/<int:pid>/edit", "admin_edit",         admin_edit,          methods=["POST"])
     app.add_url_rule("/admin/config",                 "admin_config",       admin_config,        methods=["GET","POST"])
     app.add_url_rule("/admin/reset/midnight",         "admin_midnight",     admin_midnight,      methods=["POST"])
     app.add_url_rule("/admin/reset/full",             "admin_full_reset",   admin_full_reset,    methods=["POST"])
     app.add_url_rule("/admin/logs",                   "admin_logs",         admin_logs)
+    app.add_url_rule("/admin/players/<int:pid>/activity", "admin_player_activity", admin_player_activity)
+    app.add_url_rule("/admin/health",                 "admin_health",       admin_health)
+    app.add_url_rule("/admin/items",                  "admin_items",        admin_items)
+    app.add_url_rule("/admin/items/<item_type>/<int:item_id>/edit", "admin_item_edit", admin_item_edit, methods=["POST"])
+    app.add_url_rule("/admin/analytics",              "admin_analytics",    admin_analytics)
     app.add_url_rule("/admin/npcs",                   "admin_npcs",         admin_npcs,          methods=["GET","POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/edit",    "admin_npc_edit",     admin_npc_edit,      methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/run",     "admin_npc_run",      admin_npc_run,       methods=["POST"])
@@ -1318,6 +1548,130 @@ def admin_players():
     return render_template("admin/players.html", players=players)
 
 
+def _audit(action: str, target_type: str, target_id=None, reason=None, details=None):
+    execute_write(
+        """INSERT INTO admin_audit_log(action,target_type,target_id,reason,details_json)
+           VALUES(?,?,?,?,?)""",
+        (action, target_type, target_id, reason, json.dumps(details or {}, default=str)[:8000])
+    )
+
+
+def admin_player_activity(pid: int):
+    player = execute_one("SELECT * FROM players WHERE id=?", (pid,))
+    if not player:
+        return redirect(url_for("admin_players"))
+    start = request.args.get("start", "").strip()
+    end = request.args.get("end", "").strip()
+    category = request.args.get("category", "").strip().upper()
+    errors_only = request.args.get("errors_only") == "1"
+    page = max(1, request.args.get("page", type=int, default=1))
+    where, params = ["player_id=?"], [pid]
+    if start: where.append("occurred_at>=?"); params.append(start)
+    if end: where.append("occurred_at<?"); params.append(end + " 23:59:59")
+    if category: where.append("category=?"); params.append(category)
+    if errors_only: where.append("status='FAILED'")
+    clause = " AND ".join(where)
+    total = execute_one(f"SELECT COUNT(*) cnt FROM player_activity_log WHERE {clause}", tuple(params))["cnt"]
+    rows = execute(
+        f"SELECT * FROM player_activity_log WHERE {clause} ORDER BY id DESC LIMIT 100 OFFSET ?",
+        (*params, (page - 1) * 100)
+    )
+    categories = execute("SELECT DISTINCT category FROM player_activity_log WHERE player_id=? ORDER BY category", (pid,))
+    return render_template("admin/player_activity.html", player=player, rows=rows,
+                           categories=categories, page=page, total=total,
+                           start=start, end=end, category=category, errors_only=errors_only)
+
+
+def admin_health():
+    stats = {
+        "failed_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='FAILED'")["cnt"],
+        "processing_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='PROCESSING'")["cnt"],
+        "active_combats": execute_one("SELECT COUNT(*) cnt FROM combat_sessions WHERE status='ACTIVE'")["cnt"],
+        "stuck_flags": execute_one("""SELECT COUNT(*) cnt FROM players p WHERE p.in_combat=1 AND NOT EXISTS
+                                      (SELECT 1 FROM combat_sessions c WHERE c.status='ACTIVE' AND
+                                       (c.attacker_player_id=p.id OR c.defender_player_id=p.id))""")["cnt"],
+        "orphan_equipment": execute_one("""SELECT COUNT(*) cnt FROM players p WHERE
+            (p.equipped_weapon_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_weapon_id AND i.player_id=p.id)) OR
+            (p.equipped_armor_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_armor_id AND i.player_id=p.id)) OR
+            (p.equipped_special_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_special_id AND i.player_id=p.id))""")["cnt"],
+        "special_mismatches": execute_one("""SELECT COUNT(*) cnt FROM special_item_registry r
+            WHERE (r.status='IN_INVENTORY' AND (r.current_owner_player_id IS NULL OR r.inventory_item_id IS NULL))
+               OR (r.status='IN_POOL' AND (r.current_owner_player_id IS NOT NULL OR r.inventory_item_id IS NOT NULL))""")["cnt"],
+    }
+    scheduler_runs = execute("SELECT * FROM scheduler_run_log ORDER BY id DESC LIMIT 30")
+    failures = execute("""SELECT q.*,p.character_name FROM action_queue q JOIN players p ON p.id=q.player_id
+                          WHERE q.status='FAILED' ORDER BY q.id DESC LIMIT 30""")
+    audits = execute("SELECT * FROM admin_audit_log ORDER BY id DESC LIMIT 30")
+    return render_template("admin/health.html", stats=stats, scheduler_runs=scheduler_runs,
+                           failures=failures, audits=audits)
+
+
+ITEM_TABLES = {"weapon": "weapons", "armor": "armor", "special": "special_items"}
+ITEM_EDIT_FIELDS = {
+    "weapon": ("name","is_active","level","weapon_type","damage_die","damage_type","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","credit_cost","drop_chance","starting_durability"),
+    "armor": ("name","is_active","level","ac_bonus","res_blade","res_blunt","res_ballistic","res_energy","res_arcane","res_explosive","res_venom","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","credit_cost","drop_chance","starting_durability"),
+    "special": ("name","is_active","associated_to","association_type","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","initiative_bonus","extra_attack","crit_chance_bonus","crit_dmg_multiplier","ac_bonus","credit_cost","drop_chance","starting_durability","steal_bonus","xp_multiplier","credit_multiplier","bonus_ap","hp_regen_bonus","durability_reduction","shop_discount","sell_bonus","encounter_bonus"),
+}
+
+
+def admin_items():
+    selected = request.args.get("type", "weapon").lower()
+    if selected not in ITEM_TABLES: selected = "weapon"
+    items = execute(f"SELECT * FROM {ITEM_TABLES[selected]} ORDER BY is_active DESC,name")
+    registry = execute("""SELECT r.*,s.name,p.character_name FROM special_item_registry r
+                          JOIN special_items s ON s.id=r.special_item_id
+                          LEFT JOIN players p ON p.id=r.current_owner_player_id ORDER BY s.name""")
+    return render_template("admin/items.html", items=items, selected=selected,
+                           fields=ITEM_EDIT_FIELDS[selected], registry=registry)
+
+
+def admin_item_edit(item_type: str, item_id: int):
+    item_type = item_type.lower()
+    if item_type not in ITEM_TABLES:
+        return redirect(url_for("admin_items", error="Unknown item type."))
+    table, allowed = ITEM_TABLES[item_type], ITEM_EDIT_FIELDS[item_type]
+    current = execute_one(f"SELECT * FROM {table} WHERE id=?", (item_id,))
+    if not current:
+        return redirect(url_for("admin_items", type=item_type, error="Item not found."))
+    changes = {}
+    for field in allowed:
+        raw = request.form.get(field)
+        if raw is None: continue
+        old = current.get(field)
+        try:
+            value = int(raw) if isinstance(old, int) else float(raw) if isinstance(old, float) else raw.strip()
+        except ValueError:
+            return redirect(url_for("admin_items", type=item_type, error=f"Invalid value for {field}."))
+        if value != old: changes[field] = value
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        return redirect(url_for("admin_items", type=item_type, error="A balancing reason is required."))
+    if changes:
+        try:
+            with exclusive_transaction():
+                execute_write(f"UPDATE {table} SET " + ",".join(f"{f}=?" for f in changes) + " WHERE id=?",
+                              (*changes.values(), item_id))
+                _audit("EDIT_ITEM", item_type.upper(), item_id, reason,
+                       {f: {"from": current.get(f), "to": v} for f, v in changes.items()})
+        except sqlite3.IntegrityError as exc:
+            return redirect(url_for("admin_items", type=item_type, error=str(exc)))
+    return redirect(url_for("admin_items", type=item_type, feedback=f"Updated {current['name']}."))
+
+
+def admin_analytics():
+    action_counts = execute("""SELECT action,status,COUNT(*) cnt FROM player_activity_log
+                               GROUP BY action,status ORDER BY cnt DESC LIMIT 30""")
+    economy = execute_one("""SELECT COUNT(*) players,COALESCE(SUM(credits),0) credits,
+                              COALESCE(AVG(credits),0) avg_credits,COALESCE(AVG(level),0) avg_level
+                              FROM players WHERE is_banned=0""")
+    combats = execute("SELECT combat_type,result,COUNT(*) cnt FROM combat_sessions GROUP BY combat_type,result ORDER BY cnt DESC")
+    item_events = execute("SELECT event_type,COUNT(*) cnt FROM item_history GROUP BY event_type ORDER BY cnt DESC LIMIT 25")
+    npc_decisions = execute("SELECT decision,COUNT(*) cnt FROM npc_action_log GROUP BY decision ORDER BY cnt DESC")
+    random_events = execute("""SELECT flavor_text,COUNT(*) cnt FROM daily_feed WHERE event_category='RANDOM_EVENT'
+                               GROUP BY flavor_text ORDER BY cnt DESC LIMIT 20""")
+    return render_template("admin/analytics.html", action_counts=action_counts, economy=economy,
+                           combats=combats, item_events=item_events,
+                           npc_decisions=npc_decisions, random_events=random_events)
 def admin_player_detail(pid: int):
     player    = execute_one("SELECT * FROM players WHERE id = ?", (pid,))
     if not player:
@@ -1358,6 +1712,7 @@ def admin_ban(pid: int):
     if action == "unban":
         with exclusive_transaction():
             execute_write("UPDATE players SET is_banned = 0 WHERE id = ?", (pid,))
+            _audit("UNBAN_PLAYER", "PLAYER", pid)
         return redirect(url_for("admin_player_detail", pid=pid, feedback="Player unbanned."))
 
     # Ban: wipe credits, remove gear, return specials to pool, clear in_combat
@@ -1393,9 +1748,48 @@ def admin_ban(pid: int):
                WHERE (attacker_player_id=? OR defender_player_id=?) AND status='ACTIVE'""",
             (pid, pid)
         )
+        _audit("BAN_PLAYER", "PLAYER", pid)
 
     logger.info("Admin: banned player id=%d", pid)
     return redirect(url_for("admin_player_detail", pid=pid, feedback="Player banned."))
+
+
+def admin_retire_player(pid: int):
+    """Permanently retire a character without deleting its history."""
+    player = execute_one("SELECT * FROM players WHERE id=?", (pid,))
+    if not player:
+        return redirect(url_for("admin_players"))
+    if player.get("retired_at"):
+        return redirect(url_for("admin_player_detail", pid=pid, error="Character is already retired."))
+    now = datetime.utcnow().isoformat()
+    with exclusive_transaction():
+        sessions = execute(
+            """SELECT id,attacker_player_id,defender_player_id FROM combat_sessions
+               WHERE status='ACTIVE' AND (attacker_player_id=? OR defender_player_id=?)""", (pid, pid)
+        )
+        for combat in sessions:
+            other = (combat["defender_player_id"] if combat["attacker_player_id"] == pid
+                     else combat["attacker_player_id"])
+            execute_write("UPDATE combat_sessions SET status='CANCELLED',result='PLAYER_RETIRED',resolved_at=? WHERE id=?",
+                          (now, combat["id"]))
+            if other:
+                execute_write("UPDATE players SET in_combat=0 WHERE id=?", (other,))
+        specials = execute("SELECT id,item_id FROM inventory_items WHERE player_id=? AND item_type='SPECIAL'", (pid,))
+        for item in specials:
+            execute_write(
+                """UPDATE special_item_registry SET status='IN_POOL',current_owner_player_id=NULL,
+                   inventory_item_id=NULL,last_released_method='PLAYER_RETIRED',updated_at=?
+                   WHERE special_item_id=?""", (now, item["item_id"])
+            )
+        execute_write("DELETE FROM inventory_items WHERE player_id=? AND item_type='SPECIAL'", (pid,))
+        execute_write(
+            """UPDATE players SET retired_at=?,is_banned=1,in_combat=0,equipped_special_id=NULL
+               WHERE id=?""", (now, pid)
+        )
+        execute_write("UPDATE npc_profiles SET enabled=0,retired=1 WHERE player_id=?", (pid,))
+        _audit("RETIRE_PLAYER", "PLAYER", pid)
+    logger.info("Admin: retired player id=%d", pid)
+    return redirect(url_for("admin_player_detail", pid=pid, feedback="Character retired; unique specials returned to the pool."))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1419,6 +1813,7 @@ def admin_edit(pid: int):
         values = list(fields.values()) + [pid]
         with exclusive_transaction():
             execute_write(f"UPDATE players SET {sets} WHERE id = ?", values)
+            _audit("EDIT_PLAYER", "PLAYER", pid, details=fields)
         logger.info("Admin: edited player id=%d fields=%s", pid, list(fields.keys()))
 
     return redirect(url_for("admin_player_detail", pid=pid, feedback="Player updated."))
@@ -1480,6 +1875,8 @@ def admin_npc_run(pid: int):
     from npc import run_npc_turn
     try:
         result = run_npc_turn(pid)
+        with exclusive_transaction():
+            _audit("RUN_NPC_TURN", "PLAYER", pid, details=result)
         return redirect(url_for("admin_npcs", feedback=f"NPC turn: {result['decision']} - {result['result']}"))
     except Exception as exc:
         logger.exception("Manual NPC turn failed for %d", pid)
@@ -1490,6 +1887,8 @@ def admin_npc_spend_ap(pid: int):
     from npc import spend_npc_ap_now
     try:
         result = spend_npc_ap_now(pid)
+        with exclusive_transaction():
+            _audit("SPEND_NPC_AP", "PLAYER", pid, details=result)
         return redirect(url_for(
             "admin_npcs",
             feedback=(f"NPC ran {result['decisions']} decision(s) and spent "
@@ -1503,6 +1902,8 @@ def admin_npc_spend_ap(pid: int):
 def admin_npc_retire(pid: int):
     from npc import retire_npc
     retire_npc(pid)
+    with exclusive_transaction():
+        _audit("RETIRE_NPC", "PLAYER", pid)
     return redirect(url_for("admin_npcs", feedback="NPC retired; unique specials returned to the pool."))
 
 
@@ -1537,6 +1938,7 @@ def admin_npc_grant(pid: int):
                    inventory_item_id=?,last_acquired_method='ADMIN_GRANT',updated_at=? WHERE special_item_id=?""",
                 (pid, inv_id, datetime.utcnow().isoformat(), item_id)
             )
+        _audit("GRANT_ITEM", "PLAYER", pid, details={"item_type": item_type, "item_id": item_id})
     return redirect(url_for("admin_npcs", feedback=f"Granted {item['name']}."))
 
 
@@ -1558,6 +1960,7 @@ def admin_npc_remove(pid: int, inv_id: int):
                    inventory_item_id=NULL,last_released_method='ADMIN_REMOVED',updated_at=? WHERE special_item_id=?""",
                 (datetime.utcnow().isoformat(), item["item_id"])
             )
+        _audit("REMOVE_ITEM", "PLAYER", pid, details={"inventory_id": inv_id})
     return redirect(url_for("admin_npcs", feedback="Inventory item removed."))
 
 
@@ -1636,6 +2039,7 @@ def admin_config():
                        VALUES (?, ?, ?)""",
                     (constant, value, datetime.utcnow().isoformat())
                 )
+                _audit("EDIT_CONFIG", "SETTING", reason=constant, details={"value": value})
             feedback = f"Setting '{constant}' updated to '{value}'."
         else:
             error = "Both constant name and value are required."
@@ -2315,13 +2719,15 @@ def login_post():
         return render_template("auth/login.html", error="Username and password required.")
 
     player = execute_one(
-        "SELECT id, password_hash, is_banned FROM players WHERE username = ?",
+        "SELECT id, password_hash, is_banned, retired_at FROM players WHERE username = ?",
         (username,)
     )
 
     if player is None or not check_password_hash(player["password_hash"], password):
         return render_template("auth/login.html", error="Invalid username or password.")
 
+    if player.get("retired_at"):
+        return render_template("auth/login.html", error="This character has been retired.")
     if player["is_banned"]:
         return render_template("auth/login.html", error="This account has been banned.")
 
@@ -5656,6 +6062,9 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
         <a href="/admin/import">Import Excel</a>
         <a href="/admin/players">Players</a>
         <a href="/admin/npcs">NPCs</a>
+        <a href="/admin/items">Items</a>
+        <a href="/admin/analytics">Analytics</a>
+        <a href="/admin/health">Health & Audit</a>
         <a href="/admin/config">Config</a>
         <a href="/admin/logs">Logs</a>
         <br>
@@ -5709,7 +6118,9 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
             {{ p.last_login_at[:10] if p.last_login_at else 'Never' }}
         </td>
         <td>
-            {% if p.is_banned %}
+            {% if p.retired_at %}
+            <span style="color:#777">RETIRED</span>
+            {% elif p.is_banned %}
             <span style="color:#cc2222">BANNED</span>
             {% elif p.in_combat %}
             <span style="color:#ffaa00">In Combat</span>
@@ -5727,6 +6138,160 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
 
 
 <!-- ============================================================ -->
+
+# FILE: templates/admin/player_detail.html
+<!-- ============================================================ -->
+{% extends "admin/base_admin.html" %}
+{% block title %}Player: {{ player.character_name }}{% endblock %}
+{% block content %}
+<h1>{{ player.character_name }} <span style="color:#666;font-size:13px">({{ player.username }})</span></h1>
+
+{% if feedback %}<div class="feedback">✓ {{ feedback }}</div>{% endif %}
+{% if error %}<div class="error">⚠ {{ error }}</div>{% endif %}
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+
+<div>
+    <h2>Stats</h2>
+    <table>
+        <tr><td>Level</td><td>{{ player.level }}</td></tr>
+        <tr><td>XP</td><td>{{ player.xp }}</td></tr>
+        <tr><td>HP</td><td>{{ player.current_hp }}</td></tr>
+        <tr><td>AP</td><td>{{ player.current_ap }}</td></tr>
+        <tr><td>Credits</td><td>{{ player.credits }}</td></tr>
+        <tr><td>STR/END/AGI/LCK/PER</td>
+            <td>{{ player.str_stat }}/{{ player.end_stat }}/{{ player.agi_stat }}/{{ player.lck_stat }}/{{ player.per_stat }}</td>
+        </tr>
+        <tr><td>In Combat</td><td>{{ 'Yes' if player.in_combat else 'No' }}</td></tr>
+        <tr><td>Banned</td><td>{{ 'Yes' if player.is_banned else 'No' }}</td></tr>
+        <tr><td>Retired</td><td>{{ player.retired_at or 'No' }}</td></tr>
+        <tr><td>Last Login</td><td>{{ player.last_login_at or 'Never' }}</td></tr>
+    </table>
+
+    <h2>Edit Fields</h2>
+    <form method="POST" action="/admin/players/{{ player.id }}/edit">
+        {% for field in ['credits','current_hp','current_ap','level','xp',
+                         'str_stat','end_stat','agi_stat','lck_stat','per_stat'] %}
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <label style="width:100px;color:#666;font-size:11px;">{{ field }}</label>
+            <input type="number" name="{{ field }}" min="0"
+                   placeholder="{{ player[field] }}" style="width:80px;">
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn" style="margin-top:8px;">Save Changes</button>
+    </form>
+</div>
+
+<div>
+    <h2>Actions</h2>
+    <a class="btn" href="/admin/players/{{ player.id }}/activity" style="margin-bottom:8px">Activity Log</a>
+    {% if not player.retired_at %}
+    <form method="POST" action="/admin/players/{{ player.id }}/retire" style="margin-bottom:8px"
+          onsubmit="return confirm('Permanently retire {{ player.character_name }}? They will no longer be able to log in, and unique specials will return to the pool.');">
+        <button type="submit" class="btn btn-danger">Retire Character</button>
+    </form>
+    {% endif %}
+    {% if player.retired_at %}
+    <p style="color:#777">This character is permanently retired.</p>
+    {% elif player.is_banned %}
+    <form method="POST" action="/admin/players/{{ player.id }}/ban">
+        <input type="hidden" name="action" value="unban">
+        <button type="submit" class="btn">Unban Player</button>
+    </form>
+    {% else %}
+    <form method="POST" action="/admin/players/{{ player.id }}/ban"
+          onsubmit="return confirm('Ban {{ player.username }}? This wipes credits, gear, and returns special items.');">
+        <input type="hidden" name="action" value="ban">
+        <button type="submit" class="btn btn-danger">Ban Player</button>
+    </form>
+    {% endif %}
+
+    <h2>Boss Kill Records</h2>
+    {% if boss_kills %}
+    <table>
+        <tr><th>Boss</th><th>Kills</th><th>First Seen</th></tr>
+        {% for row in boss_kills %}
+        <tr>
+            <td>{{ row.name }}</td>
+            <td>{{ row.kill_count }}</td>
+            <td style="font-size:11px;color:#666">{{ row.discovered_at[:10] }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+    <p style="color:#666">No boss encounters yet.</p>
+    {% endif %}
+</div>
+</div>
+
+<h2>Inventory ({{ inventory|length }} items)</h2>
+{% if inventory %}
+<table>
+    <tr><th>Item</th><th>Type</th><th>Durability</th><th>Acquired</th></tr>
+    {% for item in inventory %}
+    <tr>
+        <td>{{ item.item_name or 'Unknown' }}</td>
+        <td>{{ item.item_type }}</td>
+        <td>{{ item.current_durability }}%</td>
+        <td style="font-size:11px;color:#666">{{ item.acquired_method }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p style="color:#666">Empty inventory.</p>
+{% endif %}
+
+<h2>Recent Item History (last 50)</h2>
+{% if history %}
+<table>
+    <tr><th>Date</th><th>Item</th><th>Event</th><th>Credits</th></tr>
+    {% for h in history %}
+    <tr>
+        <td style="font-size:11px;color:#666">{{ h.occurred_at[:16] }}</td>
+        <td>{{ h.item_name }}</td>
+        <td>{{ h.event_type }}</td>
+        <td>{{ h.credit_amount or '' }}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endif %}
+{% endblock %}
+
+
+<!-- ============================================================ -->
+
+# FILE: templates/admin/player_activity.html
+{% extends "admin/base_admin.html" %}
+{% block title %}Activity: {{ player.character_name }}{% endblock %}
+{% block content %}
+<h1>{{ player.character_name }} — Activity Log</h1>
+<form method="GET" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:16px">
+<label>Start<br><input type="date" name="start" value="{{ start }}"></label><label>End<br><input type="date" name="end" value="{{ end }}"></label>
+<label>Category<br><select name="category"><option value="">All</option>{% for c in categories %}<option {% if category==c.category %}selected{% endif %}>{{ c.category }}</option>{% endfor %}</select></label>
+<label><input type="checkbox" name="errors_only" value="1" {% if errors_only %}checked{% endif %}> Errors only</label><button class="btn">Filter</button></form>
+<p style="color:#666">{{ total }} matching entries · page {{ page }}</p>
+<table><tr><th>Time</th><th>Status</th><th>Category</th><th>Action</th><th>Message</th><th>Details</th></tr>{% for row in rows %}<tr><td>{{ row.occurred_at }}</td><td>{{ row.status }}</td><td>{{ row.category }}</td><td>{{ row.action }}</td><td>{{ row.message }}</td><td><details><summary>View</summary><pre style="white-space:pre-wrap;max-width:550px">{{ row.details_json or '' }}</pre></details></td></tr>{% else %}<tr><td colspan="6">No matching activity.</td></tr>{% endfor %}</table>
+<div>{% if page>1 %}<a class="btn" href="?page={{ page-1 }}&start={{ start }}&end={{ end }}&category={{ category }}&errors_only={{ 1 if errors_only else 0 }}">Newer</a>{% endif %} {% if page*100<total %}<a class="btn" href="?page={{ page+1 }}&start={{ start }}&end={{ end }}&category={{ category }}&errors_only={{ 1 if errors_only else 0 }}">Older</a>{% endif %}</div>
+{% endblock %}
+
+# FILE: templates/admin/health.html
+{% extends "admin/base_admin.html" %}{% block title %}Health{% endblock %}{% block content %}
+<h1>System Health & Audit</h1><div class="stat-grid">{% for key,value in stats.items() %}<div class="stat-box"><span class="stat-val">{{ value }}</span><span class="stat-lbl">{{ key.replace('_',' ') }}</span></div>{% endfor %}</div>
+<h2>Recent Scheduler Runs</h2><table><tr><th>Started</th><th>Job</th><th>Status</th><th>Summary</th></tr>{% for r in scheduler_runs %}<tr><td>{{ r.started_at }}</td><td>{{ r.job_name }}</td><td>{{ r.status }}</td><td>{{ r.result_summary or '' }}</td></tr>{% else %}<tr><td colspan="4">No runs recorded yet.</td></tr>{% endfor %}</table>
+<h2>Failed Actions</h2><table><tr><th>Time</th><th>Player</th><th>Action</th><th>Payload</th></tr>{% for r in failures %}<tr><td>{{ r.created_at }}</td><td><a href="/admin/players/{{ r.player_id }}">{{ r.character_name }}</a></td><td>{{ r.action_type }}</td><td>{{ r.payload }}</td></tr>{% else %}<tr><td colspan="4">No failed actions.</td></tr>{% endfor %}</table>
+<h2>Admin Audit</h2><table><tr><th>Time</th><th>Action</th><th>Target</th><th>Reason</th><th>Details</th></tr>{% for r in audits %}<tr><td>{{ r.occurred_at }}</td><td>{{ r.action }}</td><td>{{ r.target_type }} {{ r.target_id or '' }}</td><td>{{ r.reason or '' }}</td><td>{{ r.details_json or '' }}</td></tr>{% else %}<tr><td colspan="5">No audited changes yet.</td></tr>{% endfor %}</table>{% endblock %}
+
+# FILE: templates/admin/items.html
+{% extends "admin/base_admin.html" %}{% block title %}Items{% endblock %}{% block content %}
+<h1>Item Inspector & Balancing</h1><p><a class="btn" href="?type=weapon">Weapons</a> <a class="btn" href="?type=armor">Armor</a> <a class="btn" href="?type=special">Specials</a></p>
+{% for item in items %}<details style="border:1px solid #222;padding:8px;margin:8px 0"><summary>{{ item.name }} · ID {{ item.id }} · {{ 'ACTIVE' if item.is_active else 'DISABLED' }}</summary><form method="POST" action="/admin/items/{{ selected }}/{{ item.id }}/edit" style="display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:8px;margin-top:10px">{% for field in fields %}<label>{{ field }}<br><input name="{{ field }}" value="{{ item[field] if item[field] is not none else '' }}" style="width:100%"></label>{% endfor %}<label style="grid-column:span 3">Required balancing reason<br><input name="reason" required style="width:100%"></label><button class="btn" style="align-self:end">Save Item</button></form></details>{% endfor %}
+<h2>Unique Special Registry</h2><table><tr><th>Special</th><th>Status</th><th>Owner</th><th>Inventory ID</th><th>Price</th><th>Updated</th></tr>{% for r in registry %}<tr><td>{{ r.name }}</td><td>{{ r.status }}</td><td>{{ r.character_name or '' }}</td><td>{{ r.inventory_item_id or '' }}</td><td>{{ r.shop_listing_price or '' }}</td><td>{{ r.updated_at }}</td></tr>{% endfor %}</table>{% endblock %}
+
+# FILE: templates/admin/analytics.html
+{% extends "admin/base_admin.html" %}{% block title %}Analytics{% endblock %}{% block content %}
+<h1>Balancing Analytics</h1><div class="stat-grid"><div class="stat-box"><span class="stat-val">{{ economy.players }}</span><span class="stat-lbl">active players</span></div><div class="stat-box"><span class="stat-val">{{ economy.credits }}</span><span class="stat-lbl">total credits</span></div><div class="stat-box"><span class="stat-val">{{ '%.1f'|format(economy.avg_credits) }}</span><span class="stat-lbl">average credits</span></div><div class="stat-box"><span class="stat-val">{{ '%.1f'|format(economy.avg_level) }}</span><span class="stat-lbl">average level</span></div></div>
+{% macro counts(title, rows, label) %}<h2>{{ title }}</h2><table><tr><th>{{ label }}</th><th>Result/Status</th><th>Count</th></tr>{% for r in rows %}<tr><td>{{ r.action or r.combat_type or r.event_type or r.decision or r.flavor_text }}</td><td>{{ r.status or r.result or '' }}</td><td>{{ r.cnt }}</td></tr>{% else %}<tr><td colspan="3">No data yet.</td></tr>{% endfor %}</table>{% endmacro %}
+{{ counts('Player Actions',action_counts,'Action') }}{{ counts('Combat Results',combats,'Combat') }}{{ counts('Item Events',item_events,'Event') }}{{ counts('NPC Decisions',npc_decisions,'Decision') }}{{ counts('Random Events',random_events,'Event') }}{% endblock %}
 
 # FILE: templates/admin/npcs.html
 {% extends "admin/base_admin.html" %}

@@ -57,6 +57,9 @@ def init_db():
         npc_columns = {row[1] for row in conn.execute("PRAGMA table_info(npc_profiles)")}
         if "thief" not in npc_columns:
             conn.execute("ALTER TABLE npc_profiles ADD COLUMN thief INTEGER NOT NULL DEFAULT 0")
+        player_columns = {row[1] for row in conn.execute("PRAGMA table_info(players)")}
+        if "retired_at" not in player_columns:
+            conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
     logger.info("Database initialised at %s", cfg.DB_PATH)
 
 

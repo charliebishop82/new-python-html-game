@@ -22,6 +22,7 @@
         </tr>
         <tr><td>In Combat</td><td>{{ 'Yes' if player.in_combat else 'No' }}</td></tr>
         <tr><td>Banned</td><td>{{ 'Yes' if player.is_banned else 'No' }}</td></tr>
+        <tr><td>Retired</td><td>{{ player.retired_at or 'No' }}</td></tr>
         <tr><td>Last Login</td><td>{{ player.last_login_at or 'Never' }}</td></tr>
     </table>
 
@@ -41,7 +42,16 @@
 
 <div>
     <h2>Actions</h2>
-    {% if player.is_banned %}
+    <a class="btn" href="/admin/players/{{ player.id }}/activity" style="margin-bottom:8px">Activity Log</a>
+    {% if not player.retired_at %}
+    <form method="POST" action="/admin/players/{{ player.id }}/retire" style="margin-bottom:8px"
+          onsubmit="return confirm('Permanently retire {{ player.character_name }}? They will no longer be able to log in, and unique specials will return to the pool.');">
+        <button type="submit" class="btn btn-danger">Retire Character</button>
+    </form>
+    {% endif %}
+    {% if player.retired_at %}
+    <p style="color:#777">This character is permanently retired.</p>
+    {% elif player.is_banned %}
     <form method="POST" action="/admin/players/{{ player.id }}/ban">
         <input type="hidden" name="action" value="unban">
         <button type="submit" class="btn">Unban Player</button>

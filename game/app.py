@@ -131,9 +131,26 @@ def _start_scheduler(app: Flask):
 
 def _run_with_context(app: Flask, fn):
     with app.app_context():
+        from database import execute_write, exclusive_transaction
+        started = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+        with exclusive_transaction():
+            run_id = execute_write(
+                "INSERT INTO scheduler_run_log(job_name,status,started_at) VALUES(?, 'RUNNING', ?)",
+                (fn.__name__, started)
+            )
         try:
-            fn()
-        except Exception:
+            result = fn()
+            with exclusive_transaction():
+                execute_write(
+                    "UPDATE scheduler_run_log SET status='SUCCESS',result_summary=?,finished_at=? WHERE id=?",
+                    (str(result)[:2000], datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), run_id)
+                )
+        except Exception as exc:
+            with exclusive_transaction():
+                execute_write(
+                    "UPDATE scheduler_run_log SET status='FAILED',result_summary=?,finished_at=? WHERE id=?",
+                    (str(exc)[:2000], datetime.now(timezone.utc).replace(tzinfo=None).isoformat(), run_id)
+                )
             logger.exception("Scheduled job '%s' raised an exception", fn.__name__)
 
 

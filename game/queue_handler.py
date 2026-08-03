@@ -50,6 +50,13 @@ def enqueue_and_process(player_id: int, action_type: str, payload: dict) -> dict
                 "UPDATE action_queue SET status = 'DONE', processed_at = ? WHERE id = ?",
                 (datetime.utcnow().isoformat(), queue_id)
             )
+            execute_write(
+                """INSERT INTO player_activity_log
+                   (player_id,category,action,status,message,details_json,queue_id,source)
+                   VALUES(?, 'ACTION', ?, 'SUCCESS', ?, ?, ?, 'GAME')""",
+                (player_id, action_type, f"{action_type} completed",
+                 json.dumps(result, default=str)[:8000], queue_id)
+            )
         return result
 
     except Exception as exc:
@@ -58,6 +65,13 @@ def enqueue_and_process(player_id: int, action_type: str, payload: dict) -> dict
                 execute_write(
                     "UPDATE action_queue SET status = 'FAILED', processed_at = ? WHERE id = ?",
                     (datetime.utcnow().isoformat(), queue_id)
+                )
+                execute_write(
+                    """INSERT INTO player_activity_log
+                       (player_id,category,action,status,message,details_json,queue_id,source)
+                       VALUES(?, 'ERROR', ?, 'FAILED', ?, ?, ?, 'GAME')""",
+                    (player_id, action_type, str(exc)[:1000],
+                     json.dumps({"exception_type": type(exc).__name__}), queue_id)
                 )
         except Exception:
             pass

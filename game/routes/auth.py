@@ -40,13 +40,15 @@ def login_post():
         return render_template("auth/login.html", error="Username and password required.")
 
     player = execute_one(
-        "SELECT id, password_hash, is_banned FROM players WHERE username = ?",
+        "SELECT id, password_hash, is_banned, retired_at FROM players WHERE username = ?",
         (username,)
     )
 
     if player is None or not check_password_hash(player["password_hash"], password):
         return render_template("auth/login.html", error="Invalid username or password.")
 
+    if player.get("retired_at"):
+        return render_template("auth/login.html", error="This character has been retired.")
     if player["is_banned"]:
         return render_template("auth/login.html", error="This account has been banned.")
 

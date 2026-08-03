@@ -4,9 +4,11 @@
 # Localhost only — never expose publicly.
 
 import math
+import json
 import logging
 import os
 import re
+import sqlite3
 import uuid
 from datetime import datetime
 
@@ -50,16 +52,23 @@ def create_admin_app() -> Flask:
 
 
 def _register_routes(app: Flask):
+    app.add_url_rule("/", "admin_root", lambda: redirect(url_for("admin_index")))
     app.add_url_rule("/admin",                        "admin_index",        admin_index)
     app.add_url_rule("/admin/import",                 "admin_import",       admin_import,        methods=["GET","POST"])
     app.add_url_rule("/admin/players",                "admin_players",      admin_players)
     app.add_url_rule("/admin/players/<int:pid>",      "admin_player_detail",admin_player_detail)
     app.add_url_rule("/admin/players/<int:pid>/ban",  "admin_ban",          admin_ban,           methods=["POST"])
+    app.add_url_rule("/admin/players/<int:pid>/retire", "admin_retire_player", admin_retire_player, methods=["POST"])
     app.add_url_rule("/admin/players/<int:pid>/edit", "admin_edit",         admin_edit,          methods=["POST"])
     app.add_url_rule("/admin/config",                 "admin_config",       admin_config,        methods=["GET","POST"])
     app.add_url_rule("/admin/reset/midnight",         "admin_midnight",     admin_midnight,      methods=["POST"])
     app.add_url_rule("/admin/reset/full",             "admin_full_reset",   admin_full_reset,    methods=["POST"])
     app.add_url_rule("/admin/logs",                   "admin_logs",         admin_logs)
+    app.add_url_rule("/admin/players/<int:pid>/activity", "admin_player_activity", admin_player_activity)
+    app.add_url_rule("/admin/health",                 "admin_health",       admin_health)
+    app.add_url_rule("/admin/items",                  "admin_items",        admin_items)
+    app.add_url_rule("/admin/items/<item_type>/<int:item_id>/edit", "admin_item_edit", admin_item_edit, methods=["POST"])
+    app.add_url_rule("/admin/analytics",              "admin_analytics",    admin_analytics)
     app.add_url_rule("/admin/npcs",                   "admin_npcs",         admin_npcs,          methods=["GET","POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/edit",    "admin_npc_edit",     admin_npc_edit,      methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/run",     "admin_npc_run",      admin_npc_run,       methods=["POST"])
@@ -139,6 +148,130 @@ def admin_players():
     return render_template("admin/players.html", players=players)
 
 
+def _audit(action: str, target_type: str, target_id=None, reason=None, details=None):
+    execute_write(
+        """INSERT INTO admin_audit_log(action,target_type,target_id,reason,details_json)
+           VALUES(?,?,?,?,?)""",
+        (action, target_type, target_id, reason, json.dumps(details or {}, default=str)[:8000])
+    )
+
+
+def admin_player_activity(pid: int):
+    player = execute_one("SELECT * FROM players WHERE id=?", (pid,))
+    if not player:
+        return redirect(url_for("admin_players"))
+    start = request.args.get("start", "").strip()
+    end = request.args.get("end", "").strip()
+    category = request.args.get("category", "").strip().upper()
+    errors_only = request.args.get("errors_only") == "1"
+    page = max(1, request.args.get("page", type=int, default=1))
+    where, params = ["player_id=?"], [pid]
+    if start: where.append("occurred_at>=?"); params.append(start)
+    if end: where.append("occurred_at<?"); params.append(end + " 23:59:59")
+    if category: where.append("category=?"); params.append(category)
+    if errors_only: where.append("status='FAILED'")
+    clause = " AND ".join(where)
+    total = execute_one(f"SELECT COUNT(*) cnt FROM player_activity_log WHERE {clause}", tuple(params))["cnt"]
+    rows = execute(
+        f"SELECT * FROM player_activity_log WHERE {clause} ORDER BY id DESC LIMIT 100 OFFSET ?",
+        (*params, (page - 1) * 100)
+    )
+    categories = execute("SELECT DISTINCT category FROM player_activity_log WHERE player_id=? ORDER BY category", (pid,))
+    return render_template("admin/player_activity.html", player=player, rows=rows,
+                           categories=categories, page=page, total=total,
+                           start=start, end=end, category=category, errors_only=errors_only)
+
+
+def admin_health():
+    stats = {
+        "failed_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='FAILED'")["cnt"],
+        "processing_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='PROCESSING'")["cnt"],
+        "active_combats": execute_one("SELECT COUNT(*) cnt FROM combat_sessions WHERE status='ACTIVE'")["cnt"],
+        "stuck_flags": execute_one("""SELECT COUNT(*) cnt FROM players p WHERE p.in_combat=1 AND NOT EXISTS
+                                      (SELECT 1 FROM combat_sessions c WHERE c.status='ACTIVE' AND
+                                       (c.attacker_player_id=p.id OR c.defender_player_id=p.id))""")["cnt"],
+        "orphan_equipment": execute_one("""SELECT COUNT(*) cnt FROM players p WHERE
+            (p.equipped_weapon_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_weapon_id AND i.player_id=p.id)) OR
+            (p.equipped_armor_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_armor_id AND i.player_id=p.id)) OR
+            (p.equipped_special_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_special_id AND i.player_id=p.id))""")["cnt"],
+        "special_mismatches": execute_one("""SELECT COUNT(*) cnt FROM special_item_registry r
+            WHERE (r.status='IN_INVENTORY' AND (r.current_owner_player_id IS NULL OR r.inventory_item_id IS NULL))
+               OR (r.status='IN_POOL' AND (r.current_owner_player_id IS NOT NULL OR r.inventory_item_id IS NOT NULL))""")["cnt"],
+    }
+    scheduler_runs = execute("SELECT * FROM scheduler_run_log ORDER BY id DESC LIMIT 30")
+    failures = execute("""SELECT q.*,p.character_name FROM action_queue q JOIN players p ON p.id=q.player_id
+                          WHERE q.status='FAILED' ORDER BY q.id DESC LIMIT 30""")
+    audits = execute("SELECT * FROM admin_audit_log ORDER BY id DESC LIMIT 30")
+    return render_template("admin/health.html", stats=stats, scheduler_runs=scheduler_runs,
+                           failures=failures, audits=audits)
+
+
+ITEM_TABLES = {"weapon": "weapons", "armor": "armor", "special": "special_items"}
+ITEM_EDIT_FIELDS = {
+    "weapon": ("name","is_active","level","weapon_type","damage_die","damage_type","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","credit_cost","drop_chance","starting_durability"),
+    "armor": ("name","is_active","level","ac_bonus","res_blade","res_blunt","res_ballistic","res_energy","res_arcane","res_explosive","res_venom","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","credit_cost","drop_chance","starting_durability"),
+    "special": ("name","is_active","associated_to","association_type","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","initiative_bonus","extra_attack","crit_chance_bonus","crit_dmg_multiplier","ac_bonus","credit_cost","drop_chance","starting_durability","steal_bonus","xp_multiplier","credit_multiplier","bonus_ap","hp_regen_bonus","durability_reduction","shop_discount","sell_bonus","encounter_bonus"),
+}
+
+
+def admin_items():
+    selected = request.args.get("type", "weapon").lower()
+    if selected not in ITEM_TABLES: selected = "weapon"
+    items = execute(f"SELECT * FROM {ITEM_TABLES[selected]} ORDER BY is_active DESC,name")
+    registry = execute("""SELECT r.*,s.name,p.character_name FROM special_item_registry r
+                          JOIN special_items s ON s.id=r.special_item_id
+                          LEFT JOIN players p ON p.id=r.current_owner_player_id ORDER BY s.name""")
+    return render_template("admin/items.html", items=items, selected=selected,
+                           fields=ITEM_EDIT_FIELDS[selected], registry=registry)
+
+
+def admin_item_edit(item_type: str, item_id: int):
+    item_type = item_type.lower()
+    if item_type not in ITEM_TABLES:
+        return redirect(url_for("admin_items", error="Unknown item type."))
+    table, allowed = ITEM_TABLES[item_type], ITEM_EDIT_FIELDS[item_type]
+    current = execute_one(f"SELECT * FROM {table} WHERE id=?", (item_id,))
+    if not current:
+        return redirect(url_for("admin_items", type=item_type, error="Item not found."))
+    changes = {}
+    for field in allowed:
+        raw = request.form.get(field)
+        if raw is None: continue
+        old = current.get(field)
+        try:
+            value = int(raw) if isinstance(old, int) else float(raw) if isinstance(old, float) else raw.strip()
+        except ValueError:
+            return redirect(url_for("admin_items", type=item_type, error=f"Invalid value for {field}."))
+        if value != old: changes[field] = value
+    reason = request.form.get("reason", "").strip()
+    if not reason:
+        return redirect(url_for("admin_items", type=item_type, error="A balancing reason is required."))
+    if changes:
+        try:
+            with exclusive_transaction():
+                execute_write(f"UPDATE {table} SET " + ",".join(f"{f}=?" for f in changes) + " WHERE id=?",
+                              (*changes.values(), item_id))
+                _audit("EDIT_ITEM", item_type.upper(), item_id, reason,
+                       {f: {"from": current.get(f), "to": v} for f, v in changes.items()})
+        except sqlite3.IntegrityError as exc:
+            return redirect(url_for("admin_items", type=item_type, error=str(exc)))
+    return redirect(url_for("admin_items", type=item_type, feedback=f"Updated {current['name']}."))
+
+
+def admin_analytics():
+    action_counts = execute("""SELECT action,status,COUNT(*) cnt FROM player_activity_log
+                               GROUP BY action,status ORDER BY cnt DESC LIMIT 30""")
+    economy = execute_one("""SELECT COUNT(*) players,COALESCE(SUM(credits),0) credits,
+                              COALESCE(AVG(credits),0) avg_credits,COALESCE(AVG(level),0) avg_level
+                              FROM players WHERE is_banned=0""")
+    combats = execute("SELECT combat_type,result,COUNT(*) cnt FROM combat_sessions GROUP BY combat_type,result ORDER BY cnt DESC")
+    item_events = execute("SELECT event_type,COUNT(*) cnt FROM item_history GROUP BY event_type ORDER BY cnt DESC LIMIT 25")
+    npc_decisions = execute("SELECT decision,COUNT(*) cnt FROM npc_action_log GROUP BY decision ORDER BY cnt DESC")
+    random_events = execute("""SELECT flavor_text,COUNT(*) cnt FROM daily_feed WHERE event_category='RANDOM_EVENT'
+                               GROUP BY flavor_text ORDER BY cnt DESC LIMIT 20""")
+    return render_template("admin/analytics.html", action_counts=action_counts, economy=economy,
+                           combats=combats, item_events=item_events,
+                           npc_decisions=npc_decisions, random_events=random_events)
 def admin_player_detail(pid: int):
     player    = execute_one("SELECT * FROM players WHERE id = ?", (pid,))
     if not player:
@@ -179,6 +312,7 @@ def admin_ban(pid: int):
     if action == "unban":
         with exclusive_transaction():
             execute_write("UPDATE players SET is_banned = 0 WHERE id = ?", (pid,))
+            _audit("UNBAN_PLAYER", "PLAYER", pid)
         return redirect(url_for("admin_player_detail", pid=pid, feedback="Player unbanned."))
 
     # Ban: wipe credits, remove gear, return specials to pool, clear in_combat
@@ -214,9 +348,48 @@ def admin_ban(pid: int):
                WHERE (attacker_player_id=? OR defender_player_id=?) AND status='ACTIVE'""",
             (pid, pid)
         )
+        _audit("BAN_PLAYER", "PLAYER", pid)
 
     logger.info("Admin: banned player id=%d", pid)
     return redirect(url_for("admin_player_detail", pid=pid, feedback="Player banned."))
+
+
+def admin_retire_player(pid: int):
+    """Permanently retire a character without deleting its history."""
+    player = execute_one("SELECT * FROM players WHERE id=?", (pid,))
+    if not player:
+        return redirect(url_for("admin_players"))
+    if player.get("retired_at"):
+        return redirect(url_for("admin_player_detail", pid=pid, error="Character is already retired."))
+    now = datetime.utcnow().isoformat()
+    with exclusive_transaction():
+        sessions = execute(
+            """SELECT id,attacker_player_id,defender_player_id FROM combat_sessions
+               WHERE status='ACTIVE' AND (attacker_player_id=? OR defender_player_id=?)""", (pid, pid)
+        )
+        for combat in sessions:
+            other = (combat["defender_player_id"] if combat["attacker_player_id"] == pid
+                     else combat["attacker_player_id"])
+            execute_write("UPDATE combat_sessions SET status='CANCELLED',result='PLAYER_RETIRED',resolved_at=? WHERE id=?",
+                          (now, combat["id"]))
+            if other:
+                execute_write("UPDATE players SET in_combat=0 WHERE id=?", (other,))
+        specials = execute("SELECT id,item_id FROM inventory_items WHERE player_id=? AND item_type='SPECIAL'", (pid,))
+        for item in specials:
+            execute_write(
+                """UPDATE special_item_registry SET status='IN_POOL',current_owner_player_id=NULL,
+                   inventory_item_id=NULL,last_released_method='PLAYER_RETIRED',updated_at=?
+                   WHERE special_item_id=?""", (now, item["item_id"])
+            )
+        execute_write("DELETE FROM inventory_items WHERE player_id=? AND item_type='SPECIAL'", (pid,))
+        execute_write(
+            """UPDATE players SET retired_at=?,is_banned=1,in_combat=0,equipped_special_id=NULL
+               WHERE id=?""", (now, pid)
+        )
+        execute_write("UPDATE npc_profiles SET enabled=0,retired=1 WHERE player_id=?", (pid,))
+        _audit("RETIRE_PLAYER", "PLAYER", pid)
+    logger.info("Admin: retired player id=%d", pid)
+    return redirect(url_for("admin_player_detail", pid=pid, feedback="Character retired; unique specials returned to the pool."))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -240,6 +413,7 @@ def admin_edit(pid: int):
         values = list(fields.values()) + [pid]
         with exclusive_transaction():
             execute_write(f"UPDATE players SET {sets} WHERE id = ?", values)
+            _audit("EDIT_PLAYER", "PLAYER", pid, details=fields)
         logger.info("Admin: edited player id=%d fields=%s", pid, list(fields.keys()))
 
     return redirect(url_for("admin_player_detail", pid=pid, feedback="Player updated."))
@@ -301,6 +475,8 @@ def admin_npc_run(pid: int):
     from npc import run_npc_turn
     try:
         result = run_npc_turn(pid)
+        with exclusive_transaction():
+            _audit("RUN_NPC_TURN", "PLAYER", pid, details=result)
         return redirect(url_for("admin_npcs", feedback=f"NPC turn: {result['decision']} - {result['result']}"))
     except Exception as exc:
         logger.exception("Manual NPC turn failed for %d", pid)
@@ -311,6 +487,8 @@ def admin_npc_spend_ap(pid: int):
     from npc import spend_npc_ap_now
     try:
         result = spend_npc_ap_now(pid)
+        with exclusive_transaction():
+            _audit("SPEND_NPC_AP", "PLAYER", pid, details=result)
         return redirect(url_for(
             "admin_npcs",
             feedback=(f"NPC ran {result['decisions']} decision(s) and spent "
@@ -324,6 +502,8 @@ def admin_npc_spend_ap(pid: int):
 def admin_npc_retire(pid: int):
     from npc import retire_npc
     retire_npc(pid)
+    with exclusive_transaction():
+        _audit("RETIRE_NPC", "PLAYER", pid)
     return redirect(url_for("admin_npcs", feedback="NPC retired; unique specials returned to the pool."))
 
 
@@ -358,6 +538,7 @@ def admin_npc_grant(pid: int):
                    inventory_item_id=?,last_acquired_method='ADMIN_GRANT',updated_at=? WHERE special_item_id=?""",
                 (pid, inv_id, datetime.utcnow().isoformat(), item_id)
             )
+        _audit("GRANT_ITEM", "PLAYER", pid, details={"item_type": item_type, "item_id": item_id})
     return redirect(url_for("admin_npcs", feedback=f"Granted {item['name']}."))
 
 
@@ -379,6 +560,7 @@ def admin_npc_remove(pid: int, inv_id: int):
                    inventory_item_id=NULL,last_released_method='ADMIN_REMOVED',updated_at=? WHERE special_item_id=?""",
                 (datetime.utcnow().isoformat(), item["item_id"])
             )
+        _audit("REMOVE_ITEM", "PLAYER", pid, details={"inventory_id": inv_id})
     return redirect(url_for("admin_npcs", feedback="Inventory item removed."))
 
 
@@ -457,6 +639,7 @@ def admin_config():
                        VALUES (?, ?, ?)""",
                     (constant, value, datetime.utcnow().isoformat())
                 )
+                _audit("EDIT_CONFIG", "SETTING", reason=constant, details={"value": value})
             feedback = f"Setting '{constant}' updated to '{value}'."
         else:
             error = "Both constant name and value are required."

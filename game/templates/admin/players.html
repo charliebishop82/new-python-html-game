@@ -24,7 +24,9 @@
             {{ p.last_login_at[:10] if p.last_login_at else 'Never' }}
         </td>
         <td>
-            {% if p.is_banned %}
+            {% if p.retired_at %}
+            <span style="color:#777">RETIRED</span>
+            {% elif p.is_banned %}
             <span style="color:#cc2222">BANNED</span>
             {% elif p.in_combat %}
             <span style="color:#ffaa00">In Combat</span>

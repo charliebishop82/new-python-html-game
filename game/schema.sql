@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS players (
     pending_levelup     INTEGER NOT NULL DEFAULT 0,
     combat_preference   TEXT    NOT NULL DEFAULT "Balanced",
     is_banned           INTEGER NOT NULL DEFAULT 0,
+    retired_at          TEXT,
     last_login_at       TEXT,
     created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
 );
@@ -247,6 +248,38 @@ CREATE TABLE IF NOT EXISTS action_queue (
     status       TEXT    NOT NULL DEFAULT "PROCESSING",
     created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
     processed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS player_activity_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id   INTEGER NOT NULL REFERENCES players(id),
+    category    TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    details_json TEXT,
+    queue_id    INTEGER REFERENCES action_queue(id),
+    source      TEXT NOT NULL DEFAULT 'GAME',
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS admin_audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    action      TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id   INTEGER,
+    reason      TEXT,
+    details_json TEXT,
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS scheduler_run_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_name    TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    result_summary TEXT,
+    started_at  TEXT NOT NULL,
+    finished_at TEXT
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -472,5 +505,9 @@ CREATE INDEX IF NOT EXISTS idx_daily_feed_global       ON daily_feed(feed_scope,
 CREATE INDEX IF NOT EXISTS idx_boss_instances_player   ON boss_instances(player_id);
 CREATE INDEX IF NOT EXISTS idx_minion_instances_player ON minion_instances(player_id);
 CREATE INDEX IF NOT EXISTS idx_action_queue_status     ON action_queue(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_activity_date    ON player_activity_log(player_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_player_activity_status  ON player_activity_log(status, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_admin_audit_date        ON admin_audit_log(occurred_at);
+CREATE INDEX IF NOT EXISTS idx_scheduler_run_date      ON scheduler_run_log(job_name, started_at);
 CREATE INDEX IF NOT EXISTS idx_item_history_player     ON item_history(player_id);
 CREATE INDEX IF NOT EXISTS idx_special_registry_status ON special_item_registry(status);

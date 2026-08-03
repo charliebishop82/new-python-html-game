@@ -1,0 +1,12 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Activity: {{ player.character_name }}{% endblock %}
+{% block content %}
+<h1>{{ player.character_name }} — Activity Log</h1>
+<form method="GET" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:16px">
+<label>Start<br><input type="date" name="start" value="{{ start }}"></label><label>End<br><input type="date" name="end" value="{{ end }}"></label>
+<label>Category<br><select name="category"><option value="">All</option>{% for c in categories %}<option {% if category==c.category %}selected{% endif %}>{{ c.category }}</option>{% endfor %}</select></label>
+<label><input type="checkbox" name="errors_only" value="1" {% if errors_only %}checked{% endif %}> Errors only</label><button class="btn">Filter</button></form>
+<p style="color:#666">{{ total }} matching entries · page {{ page }}</p>
+<table><tr><th>Time</th><th>Status</th><th>Category</th><th>Action</th><th>Message</th><th>Details</th></tr>{% for row in rows %}<tr><td>{{ row.occurred_at }}</td><td>{{ row.status }}</td><td>{{ row.category }}</td><td>{{ row.action }}</td><td>{{ row.message }}</td><td><details><summary>View</summary><pre style="white-space:pre-wrap;max-width:550px">{{ row.details_json or '' }}</pre></details></td></tr>{% else %}<tr><td colspan="6">No matching activity.</td></tr>{% endfor %}</table>
+<div>{% if page>1 %}<a class="btn" href="?page={{ page-1 }}&start={{ start }}&end={{ end }}&category={{ category }}&errors_only={{ 1 if errors_only else 0 }}">Newer</a>{% endif %} {% if page*100<total %}<a class="btn" href="?page={{ page+1 }}&start={{ start }}&end={{ end }}&category={{ category }}&errors_only={{ 1 if errors_only else 0 }}">Older</a>{% endif %}</div>
+{% endblock %}
