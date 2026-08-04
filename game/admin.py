@@ -1014,8 +1014,34 @@ def admin_config():
     feedback = error = None
 
     if request.method == "POST":
-        constant = request.form.get("constant_name", "").strip()
-        value    = request.form.get("value", "").strip()
+        if request.form.get("action") == "reset_enemy_balance":
+            reset_values = {
+                "MINION_HP_SCALE": cfg.MINION_HP_SCALE,
+                "BOSS_HP_SCALE": cfg.BOSS_HP_SCALE,
+                "ENEMY_DAMAGE_SCALE": cfg.ENEMY_DAMAGE_SCALE,
+            }
+            with exclusive_transaction():
+                for name, reset_value in reset_values.items():
+                    execute_write(
+                        """INSERT OR REPLACE INTO settings (constant_name,value,imported_at)
+                           VALUES (?,?,?)""",
+                        (name, str(reset_value), datetime.utcnow().isoformat())
+                    )
+                _audit("RESET_ENEMY_BALANCE", "SETTING", details=reset_values)
+            feedback = "Enemy balance controls restored to their recommended testing values."
+            constant = value = ""
+        else:
+            constant = request.form.get("constant_name", "").strip()
+            value    = request.form.get("value", "").strip()
+        if constant in {"MINION_HP_SCALE", "BOSS_HP_SCALE", "ENEMY_DAMAGE_SCALE"}:
+            try:
+                numeric_value = float(value)
+                if not 0.10 <= numeric_value <= 2.00:
+                    raise ValueError
+                value = str(round(numeric_value, 2))
+            except ValueError:
+                error = "Enemy balance values must be between 0.10 (10%) and 2.00 (200%)."
+                constant = ""
         if constant and value:
             with exclusive_transaction():
                 execute_write(
@@ -1025,7 +1051,7 @@ def admin_config():
                 )
                 _audit("EDIT_CONFIG", "SETTING", reason=constant, details={"value": value})
             feedback = f"Setting '{constant}' updated to '{value}'."
-        else:
+        elif request.form.get("action") != "reset_enemy_balance" and not error:
             error = "Both constant name and value are required."
 
     settings_rows = execute("SELECT * FROM settings ORDER BY constant_name")

@@ -681,6 +681,8 @@ def _choose_combat_encounter(player: dict, settings: dict) -> tuple[str, dict | 
         (player["id"],)
     )
     discovered_ids = [row[id_column] for row in discovered]
+    if encounter_type == "MINION":
+        return encounter_type, _choose_level_appropriate_minion(player, discovered_ids)
     if discovered_ids:
         placeholders = ",".join("?" for _ in discovered_ids)
         opponent = execute_one(
@@ -691,7 +693,31 @@ def _choose_combat_encounter(player: dict, settings: dict) -> tuple[str, dict | 
         if opponent:
             return encounter_type, opponent
     return encounter_type, execute_one(
-        f"SELECT * FROM {table} WHERE is_active=1 ORDER BY RANDOM() LIMIT 1"
+        f"SELECT * FROM {table} WHERE is_active=1 ORDER BY ABS(level-?), RANDOM() LIMIT 1",
+        (player["level"],)
+    )
+
+
+def _choose_level_appropriate_minion(player: dict, undiscovered_ids: list[int] | None = None):
+    """Choose within one level where possible, then fall back to the nearest."""
+    low, high = max(1, player["level"] - 1), player["level"] + 1
+    ids = undiscovered_ids or []
+    if ids:
+        placeholders = ",".join("?" for _ in ids)
+        minion = execute_one(
+            f"SELECT * FROM minions WHERE is_active=1 AND level BETWEEN ? AND ? "
+            f"AND id NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT 1",
+            (low, high, *ids)
+        )
+        if minion:
+            return minion
+    minion = execute_one(
+        "SELECT * FROM minions WHERE is_active=1 AND level BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1",
+        (low, high)
+    )
+    return minion or execute_one(
+        "SELECT * FROM minions WHERE is_active=1 ORDER BY ABS(level-?), RANDOM() LIMIT 1",
+        (player["level"],)
     )
 
 
@@ -706,15 +732,7 @@ def _roll_minion_interruption(player: dict, settings: dict) -> dict | None:
         "SELECT minion_id FROM minion_instances WHERE player_id=?", (player["id"],)
     )
     ids = [row["minion_id"] for row in discovered]
-    if ids:
-        placeholders = ",".join("?" for _ in ids)
-        minion = execute_one(
-            f"SELECT * FROM minions WHERE is_active=1 AND id NOT IN ({placeholders}) "
-            "ORDER BY RANDOM() LIMIT 1", tuple(ids)
-        )
-        if minion:
-            return minion
-    return execute_one("SELECT * FROM minions WHERE is_active=1 ORDER BY RANDOM() LIMIT 1")
+    return _choose_level_appropriate_minion(player, ids)
 
 
 def _equip_best_items(player_id: int, profile: dict) -> list[str]:

@@ -522,6 +522,8 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
         f"SELECT * FROM {'bosses' if encounter_type == 'BOSS' else 'minions'} WHERE id = ?",
         (opponent["id"],)
     )
+    opponent_full["max_hp"] = result["encounter_max_hp"]
+    opponent_full["current_hp"] = result["encounter_max_hp"]
     # Show boss intel if previously observed
     intel = None
     intel_detail = None
@@ -576,6 +578,11 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
     if not opponent:
         return {"error": "Opponent not found."}
 
+    scale_key = "BOSS_HP_SCALE" if encounter_type == "BOSS" else "MINION_HP_SCALE"
+    default_scale = cfg.BOSS_HP_SCALE if encounter_type == "BOSS" else cfg.MINION_HP_SCALE
+    hp_scale = max(0.10, min(2.00, float(settings.get(scale_key, default_scale))))
+    encounter_max_hp = max(1, round(opponent["max_hp"] * hp_scale))
+
     with exclusive_transaction():
         new_ap, new_hp = _deduct_ap_and_regen(player_id, player, cost_ap, settings)
         execute_write("UPDATE players SET in_combat = 1 WHERE id = ?", (player_id,))
@@ -589,16 +596,23 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
         )
         if existing:
             # Reset for new fight
-            execute_write(
-                f"UPDATE {inst_tbl} SET current_hp = ?, special_attack_used = 0, "
-                f"special_buff_used = 0, current_phase = 1 WHERE id = ?",
-                (opponent["max_hp"], existing["id"])
-            )
+            if encounter_type == "BOSS":
+                execute_write(
+                    f"UPDATE {inst_tbl} SET current_hp=?, encounter_max_hp=?, "
+                    f"special_attack_used=0, special_buff_used=0, current_phase=1 WHERE id=?",
+                    (encounter_max_hp, encounter_max_hp, existing["id"])
+                )
+            else:
+                execute_write(
+                    f"UPDATE {inst_tbl} SET current_hp=?, encounter_max_hp=? WHERE id=?",
+                    (encounter_max_hp, encounter_max_hp, existing["id"])
+                )
             inst_id = existing["id"]
         else:
             inst_id = execute_write(
-                f"INSERT INTO {inst_tbl} (player_id, {id_col}, current_hp) VALUES (?, ?, ?)",
-                (player_id, opponent_id, opponent["max_hp"])
+                f"INSERT INTO {inst_tbl} (player_id, {id_col}, current_hp, encounter_max_hp) "
+                f"VALUES (?, ?, ?, ?)",
+                (player_id, opponent_id, encounter_max_hp, encounter_max_hp)
             )
 
         # Create combat session
@@ -619,7 +633,8 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
                 (player_id, inst_id, new_hp)
             )
 
-    return {"session_id": session_id, "new_ap": new_ap, "new_hp": new_hp}
+    return {"session_id": session_id, "new_ap": new_ap, "new_hp": new_hp,
+            "encounter_max_hp": encounter_max_hp}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -671,7 +686,7 @@ def action_pvp():
 
 
 def _choose_minion_for_player(player: dict) -> dict | None:
-    """Select an undiscovered active minion first, then any active minion."""
+    """Select a level-appropriate minion, preferring undiscovered encounters."""
     discovered = execute(
         "SELECT minion_id FROM minion_instances WHERE player_id=?", (player["id"],)
     )
@@ -679,12 +694,22 @@ def _choose_minion_for_player(player: dict) -> dict | None:
     if discovered_ids:
         placeholders = ",".join("?" for _ in discovered_ids)
         minion = execute_one(
-            f"SELECT * FROM minions WHERE is_active=1 AND id NOT IN ({placeholders}) "
-            "ORDER BY RANDOM() LIMIT 1", tuple(discovered_ids)
+            f"SELECT * FROM minions WHERE is_active=1 AND level BETWEEN ? AND ? "
+            f"AND id NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT 1",
+            (max(1, player["level"] - 1), player["level"] + 1, *discovered_ids)
         )
         if minion:
             return minion
-    return execute_one("SELECT * FROM minions WHERE is_active=1 ORDER BY RANDOM() LIMIT 1")
+    minion = execute_one(
+        "SELECT * FROM minions WHERE is_active=1 AND level BETWEEN ? AND ? ORDER BY RANDOM() LIMIT 1",
+        (max(1, player["level"] - 1), player["level"] + 1)
+    )
+    if minion:
+        return minion
+    return execute_one(
+        "SELECT * FROM minions WHERE is_active=1 ORDER BY ABS(level-?), RANDOM() LIMIT 1",
+        (player["level"],)
+    )
 
 
 def _get_eligible_opponents(player: dict, settings: dict) -> list[dict]:

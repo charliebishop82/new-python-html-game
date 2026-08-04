@@ -53,6 +53,7 @@ def get_combat_state(session_id: int) -> dict:
         boss = execute_one("SELECT * FROM bosses WHERE id = ?", (instance["boss_id"],))
         boss = {**boss,
                 "current_hp":          instance["current_hp"],
+                "max_hp":              instance.get("encounter_max_hp") or boss["max_hp"],
                 "special_attack_used": instance["special_attack_used"],
                 "special_buff_used":   instance["special_buff_used"],
                 "current_phase":       instance["current_phase"],
@@ -65,6 +66,7 @@ def get_combat_state(session_id: int) -> dict:
         minion = execute_one("SELECT * FROM minions WHERE id = ?", (instance["minion_id"],))
         minion = {**minion,
                   "current_hp": instance["current_hp"],
+                  "max_hp": instance.get("encounter_max_hp") or minion["max_hp"],
                   "instance_id": instance["id"]}
 
     # Active combat buffs
@@ -857,6 +859,25 @@ def handle_swap_gear(session_id: int, player_id: int, state: dict,
 # OPPONENT AUTOMATION
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _apply_enemy_damage_scale(result: dict) -> dict:
+    """Scale non-player damage while preserving the original roll for auditing."""
+    if not result.get("hit") or result.get("damage_total", 0) <= 0:
+        return result
+    settings = get_all_settings()
+    scale = max(0.10, min(2.00, float(settings.get(
+        "ENEMY_DAMAGE_SCALE", cfg.ENEMY_DAMAGE_SCALE
+    ))))
+    original = int(result["damage_total"])
+    scaled = max(1, round(original * scale))
+    adjusted = dict(result)
+    adjusted["damage_total"] = scaled
+    adjusted["outcome_detail"] = (
+        f"{result.get('outcome_detail', '')} Enemy balance scale: "
+        f"{original} x {scale:.0%} = {scaled}."
+    ).strip()
+    return adjusted
+
+
 def handle_opponent_action(session_id: int, state: dict) -> dict:
     """Automated opponent action for a PvP defender, boss, or minion."""
     session = state["session"]
@@ -892,6 +913,7 @@ def _minion_action(session_id: int, state: dict) -> dict:
         active_buffs=player_buffs,
         is_player_attacker=False,
     )
+    result = _apply_enemy_damage_scale(result)
 
     with exclusive_transaction():
         if result["hit"]:
@@ -1114,6 +1136,10 @@ def _boss_special_attack(session_id: int, state: dict) -> dict:
         raw_dmg, boss["special_attack_damage_type"],
         att_eq.get("armor"), att_eq.get("special")
     )
+    damage_scale = max(0.10, min(2.00, float(get_all_settings().get(
+        "ENEMY_DAMAGE_SCALE", cfg.ENEMY_DAMAGE_SCALE
+    ))))
+    final_dmg = max(1, round(final_dmg * damage_scale)) if final_dmg > 0 else 0
     new_hp = max(1, player["current_hp"] - final_dmg)
 
     with exclusive_transaction():
@@ -1756,6 +1782,7 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
         active_buffs=att_buffs,
         is_player_attacker=False,
     )
+    result = _apply_enemy_damage_scale(result)
 
     with exclusive_transaction():
         if result["hit"]:

@@ -61,6 +61,10 @@ def init_db():
         player_columns = {row[1] for row in conn.execute("PRAGMA table_info(players)")}
         if "retired_at" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
+        for table in ("boss_instances", "minion_instances"):
+            columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if "encounter_max_hp" not in columns:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN encounter_max_hp INTEGER")
         # Older builds recorded permanent level choices in level_up_history but
         # did not publish them to the player's dashboard feed. Backfill each
         # historical choice once, keyed by player and original timestamp.

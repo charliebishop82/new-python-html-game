@@ -12,6 +12,32 @@
     Changes here override Excel-imported values until the next import.
 </p>
 
+<section style="background:#111;border:1px solid #8a6500;padding:14px;margin-bottom:20px;">
+    <h2 style="margin-top:0;">Enemy Balance Safety Controls</h2>
+    <p style="color:#aaa;margin-bottom:12px;">These multipliers affect new encounter instances only. They never alter the Excel-imported boss or minion records. Enter 1.00 for original strength.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">
+        {% for name,label,help_text,fallback in [
+            ('MINION_HP_SCALE','Minion health','Recommended testing value: 60%.',0.60),
+            ('BOSS_HP_SCALE','Boss health','Recommended testing value: 65%.',0.65),
+            ('ENEMY_DAMAGE_SCALE','Enemy damage','Applies to minion attacks and all boss attacks. Recommended: 85%.',0.85)
+        ] %}
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="{{ name }}">
+            <label title="{{ help_text }}">{{ label }}</label><br>
+            <input type="number" name="value" min="0.10" max="2.00" step="0.05"
+                   value="{{ settings_map.get(name, fallback) }}" style="width:95px;">
+            <span style="color:#777;">x original</span>
+            <button type="submit" class="btn">Save</button>
+            <div style="color:#777;font-size:11px;margin-top:5px;">{{ help_text }}</div>
+        </form>
+        {% endfor %}
+    </div>
+    <form method="POST" style="margin-top:14px;">
+        <input type="hidden" name="action" value="reset_enemy_balance">
+        <button type="submit" class="btn">Restore Recommended Testing Values</button>
+    </form>
+</section>
+
 <section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
     <h2 style="margin-top:0;">Player Interface Defaults</h2>
     <p style="color:#777;margin-bottom:12px;">Interface style and color mode are independent. Players may override them only when allowed below.</p>

@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS boss_instances (
     player_id           INTEGER NOT NULL REFERENCES players(id),
     boss_id             INTEGER NOT NULL REFERENCES bosses(id),
     current_hp          INTEGER NOT NULL,
+    encounter_max_hp    INTEGER,
     special_attack_used INTEGER NOT NULL DEFAULT 0,
     special_buff_used   INTEGER NOT NULL DEFAULT 0,
     current_phase       INTEGER NOT NULL DEFAULT 1,
@@ -153,6 +154,7 @@ CREATE TABLE IF NOT EXISTS minion_instances (
     player_id     INTEGER NOT NULL REFERENCES players(id),
     minion_id     INTEGER NOT NULL REFERENCES minions(id),
     current_hp    INTEGER NOT NULL,
+    encounter_max_hp INTEGER,
     discovered_at TEXT    NOT NULL DEFAULT (datetime('now')),
     kill_count    INTEGER NOT NULL DEFAULT 0,
     UNIQUE(player_id, minion_id)
