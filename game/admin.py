@@ -1245,9 +1245,35 @@ def admin_logs():
 
     import_errors = read_tail(cfg.IMPORT_ERROR_LOG)
     orphan_log    = read_tail(cfg.ORPHAN_LOG)
-    failed_queue  = execute(
-        "SELECT * FROM action_queue WHERE status='FAILED' ORDER BY created_at DESC LIMIT 50"
+    failed_queue = execute(
+        """SELECT q.*, p.character_name, l.message AS error_message,
+                  l.details_json, cs.combat_type, cs.status AS combat_status,
+                  cs.result AS combat_result, cs.current_round,
+                  EXISTS(
+                    SELECT 1 FROM action_queue later
+                    WHERE later.player_id=q.player_id
+                      AND later.action_type=q.action_type
+                      AND later.status='DONE' AND later.created_at>q.created_at
+                      AND COALESCE(json_extract(later.payload,'$.session_id'),-1)
+                          = COALESCE(json_extract(q.payload,'$.session_id'),-1)
+                  ) AS later_succeeded
+           FROM action_queue q
+           LEFT JOIN players p ON p.id=q.player_id
+           LEFT JOIN player_activity_log l ON l.queue_id=q.id AND l.status='FAILED'
+           LEFT JOIN combat_sessions cs
+             ON cs.id=json_extract(q.payload,'$.session_id')
+           WHERE q.status='FAILED'
+           ORDER BY q.created_at DESC LIMIT 50"""
     )
+    for row in failed_queue:
+        try:
+            row["payload_data"] = json.loads(row.get("payload") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            row["payload_data"] = {"raw": row.get("payload")}
+        try:
+            row["details_data"] = json.loads(row.get("details_json") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            row["details_data"] = {"raw": row.get("details_json")}
 
     return render_template("admin/logs.html",
                            import_errors=import_errors,

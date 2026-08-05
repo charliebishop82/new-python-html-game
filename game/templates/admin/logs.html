@@ -26,17 +26,26 @@
 
 <h2>Failed Queue Rows (last 50)</h2>
 {% if failed_queue %}
+<p style="color:#888;max-width:900px;">Each failed row is an immutable receipt. “Later succeeded” means the same character subsequently completed that action in the same combat, so the failure is historical rather than a stuck current action.</p>
 <table>
-    <tr><th>ID</th><th>Player</th><th>Action</th><th>Created</th><th>Payload</th></tr>
+    <tr><th>ID</th><th>Player</th><th>Action</th><th>Created</th><th>Error</th><th>Related state</th><th>Investigation</th></tr>
     {% for row in failed_queue %}
     <tr>
         <td>{{ row.id }}</td>
-        <td>{{ row.player_id }}</td>
+        <td><a href="{{ url_for('admin_player_activity', pid=row.player_id) }}">{{ row.character_name or ('Player #' ~ row.player_id) }}</a></td>
         <td>{{ row.action_type }}</td>
         <td style="font-size:11px;color:#666">{{ row.created_at[:16] }}</td>
-        <td style="font-size:11px;color:#666;max-width:300px;overflow:hidden;text-overflow:ellipsis;">
-            {{ row.payload[:100] }}
+        <td style="max-width:300px;color:#cc5555">{{ row.error_message or 'No exception text was recorded.' }}</td>
+        <td style="font-size:11px;">
+            {% if row.combat_type %}Combat #{{ row.payload_data.get('session_id') }} · {{ row.combat_type }}<br>
+            {{ row.combat_status }}{% if row.combat_result %} · {{ row.combat_result }}{% endif %} · round {{ row.current_round }}
+            {% else %}No combat session{% endif %}
+            <br><strong style="color:{% if row.later_succeeded %}#00cc88{% else %}#ffaa00{% endif %}">{{ 'Later succeeded' if row.later_succeeded else 'Review required' }}</strong>
         </td>
+        <td style="min-width:150px"><details><summary>View details</summary>
+            <div style="margin-top:6px;color:#aaa"><strong>Payload</strong><pre style="white-space:pre-wrap">{{ row.payload_data|tojson(indent=2) }}</pre></div>
+            <div style="color:#aaa"><strong>Recorded diagnostic</strong><pre style="white-space:pre-wrap;max-width:520px;overflow:auto">{{ row.details_data|tojson(indent=2) }}</pre></div>
+        </details></td>
     </tr>
     {% endfor %}
 </table>
