@@ -783,8 +783,8 @@ def _eligible_pvp_targets(player: dict) -> list[dict]:
     """Provide the internal eligible pvp targets operation used by this module."""
     return execute(
         """SELECT p.* FROM players p WHERE p.id != ? AND p.is_banned=0 AND p.in_combat=0
-           AND p.level>=3 AND p.current_hp>1 AND (? - p.level)<=2""",
-        (player["id"], player["level"])
+           AND p.level>=3 AND p.current_hp>1 AND p.level<=?""",
+        (player["id"], player["level"] + 4)
     )
 
 
@@ -835,15 +835,15 @@ def _choose_combat_encounter(player: dict, settings: dict) -> tuple[str, dict | 
     if discovered_ids:
         placeholders = ",".join("?" for _ in discovered_ids)
         opponent = execute_one(
-            f"SELECT * FROM {table} WHERE is_active=1 "
+            f"SELECT * FROM {table} WHERE is_active=1 AND level<=? "
             f"AND id NOT IN ({placeholders}) ORDER BY RANDOM() LIMIT 1",
-            tuple(discovered_ids)
+            (player["level"] + 4, *discovered_ids)
         )
         if opponent:
             return encounter_type, opponent
     return encounter_type, execute_one(
-        f"SELECT * FROM {table} WHERE is_active=1 ORDER BY ABS(level-?), RANDOM() LIMIT 1",
-        (player["level"],)
+        f"SELECT * FROM {table} WHERE is_active=1 AND level<=? ORDER BY ABS(level-?), RANDOM() LIMIT 1",
+        (player["level"] + 4, player["level"])
     )
 
 
@@ -865,8 +865,8 @@ def _choose_level_appropriate_minion(player: dict, undiscovered_ids: list[int] |
         (low, high)
     )
     return minion or execute_one(
-        "SELECT * FROM minions WHERE is_active=1 ORDER BY ABS(level-?), RANDOM() LIMIT 1",
-        (player["level"],)
+        "SELECT * FROM minions WHERE is_active=1 AND level<=? ORDER BY ABS(level-?), RANDOM() LIMIT 1",
+        (player["level"] + 4, player["level"])
     )
 
 

@@ -35,6 +35,8 @@
             <span class="feed-scope feed-you">YOU · EVENT</span>
             {% elif entry.event_category == 'COMBAT' %}
             <span class="feed-scope feed-you">YOU · COMBAT</span>
+            {% elif entry.event_category == 'COMBAT_TURN' %}
+            <span class="feed-scope feed-you">COMBAT TURN</span>
             {% elif entry.event_category == 'PVP_DEFENSE' %}
             <span class="feed-scope feed-against-you">AGAINST YOU</span>
             {% else %}

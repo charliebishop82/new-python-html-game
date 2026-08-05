@@ -1,0 +1,16 @@
+fixes for game:
+
+when actions taken against a player, I was notified on the screen that combat was against me, but the npc stole an item, I dont believe I was notified of that, I should. Also the global log should say something like "player a stole from player b!" or something like that. Also, confirm that when an item is stolen, its removed from the target inventory.
+
+lets examine how NPCs do combat, when a player encoutners something of a much higher level, they have the option to back away - are we presenting the npc's with this choice? if not, they should always back away from any contact greater than 4 levels above them.
+
+in the player log, I do see all the days log now, well the major events anyway, but I Dont see the individual turns of combat, if we are not storing that info , we should be, because I want to be able to scroll back and see how combat played out turn by turn.
+
+we need to examine how XP is awarded in combat, as some NPC level up very quickly, need to scale that better.
+
+on the left hand menu screen, there should always be a link to return to dashboard in the player options, maybe before logout? (in case we forget to include it on other menus)
+
+the shop should auto populate on game run if its empty.
+
+for discussion: some sort of group boss/weekly global boss all players can attack?
+

@@ -200,7 +200,7 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
         )
         _clear_browser_combat_session()
 
-    return {
+    result = {
         "round_log":       round_log,
         "combat_ended":    combat_ended,
         "at_round_limit":  at_round_limit,
@@ -213,6 +213,8 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
         "def_init":        def_init,
         "opponent_health": opponent_health,
     }
+    _record_round_history(result)
+    return result
 
 
 def _escaped_round_result(round_log, session_id, attacker_first, att_init, def_init):
@@ -224,7 +226,7 @@ def _escaped_round_result(round_log, session_id, attacker_first, att_init, def_i
     # Also discard the browser-side session reference so the next navigation
     # cannot try to resume combat that has already ended.
     _clear_browser_combat_session()
-    return {
+    result = {
         "round_log": round_log, "combat_ended": True, "at_round_limit": False,
         "winner_side": None, "final_result": {"result_type": "ESCAPE"},
         "session_id": session_id, "attacker_first": attacker_first,
@@ -233,6 +235,53 @@ def _escaped_round_result(round_log, session_id, attacker_first, att_init, def_i
         # the round number in order to display the Escape action and its roll.
         "round_number": combat_session["current_round"] if combat_session else None,
     }
+    _record_round_history(result)
+    return result
+
+
+def _record_round_history(result: dict) -> None:
+    """Keep a readable daily transcript for every participant in a combat round."""
+    session_id = result.get("session_id")
+    round_log = result.get("round_log") or []
+    if not session_id or not round_log:
+        return
+    combat = execute_one("SELECT * FROM combat_sessions WHERE id=?", (session_id,))
+    if not combat:
+        return
+    attacker = execute_one(
+        "SELECT character_name FROM players WHERE id=?", (combat["attacker_player_id"],)
+    )
+    if combat["combat_type"] == "PVP":
+        opponent = execute_one(
+            "SELECT character_name FROM players WHERE id=?", (combat["defender_player_id"],)
+        )
+    else:
+        table = "bosses" if combat["combat_type"] == "BOSS" else "minions"
+        id_column = "boss_id" if combat["combat_type"] == "BOSS" else "minion_id"
+        opponent = execute_one(
+            f"SELECT name AS character_name FROM {table} WHERE id=?", (combat[id_column],)
+        )
+    attacker_name = attacker["character_name"] if attacker else "Attacker"
+    opponent_name = opponent["character_name"] if opponent else "Opponent"
+    initiative = (f"Initiative: {attacker_name} {result.get('att_init', '?')} vs "
+                  f"{opponent_name} {result.get('def_init', '?')}")
+    actions = []
+    for action in round_log:
+        flavor_text = action.get("flavor") or action.get("message") or action.get("action", "Action")
+        roll = action.get("roll_detail")
+        actions.append(f"{flavor_text}{' [' + roll + ']' if roll else ''}")
+    transcript = f"Round {result.get('round_number', '?')} — {initiative}. " + " ".join(actions)
+    recipients = [combat["attacker_player_id"]]
+    if combat["combat_type"] == "PVP" and combat.get("defender_player_id"):
+        recipients.append(combat["defender_player_id"])
+    with exclusive_transaction():
+        for recipient_id in recipients:
+            execute_write(
+                """INSERT INTO daily_feed
+                   (feed_scope,player_id,flavor_text,event_category,combat_session_id)
+                   VALUES('PERSONAL',?,?, 'COMBAT_TURN',?)""",
+                (recipient_id, transcript, session_id)
+            )
 
 
 def _resolve_player_action(session_id: int, player_id: int,
@@ -410,7 +459,7 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
             ended = True
             _clear_browser_combat_session()
 
-    return {
+    result = {
         "round_log":      round_log,
         "combat_ended":   ended,
         "at_round_limit": at_round_limit,
@@ -422,6 +471,8 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
         "att_init": 0, "def_init": 0,
         "opponent_health": opponent_health,
     }
+    _record_round_history(result)
+    return result
 
 
 # ─────────────────────────────────────────────────────────────────────────────

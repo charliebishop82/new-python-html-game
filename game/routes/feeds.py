@@ -32,6 +32,7 @@ def personal_latest():
         """SELECT feed_scope,flavor_text,event_category,occurred_at,combat_session_id
            FROM daily_feed
            WHERE player_id = ? AND datetime(occurred_at) > datetime(?)
+             AND event_category != 'COMBAT_TURN'
            ORDER BY occurred_at ASC""",
         (player_id, since)
     )

@@ -129,6 +129,8 @@
         <a href="{{ url_for('character.index') }}">Character</a>
         <a href="{{ url_for('character.equipment') }}">Equipment</a>
         <a href="{{ url_for('scoreboards.index') }}">Scoreboards</a>
+        <span class="nav-link-disabled" title="A shared weekly encounter is being designed.">Weekly Boss (Coming Soon)</span>
+        <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
         <form action="{{ url_for('auth.logout') }}" method="POST" style="margin:0">
             <button type="submit" class="nav-link-btn">Logout</button>
         </form>

@@ -90,6 +90,15 @@ def init_db():
                VALUES ('COMBAT_DEFEAT_XP','10',
                        'Small XP award for losing a completed fight; escapes and stalemates excluded.')"""
         )
+        for name, value, description in (
+            ("MINION_XP_PER_LEVEL", "20", "Base victory XP per minion level."),
+            ("BOSS_XP_PER_LEVEL", "35", "Base victory XP per boss level."),
+            ("PVP_XP_PER_LEVEL", "25", "Base victory XP per opposing player level."),
+        ):
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(constant_name,value,description) VALUES(?,?,?)",
+                (name, value, description)
+            )
         # Older builds recorded permanent level choices in level_up_history but
         # did not publish them to the player's dashboard feed. Backfill each
         # historical choice once, keyed by player and original timestamp.

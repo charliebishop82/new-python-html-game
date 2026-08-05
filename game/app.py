@@ -38,9 +38,30 @@ def create_app() -> Flask:
     app.before_request(_load_player)
     app.before_request(_check_levelup)
     app.before_request(_set_blackout_flag)
+    _ensure_shop_populated(app)
     _start_scheduler(app)
 
     return app
+
+
+def _ensure_shop_populated(app: Flask) -> None:
+    """Seed the normal shop rotation on startup only when it is completely empty."""
+    with app.app_context():
+        from database import execute_one, exclusive_transaction
+        if execute_one("SELECT COUNT(*) AS cnt FROM shop_listings")["cnt"]:
+            return
+        from scheduler import _populate_shop_rotation, _populate_special_slots
+        settings = get_all_settings()
+        with exclusive_transaction():
+            _populate_shop_rotation("weapons", settings.get(
+                "SHOP_WEAPONS_COUNT", cfg.SHOP_WEAPONS_COUNT))
+            _populate_shop_rotation("armor", settings.get(
+                "SHOP_ARMOR_COUNT", cfg.SHOP_ARMOR_COUNT))
+            player_count = execute_one(
+                "SELECT COUNT(*) AS cnt FROM players WHERE is_banned=0")["cnt"]
+            if player_count:
+                _populate_special_slots(max(1, player_count // 2))
+        logger.info("Shop was empty and has been populated for the current rotation")
 
 
 def _register_blueprints(app: Flask):

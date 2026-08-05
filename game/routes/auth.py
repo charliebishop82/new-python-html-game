@@ -251,7 +251,7 @@ def character_create_post():
 
 
 def _award_starter_gear(player_id: int):
-    """Select a random level-1 weapon and armor, add to inventory."""
+    """Give and immediately equip one level-1 weapon and armor."""
     for item_type, table in [("WEAPON", "weapons"), ("ARMOR", "armor")]:
         item = execute_one(
             f"SELECT * FROM {table} WHERE level = 1 AND is_active = 1 ORDER BY RANDOM() LIMIT 1"
@@ -276,6 +276,12 @@ def _award_starter_gear(player_id: int):
                    (player_id, item_type, item_id, item_name, event_type)
                    VALUES (?, ?, ?, ?, 'RECEIVED_STARTER')""",
                 (player_id, item_type, item["id"], item["name"])
+            )
+            equipped_column = ("equipped_weapon_id" if item_type == "WEAPON"
+                               else "equipped_armor_id")
+            execute_write(
+                f"UPDATE players SET {equipped_column}=? WHERE id=?",
+                (inv_id, player_id)
             )
 
 

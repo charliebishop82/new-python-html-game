@@ -485,6 +485,7 @@ def _pvp_steal_cascade(attacker_id: int, defender_id: int,
                    VALUES (?, ?, ?, ?, 'STOLEN_FROM_ME', ?)""",
                 (defender_id, target_inv["item_type"], target_inv["item_id"], item_name, attacker_id)
             )
+        _announce_pvp_theft(attacker_id, defender_id, item_name=item_name)
         return {"item_name": item_name, "credits": 0, "xp_bonus": 0}
 
     # Step 2: try to steal credits
@@ -497,11 +498,47 @@ def _pvp_steal_cascade(attacker_id: int, defender_id: int,
                               (amount, defender_id))
                 execute_write("UPDATE players SET credits = credits + ? WHERE id = ?",
                               (amount, attacker_id))
+            _announce_pvp_theft(attacker_id, defender_id, credits=amount)
             return {"credits": amount, "xp_bonus": 0}
 
     # Step 3: nothing left — the caller combines this consolation with the
     # standard successful-steal award and applies the XP once.
     return {"xp_bonus": zero_xp_bonus}
+
+
+def _announce_pvp_theft(thief_id: int, victim_id: int, *, item_name: str = "",
+                        credits: int = 0) -> None:
+    """Record a theft for the victim and publish the player-vs-player event."""
+    thief = execute_one("SELECT character_name FROM players WHERE id=?", (thief_id,))
+    victim = execute_one("SELECT character_name FROM players WHERE id=?", (victim_id,))
+    if not thief or not victim:
+        return
+    what = (f"{item_name} from your inventory" if item_name
+            else f"{credits} credits")
+    victim_message = f"{thief['character_name']} stole {what} from you during combat!"
+    world_what = item_name if item_name else f"{credits} credits"
+    world_message = (f"{thief['character_name']} stole {world_what} from "
+                     f"{victim['character_name']}!")
+    with exclusive_transaction():
+        execute_write(
+            """INSERT INTO daily_feed
+               (feed_scope,player_id,flavor_text,event_category)
+               VALUES('PERSONAL',?,?, 'PVP_DEFENSE')""",
+            (victim_id, victim_message)
+        )
+        execute_write(
+            """INSERT INTO daily_feed
+               (feed_scope,player_id,flavor_text,event_category)
+               VALUES('GLOBAL',NULL,?, 'COMBAT')""",
+            (world_message,)
+        )
+        execute_write(
+            """INSERT INTO player_activity_log
+               (player_id,source,category,action,status,message,details_json)
+               VALUES(?, 'PVP_DEFENSE','ACTION','PVP_THEFT','LOSS',?,?)""",
+            (victim_id, victim_message, str({"thief_id": thief_id,
+             "item_name": item_name or None, "credits": credits}))
+        )
 
 
 def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
@@ -1303,7 +1340,10 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
     # Step 1: XP award
     if session["combat_type"] in ("BOSS", "MINION") and winner_is_attacker:
         opp = state.get("boss") or state.get("minion")
-        base_xp = 100 * opp["level"]
+        per_level = (settings.get("BOSS_XP_PER_LEVEL", cfg.BOSS_XP_PER_LEVEL)
+                     if session["combat_type"] == "BOSS"
+                     else settings.get("MINION_XP_PER_LEVEL", cfg.MINION_XP_PER_LEVEL))
+        base_xp = per_level * opp["level"]
         special = state["attacker_equipped"].get("special")
         xp_mult = special.get("xp_multiplier", 0.0) if special else 0.0
         xp_earned = engine.calc_xp_reward(
@@ -1350,7 +1390,8 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
 
         if winner_is_attacker:
             # Winner XP
-            base_xp = 80 * (state["defender"]["level"] if state.get("defender") else 1)
+            base_xp = settings.get("PVP_XP_PER_LEVEL", cfg.PVP_XP_PER_LEVEL) * (
+                state["defender"]["level"] if state.get("defender") else 1)
             xp_earned = engine.calc_xp_reward(
                 base_xp, attacker["level"],
                 state["defender"]["level"] if state.get("defender") else attacker["level"],
@@ -1373,7 +1414,8 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
             defender_xp_mult = (defender_special.get("xp_multiplier", 0.0)
                                 if defender_special else 0.0)
             defender_xp = engine.calc_xp_reward(
-                80 * attacker["level"], defender["level"], attacker["level"],
+                settings.get("PVP_XP_PER_LEVEL", cfg.PVP_XP_PER_LEVEL) * attacker["level"],
+                defender["level"], attacker["level"],
                 defender_xp_mult
             )
             with exclusive_transaction():
