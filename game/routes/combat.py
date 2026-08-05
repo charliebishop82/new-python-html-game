@@ -240,7 +240,19 @@ def _escaped_round_result(round_log, session_id, attacker_first, att_init, def_i
 
 
 def _record_round_history(result: dict) -> None:
-    """Keep a readable daily transcript for every participant in a combat round."""
+    """Record a readable round without ever allowing logging to break combat."""
+    try:
+        _record_round_history_impl(result)
+    except Exception:
+        # The round has already resolved by the time this optional history is
+        # written. Preserve the combat result even if descriptive logging has
+        # malformed legacy data or encounters an unexpected schema mismatch.
+        logger.exception("Could not write readable history for combat session %s",
+                         result.get("session_id"))
+
+
+def _record_round_history_impl(result: dict) -> None:
+    """Build and persist one readable daily transcript entry per participant."""
     session_id = result.get("session_id")
     round_log = result.get("round_log") or []
     if not session_id or not round_log:
@@ -255,11 +267,19 @@ def _record_round_history(result: dict) -> None:
         opponent = execute_one(
             "SELECT character_name FROM players WHERE id=?", (combat["defender_player_id"],)
         )
-    else:
-        table = "bosses" if combat["combat_type"] == "BOSS" else "minions"
-        id_column = "boss_id" if combat["combat_type"] == "BOSS" else "minion_id"
+    elif combat["combat_type"] == "BOSS":
         opponent = execute_one(
-            f"SELECT name AS character_name FROM {table} WHERE id=?", (combat[id_column],)
+            """SELECT b.name AS character_name
+               FROM boss_instances bi JOIN bosses b ON b.id=bi.boss_id
+               WHERE bi.id=?""",
+            (combat["boss_instance_id"],)
+        )
+    else:
+        opponent = execute_one(
+            """SELECT m.name AS character_name
+               FROM minion_instances mi JOIN minions m ON m.id=mi.minion_id
+               WHERE mi.id=?""",
+            (combat["minion_instance_id"],)
         )
     attacker_name = attacker["character_name"] if attacker else "Attacker"
     opponent_name = opponent["character_name"] if opponent else "Opponent"

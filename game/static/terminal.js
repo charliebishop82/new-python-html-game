@@ -59,7 +59,26 @@ document.addEventListener('DOMContentLoaded', () => {
     bindTerminalForms();
     bindClassSelection();
     bindLevelUpSelection();
+    scrollTerminalToLatest();
 });
+
+/**
+ * Open a pre-rendered daily transcript at its newest entry. Live actions and
+ * feed polling already scroll after appending; this covers a normal reload.
+ * Chronological order remains oldest-to-newest for readable combat playback.
+ */
+function scrollTerminalToLatest() {
+    const terminal = document.getElementById('terminal');
+    if (!terminal) return;
+    const priorBehavior = terminal.style.scrollBehavior;
+    terminal.style.scrollBehavior = 'auto';
+    terminal.scrollTop = terminal.scrollHeight;
+    // Run once more after the browser completes its first layout pass.
+    requestAnimationFrame(() => {
+        terminal.scrollTop = terminal.scrollHeight;
+        terminal.style.scrollBehavior = priorBehavior;
+    });
+}
 
 function bindLevelUpSelection() {
     const choices = document.querySelectorAll('.stat-choice');
