@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player)
-from queue_handler import enqueue_and_process
+from queue_handler import enqueue_and_process, register_handler
 
 logger = logging.getLogger(__name__)
 
@@ -718,7 +718,17 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
     temperament = random.Random(player["id"] * 65537).randint(-10, 10)
     shop_interest = max(profile["hoarder"], profile["boss_killer"] // 2,
                         profile["player_hunter"] // 2, profile["thief"] // 2)
-    if random.randint(1, 100) > max(10, min(85, 15 + shop_interest // 2 + temperament)):
+    minimum_spares = max(1, int(settings.get(
+        "NPC_UPGRADE_MIN_UNEQUIPPED", cfg.NPC_UPGRADE_MIN_UNEQUIPPED
+    )))
+    equipped_now = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
+                    player.get("equipped_special_id")} - {None}
+    unequipped_count = sum(item["inv_id"] not in equipped_now for item in owned)
+    # Once an NPC has accumulated the configured number of spare items it
+    # actively checks for a liquidation-funded upgrade every turn. With fewer
+    # spares, ordinary personality-driven shopping remains intentionally varied.
+    if (unequipped_count < minimum_spares and
+            random.randint(1, 100) > max(10, min(85, 15 + shop_interest // 2 + temperament))):
         return None
 
     # Preserve enough money for one heal and a modest repair reserve. More
@@ -739,6 +749,23 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
         if item["inv_id"] == equipped_ids[item["item_type"]]:
             current_scores[item["item_type"]] = item["score"]
 
+    minimum_improvement = max(0.0, float(settings.get(
+        "NPC_UPGRADE_MIN_IMPROVEMENT", cfg.NPC_UPGRADE_MIN_IMPROVEMENT
+    )))
+    unequipped = [item for item in owned if item["inv_id"] not in set(equipped_ids.values())]
+    # Planned liquidation uses ordinary gear only. Specials remain protected,
+    # especially for hoarders, unless the existing full-inventory rule must
+    # make room and no other legal item is available.
+    liquidation_pool = [item for item in unequipped if item["item_type"] in ("WEAPON", "ARMOR")]
+    liquidation_enabled = len(unequipped) >= minimum_spares
+
+    def sale_value(item: dict) -> int:
+        sell_pct = settings.get("SELL_PRICE_PERCENT", cfg.SELL_PRICE_PERCENT)
+        special = next((owned_item for owned_item in owned
+                        if owned_item["inv_id"] == player.get("equipped_special_id")), None)
+        sell_bonus = float((special or {}).get("sell_bonus", 0) or 0)
+        return max(0, int(item["credit_cost"] * min(1.0, sell_pct + sell_bonus)))
+
     listings = execute("SELECT * FROM shop_listings ORDER BY id")
     upgrades = []
     owned_special_ids = {item["id"] for item in owned if item["item_type"] == "SPECIAL"}
@@ -747,26 +774,162 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
         if not detail:
             continue
         price = _discounted_shop_price(player, listing["price"])
-        if price > spendable:
-            continue
         score = _score_item(listing["item_type"], detail, player, profile,
                             listing.get("durability_at_listing") or detail.get("starting_durability", 100))
         baseline = current_scores[listing["item_type"]]
-        # Empty slots are always useful; otherwise require a real 10% upgrade.
+        # Empty slots are always useful; otherwise require the configurable
+        # improvement so NPCs do not churn equipment for negligible gains.
         collectible = (listing["item_type"] == "SPECIAL" and profile["hoarder"] >= 50
                        and listing["item_id"] not in owned_special_ids)
-        if baseline <= 0 or score >= baseline * 1.10 or collectible:
+        if baseline <= 0 or score >= baseline * (1 + minimum_improvement) or collectible:
+            liquidation_plan = []
+            if price > spendable:
+                if not liquidation_enabled:
+                    continue
+                needed = price - spendable
+                raised = 0
+                # Dispose of the least useful pieces first, using sale value as
+                # the tie-breaker so the plan sacrifices as little utility as possible.
+                for spare in sorted(liquidation_pool,
+                                    key=lambda item: (item["score"], -sale_value(item))):
+                    liquidation_plan.append(spare)
+                    raised += sale_value(spare)
+                    if raised >= needed:
+                        break
+                if raised < needed:
+                    continue
             value = (score - baseline) / max(1, price)
             if collectible:
                 value += profile["hoarder"] / 25
-            upgrades.append((value, score - baseline, -price, listing, detail))
+            # Prefer equal upgrades that require less liquidation.
+            upgrades.append((value, score - baseline, -len(liquidation_plan), -price,
+                             listing, detail, liquidation_plan))
     if not upgrades:
         return None
-    _, improvement, _, listing, detail = max(upgrades, key=lambda row: row[:3])
-    result = _npc_shop_transaction(player["id"], "shop_buy", {"listing_id": listing["id"]})
+    _, improvement, _, _, listing, detail, liquidation_plan = max(
+        upgrades, key=lambda row: row[:4]
+    )
+    if liquidation_plan:
+        result = enqueue_and_process(player["id"], "npc_liquidate_upgrade", {
+            "listing_id": listing["id"],
+            "sale_inv_ids": [item["inv_id"] for item in liquidation_plan],
+            "credit_reserve": credit_reserve,
+        })
+    else:
+        result = _npc_shop_transaction(player["id"], "shop_buy", {"listing_id": listing["id"]})
     _equip_best_items(player["id"], profile)
-    return (f"Bought {detail['name']} as a meaningful {listing['item_type'].lower()} upgrade",
+    sold_note = (" after selling " + ", ".join(item["name"] for item in liquidation_plan)
+                 if liquidation_plan else "")
+    return (f"Bought {detail['name']} as a meaningful {listing['item_type'].lower()} upgrade{sold_note}",
             f"estimated improvement {improvement:.1f}; {result}")
+
+
+@register_handler("npc_liquidate_upgrade")
+def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
+    """Atomically sell expendable gear and buy one validated NPC upgrade."""
+    settings = get_all_settings()
+    player = execute_one("SELECT * FROM players WHERE id=?", (player_id,))
+    profile = execute_one(
+        "SELECT * FROM npc_profiles WHERE player_id=? AND enabled=1 AND retired=0",
+        (player_id,)
+    )
+    if not player or not profile:
+        raise ValueError("Active NPC not found.")
+    if player["in_combat"]:
+        raise ValueError("Cannot reorganize inventory during combat.")
+    ap_cost = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
+    if player["current_ap"] < ap_cost:
+        raise ValueError(f"Not enough AP to enter the shop. Need {ap_cost}.")
+
+    sale_ids = list(dict.fromkeys(int(value) for value in payload.get("sale_inv_ids", [])))
+    minimum_spares = max(1, int(settings.get(
+        "NPC_UPGRADE_MIN_UNEQUIPPED", cfg.NPC_UPGRADE_MIN_UNEQUIPPED
+    )))
+    equipped_ids = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
+                    player.get("equipped_special_id")} - {None}
+    all_unequipped = execute(
+        "SELECT * FROM inventory_items WHERE player_id=?", (player_id,)
+    )
+    all_unequipped = [row for row in all_unequipped if row["id"] not in equipped_ids]
+    if len(all_unequipped) < minimum_spares:
+        raise ValueError(f"Liquidation requires at least {minimum_spares} unequipped items.")
+    sale_rows = [row for row in all_unequipped
+                 if row["id"] in sale_ids and row["item_type"] in ("WEAPON", "ARMOR")]
+    if len(sale_rows) != len(sale_ids) or not sale_rows:
+        raise ValueError("Liquidation plan contains unavailable or protected items.")
+
+    listing = execute_one("SELECT * FROM shop_listings WHERE id=?", (payload["listing_id"],))
+    if not listing:
+        raise ValueError("Planned upgrade is no longer available.")
+    target = _load_item_detail(listing["item_type"], listing["item_id"])
+    if not target:
+        raise ValueError("Planned upgrade content is unavailable.")
+    price = _discounted_shop_price(player, listing["price"])
+    reserve = max(0, int(payload.get("credit_reserve", 0)))
+    sell_pct = settings.get("SELL_PRICE_PERCENT", cfg.SELL_PRICE_PERCENT)
+    equipped_special = _load_item_detail("SPECIAL", execute_one(
+        "SELECT item_id FROM inventory_items WHERE id=?", (player.get("equipped_special_id") or -1,)
+    )["item_id"]) if player.get("equipped_special_id") and execute_one(
+        "SELECT item_id FROM inventory_items WHERE id=?", (player["equipped_special_id"],)
+    ) else None
+    final_sell_pct = min(1.0, sell_pct + float((equipped_special or {}).get("sell_bonus", 0) or 0))
+    sale_details = []
+    proceeds = 0
+    for inv in sale_rows:
+        detail = _load_item_detail(inv["item_type"], inv["item_id"])
+        if not detail:
+            raise ValueError("A planned sale item is no longer valid.")
+        amount = max(0, int(detail["credit_cost"] * final_sell_pct))
+        proceeds += amount
+        sale_details.append((inv, detail, amount))
+    if player["credits"] + proceeds < price + reserve:
+        raise ValueError("Liquidation no longer funds the upgrade and required reserve.")
+
+    with exclusive_transaction():
+        # Recheck the unique listing inside the same write lock before changing inventory.
+        if not execute_one("SELECT id FROM shop_listings WHERE id=?", (listing["id"],)):
+            raise ValueError("Planned upgrade was purchased by another player.")
+        for inv, detail, amount in sale_details:
+            execute_write("DELETE FROM inventory_items WHERE id=?", (inv["id"],))
+            execute_write(
+                """INSERT INTO shop_listings(item_type,item_id,listing_source,seller_player_id,durability_at_listing,price)
+                   VALUES(?,?,'PLAYER_SOLD',?,?,?)""",
+                (inv["item_type"], inv["item_id"], player_id,
+                 inv["current_durability"], detail["credit_cost"])
+            )
+            execute_write(
+                """INSERT INTO item_history(player_id,item_type,item_id,item_name,event_type,credit_amount)
+                   VALUES(?,?,?,?, 'SOLD',?)""",
+                (player_id, inv["item_type"], inv["item_id"], detail["name"], amount)
+            )
+        durability = listing.get("durability_at_listing") or 100
+        new_inv_id = execute_write(
+            """INSERT INTO inventory_items(player_id,item_type,item_id,current_durability,acquired_method)
+               VALUES(?,?,?,?, 'SHOP_PURCHASE')""",
+            (player_id, listing["item_type"], listing["item_id"], durability)
+        )
+        execute_write("DELETE FROM shop_listings WHERE id=?", (listing["id"],))
+        execute_write("UPDATE players SET current_ap=current_ap-?,credits=credits+?-? WHERE id=?",
+                      (ap_cost, proceeds, price, player_id))
+        execute_write(
+            """INSERT INTO item_history(player_id,item_type,item_id,item_name,event_type,credit_amount)
+               VALUES(?,?,?,?, 'PURCHASED',?)""",
+            (player_id, listing["item_type"], listing["item_id"], target["name"], price)
+        )
+        if listing["item_type"] == "SPECIAL":
+            execute_write(
+                """UPDATE special_item_registry SET status='IN_INVENTORY',current_owner_player_id=?,
+                   inventory_item_id=?,last_acquired_method='SHOP_PURCHASE',updated_at=?
+                   WHERE special_item_id=?""",
+                (player_id, new_inv_id, datetime.utcnow().isoformat(), listing["item_id"])
+            )
+        slot = {"WEAPON": "equipped_weapon_id", "ARMOR": "equipped_armor_id",
+                "SPECIAL": "equipped_special_id"}[listing["item_type"]]
+        execute_write(f"UPDATE players SET {slot}=? WHERE id=?", (new_inv_id, player_id))
+    return {"success": True, "bought": target["name"], "credits_spent": price,
+            "sale_proceeds": proceeds,
+            "items_sold": [detail["name"] for _, detail, _ in sale_details],
+            "ap_spent": ap_cost, "inventory_item_id": new_inv_id}
 
 
 def _npc_shop_transaction(player_id: int, action_type: str, payload: dict) -> dict:

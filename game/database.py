@@ -103,6 +103,8 @@ def init_db():
             ("MINION_XP_PER_LEVEL", "20", "Base victory XP per minion level."),
             ("BOSS_XP_PER_LEVEL", "35", "Base victory XP per boss level."),
             ("PVP_XP_PER_LEVEL", "25", "Base victory XP per opposing player level."),
+            ("NPC_UPGRADE_MIN_UNEQUIPPED", "2", "Unequipped gear required before an NPC may liquidate items for an upgrade."),
+            ("NPC_UPGRADE_MIN_IMPROVEMENT", "0.15", "Minimum fractional NPC equipment-score improvement required for a planned upgrade."),
         ):
             conn.execute(
                 "INSERT OR IGNORE INTO settings(constant_name,value,description) VALUES(?,?,?)",
