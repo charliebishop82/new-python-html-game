@@ -20,7 +20,7 @@ from werkzeug.security import generate_password_hash
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, init_db, close_db,
-                      get_all_settings)
+                      get_all_settings, reconcile_combat_state)
 
 logger = logging.getLogger(__name__)
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -36,6 +36,8 @@ def create_admin_app() -> Flask:
     app = Flask(__name__, template_folder="templates")
     app.secret_key = cfg.SECRET_KEY + "-admin"
     app.teardown_appcontext(close_db)
+    with app.app_context():
+        reconcile_combat_state()
 
     @app.before_request
     def check_admin_auth():

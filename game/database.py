@@ -8,6 +8,7 @@ import sqlite3
 import logging
 import math
 import uuid
+from datetime import datetime
 from contextlib import contextmanager
 from flask import g
 import config_defaults as cfg
@@ -105,6 +106,7 @@ def init_db():
             ("PVP_XP_PER_LEVEL", "25", "Base victory XP per opposing player level."),
             ("NPC_UPGRADE_MIN_UNEQUIPPED", "2", "Unequipped gear required before an NPC may liquidate items for an upgrade."),
             ("NPC_UPGRADE_MIN_IMPROVEMENT", "0.15", "Minimum fractional NPC equipment-score improvement required for a planned upgrade."),
+            ("NPC_OBSERVE_MAX_ATTEMPTS", "1", "Maximum Observe attempts an NPC may make during one combat."),
         ):
             conn.execute(
                 "INSERT OR IGNORE INTO settings(constant_name,value,description) VALUES(?,?,?)",
@@ -189,6 +191,94 @@ def execute_write(sql: str, params: tuple = ()) -> int:
     Must be called inside exclusive_transaction()."""
     cursor = get_db().execute(sql, params)
     return cursor.lastrowid if cursor.lastrowid else cursor.rowcount
+
+
+def reconcile_combat_state(player_id: int | None = None) -> dict:
+    """Repair invalid combat/session relationships without ending valid fights.
+
+    A valid ACTIVE session is authoritative. Player flags are synchronized to
+    it; broken references and duplicate older sessions are abandoned, logged,
+    and cleaned so no character can remain trapped by inconsistent state.
+    """
+    scope_sql = "" if player_id is None else \
+        "AND (cs.attacker_player_id=? OR cs.defender_player_id=?)"
+    params = () if player_id is None else (player_id, player_id)
+    active = execute(
+        f"""SELECT cs.*,att.id AS attacker_exists,att.is_banned AS attacker_banned,
+                   def.id AS defender_exists,def.is_banned AS defender_banned,
+                   bi.id AS boss_instance_exists,mi.id AS minion_instance_exists
+            FROM combat_sessions cs
+            LEFT JOIN players att ON att.id=cs.attacker_player_id
+            LEFT JOIN players def ON def.id=cs.defender_player_id
+            LEFT JOIN boss_instances bi ON bi.id=cs.boss_instance_id
+            LEFT JOIN minion_instances mi ON mi.id=cs.minion_instance_id
+            WHERE cs.status='ACTIVE' {scope_sql}
+            ORDER BY cs.id DESC""", params
+    )
+    claimed_players = set()
+    abandoned = []
+    valid_ids = []
+    for combat in active:
+        participants = [combat["attacker_player_id"]]
+        if combat.get("defender_player_id"):
+            participants.append(combat["defender_player_id"])
+        broken = (not combat.get("attacker_exists") or combat.get("attacker_banned") or
+                  (combat["combat_type"] == "PVP" and
+                   (not combat.get("defender_exists") or combat.get("defender_banned"))) or
+                  (combat["combat_type"] == "BOSS" and not combat.get("boss_instance_exists")) or
+                  (combat["combat_type"] == "MINION" and not combat.get("minion_instance_exists")))
+        duplicate = any(pid in claimed_players for pid in participants)
+        if broken or duplicate:
+            abandoned.append((combat, "BROKEN_REFERENCE" if broken else "DUPLICATE_ACTIVE_COMBAT"))
+        else:
+            valid_ids.append(combat["id"])
+            claimed_players.update(participants)
+
+    now = datetime.utcnow().isoformat()
+    with exclusive_transaction():
+        for combat, reason in abandoned:
+            execute_write(
+                """UPDATE combat_sessions SET status='ABANDONED',result=?,resolved_at=?
+                   WHERE id=? AND status='ACTIVE'""",
+                (reason, now, combat["id"])
+            )
+            execute_write("DELETE FROM combat_buffs WHERE combat_session_id=?", (combat["id"],))
+            if combat.get("boss_instance_id") and combat.get("boss_instance_exists"):
+                execute_write(
+                    """UPDATE boss_instances SET current_hp=(SELECT max_hp FROM bosses WHERE id=boss_id),
+                       special_attack_used=0,special_buff_used=0,current_phase=1 WHERE id=?""",
+                    (combat["boss_instance_id"],)
+                )
+            if combat.get("minion_instance_id") and combat.get("minion_instance_exists"):
+                execute_write(
+                    """UPDATE minion_instances SET current_hp=(SELECT max_hp FROM minions WHERE id=minion_id)
+                       WHERE id=?""", (combat["minion_instance_id"],)
+                )
+            for pid in {combat.get("attacker_player_id"), combat.get("defender_player_id")} - {None}:
+                execute_write(
+                    """INSERT INTO player_activity_log
+                       (player_id,category,action,status,message,details_json,source)
+                       VALUES(?,'SYSTEM','combat_recovery','SUCCESS',?,?,'SYSTEM')""",
+                    (pid, f"Recovered invalid combat #{combat['id']} ({reason}).",
+                     '{"combat_id": %d, "reason": "%s"}' % (combat["id"], reason))
+                )
+        if player_id is None:
+            execute_write(
+                """UPDATE players SET in_combat=CASE WHEN EXISTS(
+                       SELECT 1 FROM combat_sessions cs WHERE cs.status='ACTIVE'
+                       AND (cs.attacker_player_id=players.id OR cs.defender_player_id=players.id)
+                   ) THEN 1 ELSE 0 END"""
+            )
+        else:
+            execute_write(
+                """UPDATE players SET in_combat=CASE WHEN EXISTS(
+                       SELECT 1 FROM combat_sessions cs WHERE cs.status='ACTIVE'
+                       AND (cs.attacker_player_id=players.id OR cs.defender_player_id=players.id)
+                   ) THEN 1 ELSE 0 END WHERE id=?""", (player_id,)
+            )
+    if abandoned:
+        logger.warning("Recovered %d invalid active combat session(s)", len(abandoned))
+    return {"valid_active": len(valid_ids), "abandoned": len(abandoned)}
 
 
 def get_player(player_id: int) -> dict | None:

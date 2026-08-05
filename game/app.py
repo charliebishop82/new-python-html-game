@@ -10,7 +10,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 import config_defaults as cfg
-from database import get_db, close_db, init_db, get_player, get_all_settings
+from database import (get_db, close_db, init_db, get_player, get_all_settings,
+                      reconcile_combat_state)
 from queue_handler import startup_cleanup
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,8 @@ def create_app() -> Flask:
 
     app.teardown_appcontext(close_db)
     _register_blueprints(app)
+    with app.app_context():
+        reconcile_combat_state()
     app.context_processor(_context_processor)
     app.before_request(_check_auth)
     app.before_request(_load_player)
@@ -104,6 +107,7 @@ def _load_player():
     player_id = session.get("player_id")
     if not player_id:
         return None
+    reconcile_combat_state(player_id)
     player = get_player(player_id)
     if player is None:
         session.clear()

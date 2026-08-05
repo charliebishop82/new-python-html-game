@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
-                      get_all_settings, get_player)
+                      get_all_settings, get_player, reconcile_combat_state)
 from queue_handler import enqueue_and_process, register_handler
 
 logger = logging.getLogger(__name__)
@@ -35,20 +35,23 @@ def run_due_npc_turns(now: datetime | None = None) -> dict:
     """
     now = now or datetime.utcnow()
     profiles = execute(
-        """SELECT np.* FROM npc_profiles np JOIN players p ON p.id=np.player_id
+        """SELECT np.*,
+                  EXISTS(SELECT 1 FROM combat_sessions cs WHERE cs.status='ACTIVE'
+                         AND cs.attacker_player_id=np.player_id) AS has_active_attack
+           FROM npc_profiles np JOIN players p ON p.id=np.player_id
            WHERE np.enabled=1 AND np.retired=0 AND p.is_banned=0
            ORDER BY COALESCE(np.last_action_at, '') ASC"""
     )
     results = []
     for profile in profiles:
-        if not _npc_is_due(profile, now):
+        if not profile["has_active_attack"] and not _npc_is_due(profile, now):
             continue
         try:
             attempts = 12 if now.hour == 23 else 1
             no_ap_progress = 0
             for _ in range(attempts):
                 player = get_player(profile["player_id"])
-                if not player or player["current_ap"] <= 0:
+                if not player or (player["current_ap"] <= 0 and not profile["has_active_attack"]):
                     break
                 ap_before = player["current_ap"]
                 result = run_npc_turn(profile["player_id"])
@@ -251,7 +254,7 @@ def spend_npc_ap_now(player_id: int, max_decisions: int = 24) -> dict:
     no_ap_progress = 0
     for _ in range(max(1, min(50, max_decisions))):
         before = get_player(player_id)
-        if before["current_ap"] <= 0:
+        if before["current_ap"] <= 0 and not before["in_combat"]:
             break
         result = run_npc_turn(player_id)
         results.append(result)
@@ -348,11 +351,48 @@ def _finish_active_combat(player_id: int, session_id: int | None = None,
         if escape_event.get("escaped"):
             return _combat_decision_summary(session_id, player_id, escaped,
                                             "Safety-window escape succeeded")
-        return _combat_decision_summary(session_id, player_id, escaped,
-                                        "Safety-window escape failed; combat remains active")
+        if escaped.get("combat_ended"):
+            return _combat_decision_summary(session_id, player_id, escaped,
+                                            "Combat ended during the safety escape attempt")
+        return _force_attack_to_resolution(
+            player_id, session_id,
+            "Safety-window escape failed; switched to aggressive attacks"
+        )
+    return _force_attack_to_resolution(
+        player_id, session_id,
+        "Escape was unaffordable after the safety limit; switched to aggressive attacks"
+    )
+
+
+def _force_attack_to_resolution(player_id: int, session_id: int, note: str) -> dict:
+    """Use zero-AP attacks until combat resolves or its normal hard cap fires."""
+    settings = get_all_settings()
+    hard_cap = max(1, int(settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP)))
+    last_result = None
+    # Allow enough iterations for the combat route to process and finalize the
+    # round immediately beyond the hard cap, even when resuming an older fight.
+    for _ in range(hard_cap + 2):
+        session_row = execute_one(
+            "SELECT status,current_round FROM combat_sessions WHERE id=?", (session_id,)
+        )
+        if not session_row or session_row["status"] != "ACTIVE":
+            return _combat_decision_summary(session_id, player_id, last_result, note)
+        last_result = enqueue_and_process(
+            player_id, "combat_action",
+            {"session_id": session_id, "action_type": "attack"}
+        )
+        if last_result.get("combat_ended"):
+            return _combat_decision_summary(session_id, player_id, last_result, note)
+        if last_result.get("at_round_limit"):
+            resolved = enqueue_and_process(
+                player_id, "combat_resolve", {"session_id": session_id}
+            )
+            return _combat_decision_summary(
+                session_id, player_id, resolved, note + "; resolved at PvP round limit"
+            )
     return _combat_decision_summary(
-        session_id, player_id, None,
-        "Combat remains active after safety limit; insufficient AP to escape"
+        session_id, player_id, last_result,
+        note + "; defensive hard-stop reached unexpectedly"
     )
 
 
@@ -388,8 +428,17 @@ def _choose_combat_action(player_id: int, session_id: int, profile: dict | None)
         weights["brace"] += 20 + safety * 0.15
         weights["escape"] += 10 + safety * 0.12
 
-    # Observation is useful once per encounter; afterward its weight becomes 0.
-    if session_row["attacker_observed"]:
+    # Observation is deliberately scarce for NPCs. Count attempts, not only
+    # successes, so repeated failed rolls cannot consume most of a fight.
+    observe_attempts = execute_one(
+        """SELECT COUNT(*) AS cnt FROM combat_logs
+           WHERE combat_session_id=? AND actor='ATTACKER' AND action_type='OBSERVE'""",
+        (session_id,)
+    )["cnt"]
+    observe_limit = max(0, int(get_all_settings().get(
+        "NPC_OBSERVE_MAX_ATTEMPTS", cfg.NPC_OBSERVE_MAX_ATTEMPTS
+    )))
+    if session_row["attacker_observed"] or observe_attempts >= observe_limit:
         weights["observe"] = 0
     elif weights["observe"] == 0 and random.random() < 0.08:
         weights["observe"] = 8 + curiosity
@@ -491,8 +540,10 @@ def _finish_thief_combat(player_id: int, session_id: int | None = None) -> dict 
             if result.get("combat_ended"):
                 return _combat_decision_summary(session_id, player_id, result,
                                                 "Stole successfully; combat ended before escape")
-    return _combat_decision_summary(session_id, player_id, None,
-                                    "Combat remains active after thief safety limit")
+    return _force_attack_to_resolution(
+        player_id, session_id,
+        "Thief escape safety limit reached; switched to aggressive attacks"
+    )
 
 
 def _combat_decision_summary(session_id: int, player_id: int,
