@@ -15,17 +15,17 @@ def index():
     """Handle the index workflow."""
     player   = g.player
     settings = get_all_settings()
-    history_count = settings.get('TERMINAL_HISTORY_ENTRIES', cfg.TERMINAL_HISTORY_ENTRIES)
 
+    # daily_feed is archived and cleared at midnight. Load the whole active
+    # day's history so leaving combat or visiting the character sheet never
+    # makes earlier events appear to vanish.
     terminal_history = execute(
         '''SELECT id,feed_scope,player_id,flavor_text,event_category,occurred_at,combat_session_id
            FROM daily_feed
            WHERE player_id = ? OR feed_scope = 'GLOBAL'
-           ORDER BY occurred_at DESC
-           LIMIT ?''',
-        (player['id'], history_count)
+           ORDER BY datetime(occurred_at) ASC,id ASC''',
+        (player['id'],)
     )
-    terminal_history = list(reversed(terminal_history))
 
     # Tutorial lines used to be permanent feed rows, which caused them to
     # reappear on every dashboard load. Hide those historical copies and add a

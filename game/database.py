@@ -77,6 +77,16 @@ def init_db():
         master_columns = {row[1] for row in conn.execute("PRAGMA table_info(master)")}
         if "protagonist_description" not in master_columns:
             conn.execute("ALTER TABLE master ADD COLUMN protagonist_description TEXT")
+        conn.execute(
+            """INSERT OR IGNORE INTO settings(constant_name,value,description)
+               VALUES ('SUCCESSFUL_STEAL_XP','10',
+                       'XP awarded whenever a combat steal attempt succeeds.')"""
+        )
+        conn.execute(
+            """INSERT OR IGNORE INTO settings(constant_name,value,description)
+               VALUES ('COMBAT_DEFEAT_XP','10',
+                       'Small XP award for losing a completed fight; escapes and stalemates excluded.')"""
+        )
         # Older builds recorded permanent level choices in level_up_history but
         # did not publish them to the player's dashboard feed. Backfill each
         # historical choice once, keyed by player and original timestamp.

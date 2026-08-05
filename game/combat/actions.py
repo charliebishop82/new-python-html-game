@@ -381,6 +381,9 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
         # Cascade: item → credits → XP
         result = _pvp_steal_cascade(player_id, defender["id"],
                                     steal_bonus, settings)
+        steal_xp = settings.get("SUCCESSFUL_STEAL_XP", getattr(cfg, "SUCCESSFUL_STEAL_XP", 10))
+        result["xp_bonus"] = result.get("xp_bonus", 0) + steal_xp
+        _award_action_xp(player_id, result["xp_bonus"])
         _write_combat_log(session_id, session["current_round"], actor_side,
                           "STEAL", roll_result["detail"], str(result))
         return {"action": "STEAL", "success": True,
@@ -414,6 +417,9 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
 
         result = _boss_steal_result(player_id, opponent, steal_bonus, settings,
                                     session["combat_type"])
+        steal_xp = settings.get("SUCCESSFUL_STEAL_XP", getattr(cfg, "SUCCESSFUL_STEAL_XP", 10))
+        result["xp_bonus"] = steal_xp
+        _award_action_xp(player_id, steal_xp)
         _write_combat_log(session_id, session["current_round"], "ATTACKER",
                           "STEAL", roll_result["detail"], str(result))
         return {"action": "STEAL", "success": True,
@@ -422,7 +428,21 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
                     actor["character_name"], opponent["name"], True,
                     item_name=result.get("item_name", ""),
                     credits=result.get("credits", 0),
+                    xp_bonus=result.get("xp_bonus", 0),
                     is_vs_boss=True)}
+
+
+def _award_action_xp(player_id: int, amount: int) -> None:
+    """Award action XP immediately and trigger the normal level-up check."""
+    if amount <= 0:
+        return
+    player = execute_one("SELECT xp, level FROM players WHERE id=?", (player_id,))
+    if not player:
+        return
+    new_xp = player["xp"] + amount
+    with exclusive_transaction():
+        execute_write("UPDATE players SET xp=? WHERE id=?", (new_xp, player_id))
+    engine.check_level_up(player_id, new_xp, player["level"])
 
 
 def _pvp_steal_cascade(attacker_id: int, defender_id: int,
@@ -478,10 +498,8 @@ def _pvp_steal_cascade(attacker_id: int, defender_id: int,
                               (amount, attacker_id))
             return {"credits": amount, "xp_bonus": 0}
 
-    # Step 3: nothing left — XP consolation
-    with exclusive_transaction():
-        execute_write("UPDATE players SET xp = xp + ? WHERE id = ?",
-                      (zero_xp_bonus, attacker_id))
+    # Step 3: nothing left — the caller combines this consolation with the
+    # standard successful-steal award and applies the XP once.
     return {"xp_bonus": zero_xp_bonus}
 
 
@@ -1443,6 +1461,22 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                     )
                     item_stolen = item_detail["name"] if item_detail else "item"
 
+    # A completed loss still teaches the defeated character something. Escapes
+    # and stalemates are deliberately excluded from this consolation award.
+    defeat_xp_earned = 0
+    if result_type in ("1HP_WIN", "SCORE_WIN"):
+        loser_player_id = None
+        if session["combat_type"] == "PVP" and loser:
+            loser_player_id = loser.get("id")
+        elif not winner_is_attacker:
+            loser_player_id = attacker["id"]
+        if loser_player_id:
+            defeat_xp = settings.get("COMBAT_DEFEAT_XP", getattr(cfg, "COMBAT_DEFEAT_XP", 10))
+            _award_action_xp(loser_player_id, defeat_xp)
+            if loser_player_id == attacker["id"]:
+                defeat_xp_earned = defeat_xp
+                xp_earned += defeat_xp
+
     # Finalize session
     with exclusive_transaction():
         execute_write(
@@ -1489,6 +1523,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
         "winner_side":     winner_side,
         "result_type":     result_type,
         "xp_earned":       xp_earned,
+        "defeat_xp_earned": defeat_xp_earned,
         "credits_stolen":  credits_stolen,
         "item_stolen":     item_stolen,
         "drops":           drops,

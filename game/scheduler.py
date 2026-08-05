@@ -91,9 +91,9 @@ def _step2_apply_import():
 
 def _step3_archive_and_clear_feeds():
     """Run the step3 archive and clear feeds portion of scheduled maintenance."""
-    settings = get_all_settings()
-    if settings.get("LOG_DAILY_ARCHIVE", cfg.LOG_DAILY_ARCHIVE):
-        archive_feeds()
+    # The dashboard is a one-day view, but administrators still need an
+    # immutable server-side record for support and investigation.
+    archive_feeds()
 
     with exclusive_transaction():
         deleted = execute_write("DELETE FROM daily_feed")

@@ -108,11 +108,14 @@ def steal_flavor(attacker_name: str, target_name: str, success: bool,
                 f"caught! AC penalty incoming.")
     if is_vs_boss:
         if item_name:
-            return (f"{attacker_name} makes a daring grab and seizes "
+            line = (f"{attacker_name} makes a daring grab and seizes "
                     f"the {item_name} from {target_name}!")
         else:
-            return (f"{attacker_name} pilfers {credits} credits worth of valuables "
+            line = (f"{attacker_name} pilfers {credits} credits worth of valuables "
                     f"from {target_name}.")
+        if xp_bonus:
+            line += f" +{xp_bonus} XP."
+        return line
     # vs player cascade
     parts = []
     if item_name:
@@ -120,7 +123,7 @@ def steal_flavor(attacker_name: str, target_name: str, success: bool,
     if credits:
         parts.append(f"took {credits} credits")
     if xp_bonus:
-        parts.append(f"+{xp_bonus} XP consolation")
+        parts.append(f"+{xp_bonus} XP")
     result = " → ".join(parts) if parts else "nothing left to steal"
     return f"{attacker_name} steals from {target_name}: {result}."
 

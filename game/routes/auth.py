@@ -349,6 +349,12 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
              f"{player['character_name']} reached Level {new_level} and increased "
              f"{stat_names[stat]} to {new_stat_val}.")
         )
+        execute_write(
+            """INSERT INTO daily_feed
+               (feed_scope, player_id, flavor_text, event_category)
+               VALUES ('GLOBAL', NULL, ?, 'LEVEL_UP')""",
+            (f"{player['character_name']} reached Level {new_level}!",)
+        )
 
     logger.info("Player %d assigned level-up stat point to %s (now %d)",
                 player_id, stat.upper(), new_stat_val)
