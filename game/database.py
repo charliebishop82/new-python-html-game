@@ -90,6 +90,15 @@ def init_db():
                VALUES ('COMBAT_DEFEAT_XP','10',
                        'Small XP award for losing a completed fight; escapes and stalemates excluded.')"""
         )
+        # Balance revision: Brace retains its full defensive stance but heals
+        # only 15% of missing HP. Update the former stock value while leaving
+        # any deliberately customized administrator value untouched.
+        conn.execute(
+            """UPDATE settings SET value='0.15',
+                   description='Fraction of missing HP restored when a character uses Brace.'
+               WHERE constant_name='BRACE_HEAL_PERCENT'
+                 AND ABS(CAST(value AS REAL) - 0.25) < 0.000001"""
+        )
         for name, value, description in (
             ("MINION_XP_PER_LEVEL", "20", "Base victory XP per minion level."),
             ("BOSS_XP_PER_LEVEL", "35", "Base victory XP per boss level."),
