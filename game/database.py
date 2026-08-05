@@ -224,15 +224,21 @@ def get_player(player_id: int) -> dict | None:
     end_divisor    = settings.get("END_HP_REGEN_DIVISOR",     cfg.END_HP_REGEN_DIVISOR)
     curse_red      = settings.get("CURSE_AP_REDUCTION",       cfg.CURSE_AP_REDUCTION)
 
-    end   = player["end_stat"]
+    equipped = get_player_equipped(player)
+    gear_str = sum(int((item or {}).get("str_bonus", 0) or 0) for item in equipped.values())
+    gear_end = sum(int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values())
+    special = equipped.get("special") or {}
+    end   = player["end_stat"] + gear_end
+    effective_str = player["str_stat"] + gear_str
     level = player["level"]
 
     max_hp     = 10 + end + (5 * level)
-    raw_max_ap = base_daily_ap + math.floor(end / 2)
+    raw_max_ap = base_daily_ap + math.floor(end / 2) + int(special.get("bonus_ap", 0) or 0)
     max_ap     = int(raw_max_ap * (1 - curse_red)) if is_cursed else raw_max_ap
     max_ap     = min(max_ap, ap_cap)
-    inv_limit  = inv_limit_base + math.floor(player["str_stat"] / 2)
-    passive_regen = ap_regen + math.floor(end / end_divisor)
+    inv_limit  = inv_limit_base + math.floor(effective_str / 2)
+    passive_regen = (ap_regen + math.floor(end / end_divisor) +
+                     int(special.get("hp_regen_bonus", 0) or 0))
 
     inv_count = execute_one(
         "SELECT COUNT(*) as cnt FROM inventory_items WHERE player_id = ?", (player_id,)

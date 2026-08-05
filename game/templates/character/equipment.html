@@ -33,9 +33,21 @@
     </section>
 
     <section class="derived-strip" aria-label="Current derived statistics">
+        <span><b>{{ derived.damage_min }}–{{ derived.damage_max }}</b> Possible Damage</span>
+        <span><b>{{ derived.damage_types|join(' + ') }}</b> Damage Types</span>
+        <span><b>{{ derived.resistances|join(', ') if derived.resistances else 'None' }}</b> Resistances</span>
         <span><b>{{ derived.ac }}</b> Armor Class</span><span><b>{{ derived.max_hp }}</b> Max HP</span>
-        <span><b>{{ derived.crit_threshold }}+</b> Critical</span><span><b>{{ derived.daily_ap }}</b> Daily AP</span>
+        <span><b>{{ '%+d'|format(derived.attack_modifier) }}</b> Attack</span>
+        <span><b>{{ '%+d'|format(derived.initiative_modifier) }}</b> Initiative</span>
+        <span><b>{{ '%+d'|format(derived.dodge_modifier) }}</b> Dodge</span>
+        <span><b>{{ derived.crit_range }}</b> Critical ({{ derived.crit_chance_pct }}%)</span><span><b>{{ derived.daily_ap }}</b> Daily AP</span>
         <span><b>{{ derived.str }}/{{ derived.end }}/{{ derived.agi }}/{{ derived.lck }}/{{ derived.per }}</b> STR/END/AGI/LCK/PER</span>
+    </section>
+
+    <section id="loadout-preview" class="loadout-preview" aria-live="polite">
+        <div><strong>Equipment Preview</strong><br><small>Select Preview on an item to see its effect before equipping it.</small></div>
+        <div id="preview-values"></div>
+        <button type="button" class="btn-small" id="clear-preview" hidden>Clear Preview</button>
     </section>
 
     <h2 class="section-title">Available Inventory</h2>
@@ -53,6 +65,9 @@
             <div class="equipment-condition"><div class="durability"><span style="width:{{ item.current_durability }}%"></span></div>Durability {{ item.current_durability }}%</div>
             <div class="equipment-actions">
             {% if item.is_equipped %}<span class="equipped-badge">EQUIPPED</span>{% else %}
+                <button type="button" class="btn-small preview-loadout"
+                        data-inv-id="{{ item.inv_id }}" data-item-type="{{ item.item_type }}"
+                        data-item-name="{{ item.name }}">Preview</button>
                 <form method="POST" action="{{ url_for('character.equip') }}"><input type="hidden" name="inv_id" value="{{ item.inv_id }}"><input type="hidden" name="return_to" value="equipment"><button class="btn-small" type="submit">Equip</button></form>
                 <form method="POST" action="{{ url_for('character.drop') }}" onsubmit="return confirm('Permanently drop this item?');"><input type="hidden" name="inv_id" value="{{ item.inv_id }}"><input type="hidden" name="return_to" value="equipment"><button class="btn-small danger" type="submit">Drop</button></form>
             {% endif %}
@@ -61,4 +76,76 @@
     {% else %}<p>Your inventory is empty.</p>{% endfor %}
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+    const previewUrl = {{ url_for('character.preview')|tojson }};
+    const current = {{ derived|tojson }};
+    const equippedIds = {
+        weapon: {{ (equipped.weapon.inv_id if equipped.weapon else 'none')|tojson }},
+        armor: {{ (equipped.armor.inv_id if equipped.armor else 'none')|tojson }},
+        special: {{ (equipped.special.inv_id if equipped.special else 'none')|tojson }}
+    };
+    const panel = document.getElementById('loadout-preview');
+    const values = document.getElementById('preview-values');
+    const clear = document.getElementById('clear-preview');
+    const escapeHtml = value => String(value).replace(/[&<>'"]/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    })[char]);
+    const numericDelta = (next, old, lowerIsBetter = false) => {
+        const change = Number(next) - Number(old);
+        const beneficial = lowerIsBetter ? change < 0 : change > 0;
+        const harmful = lowerIsBetter ? change > 0 : change < 0;
+        const cls = beneficial ? 'preview-better' : harmful ? 'preview-worse' : 'preview-same';
+        const note = change ? ` (${change > 0 ? '+' : ''}${change})` : ' (no change)';
+        return `<span class="${cls}">${next}${note}</span>`;
+    };
+    const damageDelta = next => {
+        const low = next.damage_min - current.damage_min;
+        const high = next.damage_max - current.damage_max;
+        const cls = low > 0 || high > 0 ? 'preview-better' : low < 0 || high < 0 ? 'preview-worse' : 'preview-same';
+        const note = low || high ? ` (${low >= 0 ? '+' : ''}${low}/${high >= 0 ? '+' : ''}${high})` : ' (no change)';
+        return `<span class="${cls}">${next.damage_min}–${next.damage_max}${note}</span>`;
+    };
+    const resistanceDelta = next => {
+        const change = next.resistance_sources - current.resistance_sources;
+        const cls = change > 0 ? 'preview-better' : change < 0 ? 'preview-worse' : 'preview-same';
+        const label = next.resistances.length ? next.resistances.map(escapeHtml).join(', ') : 'None';
+        const note = change ? ` (${change > 0 ? '+' : ''}${change} source${Math.abs(change) === 1 ? '' : 's'})` : ' (no change)';
+        return `<span class="${cls}">${label}${note}</span>`;
+    };
+    document.querySelectorAll('.preview-loadout').forEach(button => {
+        button.addEventListener('click', async () => {
+            const proposed = {...equippedIds};
+            proposed[button.dataset.itemType.toLowerCase()] = button.dataset.invId;
+            const response = await fetch(`${previewUrl}?${new URLSearchParams(proposed)}`, {cache: 'no-store'});
+            if (!response.ok) return;
+            const next = await response.json();
+            panel.classList.add('active');
+            values.innerHTML = `<strong>If you equip ${escapeHtml(button.dataset.itemName)}</strong>` +
+                `<span>Damage ${damageDelta(next)} ${escapeHtml(next.damage_type)}</span>` +
+                `<span>Damage Types <b>${next.damage_types.map(escapeHtml).join(' + ')}</b></span>` +
+                `<span>Resistances ${resistanceDelta(next)}</span>` +
+                `<span>Armor Class ${numericDelta(next.ac, current.ac)}</span>` +
+                `<span>Attack ${numericDelta(next.attack_modifier, current.attack_modifier)}</span>` +
+                `<span>Initiative ${numericDelta(next.initiative_modifier, current.initiative_modifier)}</span>` +
+                `<span>Dodge ${numericDelta(next.dodge_modifier, current.dodge_modifier)}</span>` +
+                `<span>Steal / Escape / Observe <b>${next.steal_modifier >= 0 ? '+' : ''}${next.steal_modifier} / ${next.escape_modifier >= 0 ? '+' : ''}${next.escape_modifier} / ${next.observe_modifier >= 0 ? '+' : ''}${next.observe_modifier}</b></span>` +
+                `<span>Max HP ${numericDelta(next.max_hp, current.max_hp)}</span>` +
+                `<span>Critical ${numericDelta(next.crit_threshold, current.crit_threshold, true)}</span>` +
+                `<span>Daily AP ${numericDelta(next.daily_ap, current.daily_ap)}</span>` +
+                `<span>STR/END/AGI/LCK/PER ${next.str}/${next.end}/${next.agi}/${next.lck}/${next.per}</span>`;
+            clear.hidden = false;
+            panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+        });
+    });
+    clear.addEventListener('click', () => {
+        panel.classList.remove('active');
+        values.innerHTML = '';
+        clear.hidden = true;
+    });
+})();
+</script>
 {% endblock %}

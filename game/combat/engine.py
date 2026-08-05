@@ -32,9 +32,13 @@ def roll(sides: int) -> int:
 
 
 def roll_damage_die(die_str: str) -> int:
-    """Parse and roll a damage die string like 'd8', 'd12', etc."""
-    sides = int(die_str.lstrip("d"))
-    return roll(sides)
+    """Parse and roll a damage expression such as ``d8`` or ``2d4``."""
+    count_text, sides_text = str(die_str).lower().split("d", 1)
+    count = int(count_text or 1)
+    sides = int(sides_text)
+    if count < 1 or sides < 1:
+        raise ValueError(f"Invalid damage die: {die_str}")
+    return sum(roll(sides) for _ in range(count))
 
 
 def stat_mod(stat: int) -> int:
@@ -52,10 +56,11 @@ def calc_max_hp(player: dict) -> int:
 
 
 def calc_ac(combatant: dict, armor: dict | None) -> int:
-    """10 + floor(AGI/2) + armor.ac_bonus (if equipped)"""
+    """10 + half AGI + equipped armor and special-item AC bonuses."""
     ac = 10 + stat_mod(combatant["agi_stat"])
     if armor:
         ac += armor.get("ac_bonus", 0)
+    ac += int(combatant.get("special_ac_bonus", 0) or 0)
     return ac
 
 
@@ -98,7 +103,8 @@ def calc_crit_threshold(combatant: dict, special: dict | None = None) -> int:
     min_thr   = settings.get("CRIT_MIN_THRESHOLD",  cfg.CRIT_MIN_THRESHOLD)
     threshold = base - math.floor(combatant["lck_stat"] / divisor)
     if special:
-        threshold -= int(special.get("crit_chance_bonus", 0))
+        # Stored as a fraction (0.05 = one additional natural-d20 face).
+        threshold -= int(round(float(special.get("crit_chance_bonus", 0) or 0) * 20))
     return max(min_thr, threshold)
 
 
@@ -476,8 +482,12 @@ def _calc_durability_loss(base_loss: int, special: dict | None) -> int:
     base_loss * (1 - durability_reduction), minimum 1."""
     if not special or not special.get("durability_reduction"):
         return base_loss
-    reduction = special["durability_reduction"]
-    return max(1, int(base_loss * (1 - reduction)))
+    reduction = max(0.0, min(1.0, float(special["durability_reduction"])))
+    reduced = base_loss * (1 - reduction)
+    whole = int(reduced)
+    # Probabilistic rounding lets protection affect ordinary one-point wear;
+    # e.g. 25% protection prevents roughly one in four such losses.
+    return whole + (1 if random.random() < reduced - whole else 0)
 
 
 def calc_special_item_round_loss(special: dict | None) -> int:

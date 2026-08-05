@@ -119,7 +119,24 @@
     'lck': 'Luck influences critical results, events, stealing, escape, and economy rolls.',
     'per': 'Perception influences observation, detection, and selected economy checks.',
     'lvl': 'Current character level.', 'hp': 'Current health compared with maximum health.',
-    'ap': 'Current Action Points compared with the character’s allowance.', 'cr': 'Current spendable credits.'
+    'ap': 'Current Action Points compared with the character’s allowance.', 'cr': 'Current spendable credits.',
+    'possible damage': 'Normal pre-resistance damage range for the equipped weapon, gear bonuses, and relevant STR or AGI modifier.',
+    'critical damage': 'Pre-resistance damage range on a critical hit. Enemy resistance and weakness apply afterward.',
+    'attack bonus': 'Added to the d20 attack roll: half STR for melee weapons or half AGI for ranged weapons.',
+    'critical range': 'Natural d20 results that can critically hit. The percentage is the chance before accuracy and other combat rules.',
+    'initiative modifier': 'Added to initiative from half AGI and equipped special-item bonuses.',
+    'dodge modifier': 'Added to dodge rolls from half AGI plus half LCK. Brace can temporarily add more.',
+    'steal modifier': 'Added to opposed steal rolls from half AGI, half LCK, and equipped steal bonuses.',
+    'escape modifier': 'Added to opposed escape rolls from half AGI plus half LCK.',
+    'observe modifier': 'Added to opposed Observe rolls from half AGI, half LCK, and half PER.',
+    'brace healing': 'Percentage of currently missing HP restored when you use Brace.',
+    'tavern healing': 'Percentage of currently missing HP restored by a successful Tavern visit.',
+    'durability protection': 'Percentage reduction to ordinary equipment durability loss from the equipped special item.',
+    'encounter bonus': 'Equipped special-item modifier used by eligible random encounter calculations.',
+    'combat preference': 'Controls your automatic response when another player attacks while you are not actively choosing actions.',
+    'damage types': 'Damage categories supplied by the equipped weapon and any active special-item bonus damage.',
+    'resistances': 'Equipped armor and special-item protections. A ×2 label means two sources stack against that damage type.',
+    'preview': 'Compare this item’s hypothetical loadout values without equipping it or changing game state.'
   };
   const normalize = value => (value || '').replace(/\s+/g, ' ').trim().toLowerCase().replace(/\s*\([^)]*\)\s*$/, '');
   function attach(element, text, showBadge) {

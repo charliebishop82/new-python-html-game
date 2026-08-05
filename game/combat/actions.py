@@ -137,6 +137,9 @@ def apply_equipped_stat_bonuses(player: dict, equipped: dict | None = None) -> d
             for item in equipped.values()
         )
     effective["max_hp"] = engine.calc_max_hp(effective)
+    effective["special_ac_bonus"] = int(
+        (equipped.get("special") or {}).get("ac_bonus", 0) or 0
+    )
     effective["hp_pct"] = round(
         effective["current_hp"] / effective["max_hp"] * 100, 1
     ) if effective["max_hp"] else 0

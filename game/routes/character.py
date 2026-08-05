@@ -164,7 +164,7 @@ def _get_item_detail(item_type: str, item_id: int) -> dict | None:
 
 
 def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
-    """Compute all derived stats for display on character sheet."""
+    """Compute the same loadout-derived values that combat will use."""
     w = equipped.get("weapon")
     a = equipped.get("armor")
     s = equipped.get("special")
@@ -193,7 +193,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     if s:
         crit_thresh = max(
             settings.get("CRIT_MIN_THRESHOLD", cfg.CRIT_MIN_THRESHOLD),
-            crit_thresh - int(s.get("crit_chance_bonus", 0))
+            crit_thresh - int(round(float(s.get("crit_chance_bonus", 0) or 0) * 20))
         )
     shop_discount= min(
         math.floor(per_total / 2) + int((s.get("shop_discount", 0) if s else 0) * 100),
@@ -205,15 +205,102 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
                    math.floor(end_total / settings.get("END_HP_REGEN_DIVISOR", cfg.END_HP_REGEN_DIVISOR)) + \
                    (s.get("hp_regen_bonus", 0) if s else 0)
 
+    # Show a pre-resistance range rather than a misleading average. Actual
+    # damage can still change through criticals, resistances, weaknesses,
+    # temporary effects, and encounter balance scaling.
+    weapon_name = w.get("name") if w else "Fists"
+    weapon_type = w.get("weapon_type", "Melee") if w else "Melee"
+    damage_die = w.get("damage_die", "d4") if w else "d4"
+    damage_type = w.get("damage_type", "Blunt") if w else "Blunt"
+    try:
+        count_text, sides_text = str(damage_die).lower().split("d", 1)
+        die_count = int(count_text or 1)
+        die_sides = int(sides_text)
+        if die_count < 1 or die_sides < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        die_count, die_sides = 1, 4
+    attack_stat = str_total if weapon_type == "Melee" else agi_total
+    attack_modifier = math.floor(attack_stat / 2)
+    initiative_modifier = math.floor(agi_total / 2) + \
+                          (int(s.get("initiative_bonus", 0) or 0) if s else 0)
+    dodge_modifier = math.floor(agi_total / 2) + math.floor(lck_total / 2)
+    steal_roll_bonus = int((s.get("steal_bonus", 0) or 0) * 20) if s else 0
+    steal_modifier = dodge_modifier + steal_roll_bonus
+    escape_modifier = dodge_modifier
+    observe_modifier = dodge_modifier + math.floor(per_total / 2)
+    bonus_damage = int(s.get("bonus_damage_amount", 0) or 0) if s else 0
+    bonus_damage_type = s.get("bonus_damage_type", "") if s else ""
+    damage_min = die_count + attack_modifier + bonus_damage
+    damage_max = (die_count * die_sides) + attack_modifier + bonus_damage
+    damage_types = [damage_type]
+    if bonus_damage and bonus_damage_type and bonus_damage_type not in damage_types:
+        damage_types.append(bonus_damage_type)
+
+    # Armor and specials are independent resistance sources. Preserve the
+    # count because combat treats two matching sources as stacked resistance.
+    resistance_counts = {}
+    for resistance_type in ("Blade", "Blunt", "Ballistic", "Energy",
+                            "Arcane", "Explosive", "Venom"):
+        column = f"res_{resistance_type.lower()}"
+        sources = int(bool(a and a.get(column))) + int(bool(s and s.get(column)))
+        if sources:
+            resistance_counts[resistance_type] = sources
+    resistances = [
+        f"{name} ×{count}" if count > 1 else name
+        for name, count in resistance_counts.items()
+    ]
+
+    crit_chance_pct = max(0, min(100, (21 - crit_thresh) * 5))
+    sell_bonus_pct = int((s.get("sell_bonus", 0) or 0) * 100) if s else 0
+    durability_reduction_pct = int((s.get("durability_reduction", 0) or 0) * 100) if s else 0
+    encounter_bonus_pct = int((s.get("encounter_bonus", 0) or 0) * 100) if s else 0
+    brace_heal_pct = int(settings.get("BRACE_HEAL_PERCENT", cfg.BRACE_HEAL_PERCENT) * 100)
+    tavern_heal_pct = int(settings.get("TAVERN_HEAL_PERCENT", cfg.TAVERN_HEAL_PERCENT) * 100)
+    inventory_count = int(player.get("inventory_count", 0) or 0)
+    special_effects = []
+    if s:
+        if s.get("extra_attack"): special_effects.append("Extra attack enabled")
+        if bonus_damage: special_effects.append(f"+{bonus_damage} {bonus_damage_type or 'bonus'} damage")
+        if s.get("bonus_ap"): special_effects.append(f"+{int(s['bonus_ap'])} daily AP")
+        if s.get("hp_regen_bonus"): special_effects.append(f"+{int(s['hp_regen_bonus'])} HP regeneration per AP")
+        if durability_reduction_pct: special_effects.append(f"{durability_reduction_pct}% less durability loss")
+        if s.get("xp_multiplier"): special_effects.append(f"+{int(s['xp_multiplier'] * 100)}% XP rewards")
+        if s.get("credit_multiplier"): special_effects.append(f"+{int(s['credit_multiplier'] * 100)}% credit rewards")
+
     return {
         "str": str_total, "end": end_total, "agi": agi_total,
         "lck": lck_total, "per": per_total,
         "ac": ac, "max_hp": max_hp, "inv_limit": inv_limit,
-        "crit_threshold": crit_thresh, "shop_discount_pct": shop_discount,
+        "crit_threshold": crit_thresh, "crit_chance_pct": crit_chance_pct,
+        "crit_range": f"{crit_thresh}-20" if crit_thresh < 20 else "20",
+        "shop_discount_pct": shop_discount,
         "daily_ap": daily_ap, "passive_regen": passive_regen,
+        "weapon_name": weapon_name, "weapon_type": weapon_type,
+        "damage_die": damage_die, "damage_type": damage_type,
+        "attack_modifier": attack_modifier,
+        "initiative_modifier": initiative_modifier, "dodge_modifier": dodge_modifier,
+        "steal_modifier": steal_modifier, "steal_roll_bonus": steal_roll_bonus,
+        "escape_modifier": escape_modifier, "observe_modifier": observe_modifier,
+        "damage_min": damage_min, "damage_max": damage_max,
+        "crit_damage_min": int(damage_min * 2 * (1 + (s.get("crit_dmg_multiplier", 0) if s else 0))),
+        "crit_damage_max": int(damage_max * 2 * (1 + (s.get("crit_dmg_multiplier", 0) if s else 0))),
+        "bonus_damage": bonus_damage, "bonus_damage_type": bonus_damage_type,
+        "damage_types": damage_types, "resistances": resistances,
+        "resistance_counts": resistance_counts,
+        "resistance_sources": sum(resistance_counts.values()),
         "extra_attack": bool(s.get("extra_attack")) if s else False,
         "xp_multiplier_pct": int((s.get("xp_multiplier", 0) if s else 0) * 100),
         "credit_multiplier_pct": int((s.get("credit_multiplier", 0) if s else 0) * 100),
+        "sell_bonus_pct": sell_bonus_pct,
+        "durability_reduction_pct": durability_reduction_pct,
+        "encounter_bonus_pct": encounter_bonus_pct,
+        "brace_heal_pct": brace_heal_pct, "tavern_heal_pct": tavern_heal_pct,
+        "inventory_count": inventory_count, "is_overencumbered": inventory_count > inv_limit,
+        "overencumbered_ap_multiplier": settings.get("OVERENCUMBERED_AP_MULTIPLIER", cfg.OVERENCUMBERED_AP_MULTIPLIER),
+        "overencumbered_ac_penalty": settings.get("OVERENCUMBERED_AC_PENALTY", cfg.OVERENCUMBERED_AC_PENALTY),
+        "overencumbered_attack_penalty": settings.get("OVERENCUMBERED_ATTACK_PENALTY", cfg.OVERENCUMBERED_ATTACK_PENALTY),
+        "special_effects": special_effects,
     }
 
 

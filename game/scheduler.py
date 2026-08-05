@@ -8,7 +8,8 @@ import logging
 import os
 from datetime import datetime
 
-from database import execute, execute_one, execute_write, exclusive_transaction, get_all_settings
+from database import (execute, execute_one, execute_write, exclusive_transaction,
+                      get_all_settings, get_player_equipped)
 from queue_handler import purge_old_done_rows
 import config_defaults as cfg
 
@@ -133,7 +134,7 @@ def _step4_5_award_daily_ap():
     cap       = settings.get("AP_CARRYOVER_CAP",   cfg.AP_CARRYOVER_CAP)
     curse_red = settings.get("CURSE_AP_REDUCTION", cfg.CURSE_AP_REDUCTION)
 
-    players = execute("SELECT id, end_stat FROM players WHERE is_banned = 0")
+    players = execute("SELECT * FROM players WHERE is_banned = 0")
     cursed_ids = {
         r["player_id"] for r in execute(
             "SELECT player_id FROM status_effects WHERE effect_type = 'CURSED'"
@@ -142,7 +143,13 @@ def _step4_5_award_daily_ap():
 
     with exclusive_transaction():
         for p in players:
-            daily_ap = base_ap + math.floor(p["end_stat"] / 2)
+            equipped = get_player_equipped(p)
+            effective_end = p["end_stat"] + sum(
+                int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values()
+            )
+            special = equipped.get("special") or {}
+            daily_ap = (base_ap + math.floor(effective_end / 2) +
+                        int(special.get("bonus_ap", 0) or 0))
             if p["id"] in cursed_ids:
                 daily_ap = int(daily_ap * (1 - curse_red))
             # Carryover cap first, then add daily AP, then cap again
@@ -162,12 +169,14 @@ def _step6_restore_midnight_hp():
     """Run the step6 restore midnight hp portion of scheduled maintenance."""
     settings  = get_all_settings()
     heal_pct  = settings.get("MIDNIGHT_HEAL_PERCENT", cfg.MIDNIGHT_HEAL_PERCENT)
-    players   = execute(
-        "SELECT id, current_hp, end_stat, level FROM players WHERE is_banned = 0"
-    )
+    players = execute("SELECT * FROM players WHERE is_banned = 0")
     with exclusive_transaction():
         for p in players:
-            max_hp  = 10 + p["end_stat"] + (5 * p["level"])
+            equipped = get_player_equipped(p)
+            effective_end = p["end_stat"] + sum(
+                int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values()
+            )
+            max_hp = 10 + effective_end + (5 * p["level"])
             missing = max_hp - p["current_hp"]
             if missing > 0:
                 restore = max(1, int(missing * heal_pct))
@@ -192,9 +201,14 @@ def _step7_midnight_encounters():
     )
     triggered = 0
     for p in players:
-        # Temporarily set max_hp for the helper
-        p["max_hp"]  = 10 + p["end_stat"] + (5 * p["level"])
-        p["max_ap"]  = settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP) + math.floor(p["end_stat"] / 2)
+        equipped = get_player_equipped(p)
+        effective_end = p["end_stat"] + sum(
+            int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values()
+        )
+        special = equipped.get("special") or {}
+        p["max_hp"] = 10 + effective_end + (5 * p["level"])
+        p["max_ap"] = (settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP) +
+                       math.floor(effective_end / 2) + int(special.get("bonus_ap", 0) or 0))
         event = check_random_event(p, settings)
         if event:
             triggered += 1
