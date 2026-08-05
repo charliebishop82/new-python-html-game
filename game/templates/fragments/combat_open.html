@@ -40,6 +40,10 @@
 
     <div class="term-line term-system">Your HP: {{ player.current_hp }}/{{ player.max_hp }} &nbsp;|&nbsp; AP: {{ player.current_ap }}</div>
     <div class="term-line term-amber">Opponent: {{ opponent_health.meter }} {{ opponent_health.label }}</div>
+    <div class="term-line term-grey combat-help-link">
+        <a href="{{ url_for('feeds.game_help') }}#combat" target="_blank">How combat works</a>
+        <span> — actions, rolls, damage, escape, rewards, and defeat</span>
+    </div>
 
     <div id="combat-actions" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
         <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="attack"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Attack</button></form>

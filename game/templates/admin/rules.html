@@ -1,0 +1,45 @@
+{% extends "admin/base_admin.html" %}
+{% block title %}Rules Reference{% endblock %}
+{% block content %}
+<h1>Gameplay Rules & Formula Reference</h1>
+<p style="color:#888;margin-bottom:16px;max-width:980px;">This is the creator-facing map of the rules players see in “How to Play.” Values shown below come from the active settings database; changing Config changes the live rule where noted.</p>
+
+<h2>Core Derived Values</h2>
+<table><tr><th>Concept</th><th>Formula / flow</th><th>Controls</th></tr>
+<tr><td>Stat modifier</td><td>floor(stat ÷ 2)</td><td>Shared combat rule</td></tr>
+<tr><td>Maximum HP</td><td>10 + END + (5 × level)</td><td>Code-defined</td></tr>
+<tr><td>Maximum AP</td><td>BASE_DAILY_AP + floor(END ÷ 2), limited by AP_CARRYOVER_CAP</td><td>{{ settings.get('BASE_DAILY_AP',20) }}, cap {{ settings.get('AP_CARRYOVER_CAP',40) }}</td></tr>
+<tr><td>Armor Class</td><td>10 + floor(AGI ÷ 2) + armor AC bonus</td><td>Armor content</td></tr>
+<tr><td>Initiative</td><td>d20 + floor(AGI ÷ 2) + equipment/status bonuses</td><td>Item/status content</td></tr>
+</table>
+
+<h2>Attack Resolution</h2>
+<ol style="line-height:1.7;margin-left:22px;"><li>Choose STR for melee or AGI for ranged.</li><li>Roll d20 + modifier against Armor Class.</li><li>If applicable, resolve the opposed dodge check.</li><li>Roll damage die + modifier; criticals double weapon damage.</li><li>Apply resistance, weakness, enemy damage scaling, HP, durability, and defeat checks.</li></ol>
+<table><tr><th>Rule</th><th>Active value</th><th>Meaning</th></tr>
+<tr><td>Minimum critical threshold</td><td>{{ settings.get('CRIT_MIN_THRESHOLD',15) }}</td><td>Luck and specials may lower the roll needed, but never below this.</td></tr>
+<tr><td>Stacked resistance floor</td><td>{{ settings.get('RESISTANCE_STACK_MIN_DAMAGE_PERCENT',0.25) }}</td><td>Minimum fraction of original damage after multiple resistance sources.</td></tr>
+<tr><td>Enemy damage scale</td><td>{{ settings.get('ENEMY_DAMAGE_SCALE',0.85) }}</td><td>Safety multiplier applied to enemy attacks.</td></tr>
+<tr><td>Minion/Boss HP scale</td><td>{{ settings.get('MINION_HP_SCALE',0.60) }} / {{ settings.get('BOSS_HP_SCALE',0.65) }}</td><td>Applied when a new encounter instance is created.</td></tr></table>
+
+<h2>Opposed Actions</h2>
+<p>Steal and Escape compare d20 + floor(AGI ÷ 2) + floor(LCK ÷ 2). Observe also adds floor(PER ÷ 2) to both sides. The actor must win strictly; ties fail.</p>
+<table><tr><th>Action</th><th>Success flow</th><th>Failure</th></tr>
+<tr><td>Steal</td><td>PvP: unequipped item → credits → XP. Enemy: eligible special/weapon → credits.</td><td>Temporary defensive penalty.</td></tr>
+<tr><td>Escape</td><td>Resolve combat as ESCAPE and clear both combat flags.</td><td>Turn and AP are consumed.</td></tr>
+<tr><td>Observe</td><td>Persist opponent intel for future fights.</td><td>No information revealed.</td></tr></table>
+
+<h2>Progression</h2>
+<p>Base XP is multiplied by level difference: +10% for each opponent level above; −15% for each level below, with a 10% minimum. Equipped XP multipliers apply afterward.</p>
+<table><tr><th>Encounter</th><th>Active base XP</th></tr><tr><td>Minion</td><td>{{ settings.get('MINION_XP_PER_LEVEL',20) }} × level</td></tr><tr><td>Boss</td><td>{{ settings.get('BOSS_XP_PER_LEVEL',35) }} × level</td></tr><tr><td>PvP</td><td>{{ settings.get('PVP_XP_PER_LEVEL',25) }} × opponent level</td></tr><tr><td>Successful steal / defeat</td><td>{{ settings.get('SUCCESSFUL_STEAL_XP',10) }} / {{ settings.get('COMBAT_DEFEAT_XP',10) }}</td></tr></table>
+<details><summary>XP thresholds</summary><table><tr>{% for level,xp in xp_curve.items() %}<th>L{{ level }}</th>{% endfor %}</tr><tr>{% for level,xp in xp_curve.items() %}<td>{{ xp }}</td>{% endfor %}</tr></table></details>
+
+<h2>Operational Flows</h2>
+<table><tr><th>System</th><th>Flow and troubleshooting expectation</th></tr>
+<tr><td>Combat record</td><td>Each action writes a permanent combat log; readable rounds also enter the daily player feed, which is archived at midnight.</td></tr>
+<tr><td>PvP theft</td><td>Inventory ownership is transferred atomically, both item histories are written, the victim is alerted, and a WORLD entry is published.</td></tr>
+<tr><td>NPC encounter safety</td><td>NPC target selection excludes contacts more than four levels above the NPC.</td></tr>
+<tr><td>Shop</td><td>Admission costs {{ settings.get('AP_COST_SHOP',1) }} AP once per visit. An empty shop is populated at game startup.</td></tr>
+<tr><td>Midnight</td><td>Archive feed, reset daily state/AP and events, rotate the shop, and schedule the next NPC actions.</td></tr></table>
+
+<p style="margin-top:18px;"><a class="btn" href="/admin/config">Open Config</a> <a class="btn" href="http://127.0.0.1:5000/help" target="_blank">Open Player Guide</a></p>
+{% endblock %}

@@ -82,7 +82,7 @@
 </form>
 
 <table>
-    <tr><th>Constant</th><th>DB Value</th><th>Default</th></tr>
+    <tr><th>Constant</th><th>DB Value</th><th>Default</th><th>What it controls</th></tr>
     {% for row in settings_rows %}
     <tr>
         <td style="color:#4499ff">{{ row.constant_name }}</td>
@@ -90,6 +90,7 @@
         <td style="color:#666;font-size:11px;">
             {{ defaults.get(row.constant_name, '—') }}
         </td>
+        <td style="color:#888;font-size:11px;">{{ row.description or 'See Rules Reference before changing this value.' }}</td>
     </tr>
     {% endfor %}
 </table>

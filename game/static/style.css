@@ -690,6 +690,20 @@ tr:nth-child(even) td { background: #0d0d0d; }
   border:1px solid var(--green);box-shadow:0 4px 14px #000;text-align:left;white-space:normal;
   font-size:12px;line-height:1.35;font-weight:normal;text-transform:none;letter-spacing:0; }
 .context-help:hover::after,.context-help:focus::after { display:block; }
+.combat-help-link { margin-top:6px; font-size:11px; }
+.combat-help-link a { color:var(--blue); font-weight:bold; }
+.game-help { max-width:1050px; margin:0 auto; padding:22px; }
+.game-help h1 { color:var(--amber); margin-bottom:8px; }
+.game-help h2 { color:var(--green); margin:28px 0 10px; border-bottom:1px solid var(--border); padding-bottom:6px; }
+.game-help h3 { color:var(--blue); margin:16px 0 6px; }
+.game-help p,.game-help li { line-height:1.55; }
+.game-help ul,.game-help ol { margin:8px 0 12px 24px; }
+.game-help table { width:100%; border-collapse:collapse; margin:10px 0 18px; }
+.game-help th,.game-help td { border:1px solid var(--border); padding:8px; text-align:left; vertical-align:top; }
+.game-help th { color:var(--amber); background:var(--bg-panel); }
+.formula { background:var(--bg-panel); border-left:3px solid var(--blue); padding:9px 12px; margin:8px 0; }
+.help-toc { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0; }
+.help-toc a { border:1px solid var(--border); padding:6px 9px; color:var(--green); text-decoration:none; }
 
 /* Two independent interface systems: Classic BBS and Cinematic. */
 :root[data-interface="classic"] body.poster-page #main { margin:0;height:100vh;align-items:center;justify-content:center;

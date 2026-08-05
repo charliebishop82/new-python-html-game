@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}How to Play{% endblock %}
+{% block content %}
+<article class="game-help">
+    <h1>How the Game Works</h1>
+    <p>This guide describes the rules the game currently calculates. Hover or focus the small <b>?</b> badges elsewhere for shorter explanations.</p>
+    <nav class="help-toc" aria-label="Guide sections">
+        <a href="#turns">Turns & AP</a><a href="#stats">Stats</a><a href="#combat">Combat</a>
+        <a href="#actions">Combat Actions</a><a href="#rewards">Rewards & XP</a>
+        <a href="#equipment">Equipment</a><a href="#economy">Economy</a><a href="#logs">Logs</a>
+    </nav>
+
+    <section id="turns"><h2>Turns and Action Points</h2>
+        <p>AP pays for major activities. The normal daily allowance is restored at midnight UTC, scheduled trickles add AP during the day, and AP never exceeds its configured cap.</p>
+        <div class="formula">Maximum AP = base daily AP + floor(END ÷ 2), limited by the AP cap.</div>
+        <p>Entering Boss or PvP combat pays the listed AP cost. The Shop charges once when you enter; buying and selling during that visit is free. Combat actions normally use turns rather than additional AP, except actions that explicitly display an AP cost.</p>
+    </section>
+
+    <section id="stats"><h2>Character Stats</h2>
+        <table><tr><th>Stat</th><th>Main effects</th></tr>
+        <tr><td>STR</td><td>Melee attack and damage; inventory capacity.</td></tr>
+        <tr><td>END</td><td>Maximum HP, maximum AP, healing and regeneration.</td></tr>
+        <tr><td>AGI</td><td>Ranged attack and damage, Armor Class, initiative, dodge, stealing, and escape.</td></tr>
+        <tr><td>LCK</td><td>Critical range, dodge, opposed actions, events, repairs, and some rewards.</td></tr>
+        <tr><td>PER</td><td>Observe attempts, detection, and selected shopping calculations.</td></tr></table>
+        <div class="formula">Maximum HP = 10 + END + (5 × level). &nbsp; Armor Class = 10 + floor(AGI ÷ 2) + equipped armor bonus.</div>
+    </section>
+
+    <section id="combat"><h2>Combat Flow</h2>
+        <ol><li>You enter a Boss, Minion, or PvP encounter and pay its admission AP.</li>
+        <li>Each round rolls initiative for both sides.</li><li>The faster side acts, defeat is checked, and the other side acts if combat is still active.</li>
+        <li>Round effects and durability are applied, then the next round begins.</li>
+        <li>Combat ends at 1 HP, on a successful escape, or through an applicable round-limit resolution.</li></ol>
+        <div class="formula">Initiative = d20 + floor(AGI ÷ 2) + equipment/status initiative bonuses.</div>
+        <h3>Attack and damage</h3>
+        <div class="formula">Melee attack = d20 + floor(STR ÷ 2). Ranged attack = d20 + floor(AGI ÷ 2). The attack hits when its total equals or exceeds Armor Class.</div>
+        <p>A hit rolls the weapon’s damage die and adds the same relevant stat modifier. Critical hits double normal weapon damage. Resistance halves matching damage from one resistance source; stacked resistance reduces it to the configured floor. A matching boss weakness doubles damage.</p>
+        <p>Some eligible attacks also receive an opposed dodge check. The defender must roll strictly higher; a tie favors the attacker.</p>
+        <h3>PvP round-limit resolution</h3>
+        <p>If PvP reaches its round limit, it may be extended for AP or resolved by score.</p>
+        <div class="formula">Score = remaining HP percentage × {{ settings.get('COMBAT_WIN_HP_WEIGHT', 0.40) }} + share of total damage dealt × {{ settings.get('COMBAT_WIN_DMG_WEIGHT', 0.60) }}.</div>
+    </section>
+
+    <section id="actions"><h2>Combat Actions</h2>
+        <table><tr><th>Action</th><th>What happens</th></tr>
+        <tr><td>Attack</td><td>Make the normal attack, damage, resistance, weakness, and critical checks.</td></tr>
+        <tr><td>Steal</td><td>Opposed AGI/LCK roll. In PvP, success attempts an unequipped item, then credits, then consolation XP. Items are transferred out of the victim’s inventory.</td></tr>
+        <tr><td>Brace</td><td>Restore some HP and gain temporary AC and dodge protection until the next hit.</td></tr>
+        <tr><td>Escape</td><td>Pay the displayed AP and win an opposed AGI/LCK roll. Success safely ends the encounter; failure consumes the turn.</td></tr>
+        <tr><td>Observe</td><td>Opposed AGI/LCK/PER roll. Success permanently records enemy resistances, weaknesses, and abilities for later encounters.</td></tr>
+        <tr><td>Change Equipment</td><td>Swap owned gear, use the turn, allow the opponent to act, and accept temporary accuracy and defense penalties.</td></tr></table>
+    </section>
+
+    <section id="rewards"><h2>Experience, Rewards, and Leveling</h2>
+        <p>Victory XP begins with the opponent’s level and encounter type, then adjusts for level difference and equipped XP bonuses. Higher-level opponents add 10% per level; lower-level opponents reduce rewards by 15% per level, with a 10% minimum.</p>
+        <div class="formula">Base victory XP: Minion {{ settings.get('MINION_XP_PER_LEVEL', 20) }} × level; Boss {{ settings.get('BOSS_XP_PER_LEVEL', 35) }} × level; PvP {{ settings.get('PVP_XP_PER_LEVEL', 25) }} × opponent level.</div>
+        <p>Successful steals and completed defeats can award smaller XP amounts. XP never decreases. Crossing a threshold raises your level and requires one permanent stat choice.</p>
+        <details><summary>Level thresholds</summary><table><tr><th>Level</th><th>Total XP required</th></tr>{% for level, xp in xp_curve.items() %}<tr><td>{{ level }}</td><td>{{ xp }}</td></tr>{% endfor %}</table></details>
+    </section>
+
+    <section id="equipment"><h2>Equipment and Durability</h2>
+        <p>Weapons define attack type, damage die, and damage category. Armor supplies AC and resistances. Specials can alter statistics, initiative, criticals, rewards, durability, and other rules. Broken or worn equipment becomes less useful and should be repaired at the Blacksmith.</p>
+        <p>New characters receive and automatically equip a starter weapon and armor. Equipment can be changed normally outside combat or by spending a combat turn.</p>
+    </section>
+
+    <section id="economy"><h2>Shop, Tavern, Blacksmith, and Events</h2>
+        <ul><li><b>Shop:</b> pay AP once to enter, then buy and sell freely during the visit.</li>
+        <li><b>Tavern:</b> spend AP and credits to restore health.</li><li><b>Blacksmith:</b> spend AP and credits to repair durability.</li>
+        <li><b>Random events:</b> may change AP, credits, stats, gear, or temporary effects; the result text states the applied effect and duration.</li>
+        <li><b>Special items:</b> are globally unique; only one live copy may exist at a time.</li></ul>
+    </section>
+
+    <section id="logs"><h2>Personal and World Logs</h2>
+        <p><b>YOU</b> entries affect your character. <b>AGAINST YOU</b> entries were initiated by somebody else. <b>WORLD</b> entries are public announcements. <b>SYSTEM</b> entries explain rules and services.</p>
+        <p>The dashboard retains the current day’s events and combat rounds. Midnight archives the day for administrator review and starts a fresh player display. Open the World Log from the bottom bar to browse public announcements.</p>
+    </section>
+</article>
+{% endblock %}

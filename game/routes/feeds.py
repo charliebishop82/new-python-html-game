@@ -6,8 +6,15 @@
 
 from flask import Blueprint, jsonify, render_template, request, session
 from database import execute
+import config_defaults as cfg
 
 bp = Blueprint("feeds", __name__)
+
+
+@bp.route("/help")
+def game_help():
+    """Show the canonical player-facing explanation of flows and formulas."""
+    return render_template("help/game_help.html", xp_curve=cfg.XP_CURVE)
 
 
 @bp.route("/feed/global")

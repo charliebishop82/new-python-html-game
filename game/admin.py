@@ -58,6 +58,7 @@ def _register_routes(app: Flask):
     """Provide the internal register routes operation used by this module."""
     app.add_url_rule("/", "admin_root", lambda: redirect(url_for("admin_index")))
     app.add_url_rule("/admin",                        "admin_index",        admin_index)
+    app.add_url_rule("/admin/rules",                  "admin_rules",        admin_rules)
     app.add_url_rule("/admin/import",                 "admin_import",       admin_import,        methods=["GET","POST"])
     app.add_url_rule("/admin/players",                "admin_players",      admin_players)
     app.add_url_rule("/admin/players/<int:pid>",      "admin_player_detail",admin_player_detail)
@@ -90,6 +91,13 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/npcs/<int:pid>/retire",  "admin_npc_retire",   admin_npc_retire,    methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/inventory/grant", "admin_npc_grant", admin_npc_grant, methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/inventory/<int:inv_id>/remove", "admin_npc_remove", admin_npc_remove, methods=["POST"])
+
+
+def admin_rules():
+    """Render the creator-facing map of gameplay formulas and control settings."""
+    return render_template(
+        "admin/rules.html", settings=get_all_settings(), xp_curve=cfg.XP_CURVE
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1067,8 +1075,10 @@ def admin_config():
             with exclusive_transaction():
                 for name, reset_value in reset_values.items():
                     execute_write(
-                        """INSERT OR REPLACE INTO settings (constant_name,value,imported_at)
-                           VALUES (?,?,?)""",
+                        """INSERT INTO settings (constant_name,value,imported_at)
+                           VALUES (?,?,?)
+                           ON CONFLICT(constant_name) DO UPDATE SET
+                               value=excluded.value, imported_at=excluded.imported_at""",
                         (name, str(reset_value), datetime.utcnow().isoformat())
                     )
                 _audit("RESET_ENEMY_BALANCE", "SETTING", details=reset_values)
@@ -1089,8 +1099,10 @@ def admin_config():
         if constant and value:
             with exclusive_transaction():
                 execute_write(
-                    """INSERT OR REPLACE INTO settings (constant_name, value, imported_at)
-                       VALUES (?, ?, ?)""",
+                    """INSERT INTO settings (constant_name, value, imported_at)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(constant_name) DO UPDATE SET
+                           value=excluded.value, imported_at=excluded.imported_at""",
                     (constant, value, datetime.utcnow().isoformat())
                 )
                 _audit("EDIT_CONFIG", "SETTING", reason=constant, details={"value": value})
