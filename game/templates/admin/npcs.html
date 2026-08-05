@@ -45,13 +45,47 @@
         <button class="btn">Grant Item</button>
     </form>
     {% endif %}
-    <table><tr><th>Inventory Item</th><th>Type</th><th>Durability</th><th></th></tr>
-    {% for item in inventory if item.player_id == npc.player_id %}<tr><td>{{ item.item_name }}</td><td>{{ item.item_type }}</td><td>{{ item.current_durability }}%</td><td>{% if not npc.retired %}<form method="POST" action="/admin/npcs/{{ npc.player_id }}/inventory/{{ item.id }}/remove"><button class="btn btn-danger">Remove</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="4" style="color:#666">No inventory</td></tr>{% endfor %}</table>
+    <table><tr><th>Inventory Item</th><th>Type</th><th>Loadout</th><th>Durability</th><th></th></tr>
+    {% for item in inventory if item.player_id == npc.player_id %}
+    {% set is_equipped = (item.item_type == 'WEAPON' and item.id == npc.equipped_weapon_id) or (item.item_type == 'ARMOR' and item.id == npc.equipped_armor_id) or (item.item_type == 'SPECIAL' and item.id == npc.equipped_special_id) %}
+    <tr{% if is_equipped %} style="background:#10251d;box-shadow:inset 3px 0 #00dd88;"{% endif %}>
+        <td{% if is_equipped %} style="color:#fff;font-weight:bold;"{% endif %}>{{ item.item_name }}</td>
+        <td>{{ item.item_type }}</td>
+        <td>{% if is_equipped %}<span style="display:inline-block;border:1px solid #00dd88;color:#00dd88;padding:2px 6px;font-size:10px;font-weight:bold;">EQUIPPED {{ item.item_type }}</span>{% else %}<span style="color:#666;">Stored</span>{% endif %}</td>
+        <td>{{ item.current_durability }}%</td>
+        <td>{% if not npc.retired %}<form method="POST" action="/admin/npcs/{{ npc.player_id }}/inventory/{{ item.id }}/remove"><button class="btn btn-danger">Remove</button></form>{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="5" style="color:#666">No inventory</td></tr>{% endfor %}</table>
 </section>
 {% else %}<p style="color:#666;margin-top:20px">No NPCs created yet.</p>{% endfor %}
 
 <h2>Recent NPC Decisions</h2>
-<table><tr><th>Time</th><th>NPC</th><th>Decision</th><th>Reason</th><th>Result</th></tr>{% for log in logs %}<tr><td>{{ log.occurred_at[:16] }}</td><td>{{ log.character_name }}</td><td>{{ log.decision }}</td><td>{{ log.reason }}</td><td>{{ log.result }}</td></tr>{% endfor %}</table>
+<table><tr><th>Time</th><th>NPC</th><th>Decision</th><th>Reason</th><th>Outcome and details</th></tr>{% for log in logs %}<tr>
+    <td>{{ log.occurred_at[:16] }}</td><td>{{ log.character_name }}</td><td>{{ log.decision }}</td><td>{{ log.reason }}</td>
+    <td style="min-width:390px;">
+        <strong>{{ log.result }}</strong>
+        {% if log.details and log.details.combat_id %}
+        <div style="margin-top:6px;color:#aaa;line-height:1.6;">
+            Combat #{{ log.details.combat_id }} · {{ log.details.combat_type }} ·
+            opponent: <span style="color:#fff">{{ log.details.opponent }}</span> ·
+            {{ log.details.rounds }} round{{ '' if log.details.rounds == 1 else 's' }}<br>
+            {% if log.details.winner %}<span style="color:#00dd88">Winner: {{ log.details.winner }}</span> · Loser: {{ log.details.loser }}<br>{% endif %}
+            Damage dealt {{ log.details.damage_dealt or 0 }} · received {{ log.details.damage_received or 0 }} ·
+            HP after {{ log.details.npc_hp_after }} · AP after {{ log.details.npc_ap_after }}
+            {% if log.details.xp_earned or log.details.credits_won_or_stolen or log.details.drop_credits %}<br>
+            Rewards: {{ log.details.xp_earned or 0 }} XP ·
+            {{ (log.details.credits_won_or_stolen or 0) + (log.details.drop_credits or 0) }} credits{% endif %}
+            {% if log.details.item_stolen_on_victory %}<br>Victory theft: <span style="color:#ffcc00">{{ log.details.item_stolen_on_victory }}</span>{% endif %}
+            {% if log.details.combat_steals %}<br>Combat steals:
+                {% for theft in log.details.combat_steals %}
+                    <span style="color:#ffcc00">{% if theft.item_name %}{{ theft.item_name }}{% elif theft.credits %}{{ theft.credits }} credits{% elif theft.xp_bonus %}{{ theft.xp_bonus }} XP{% endif %}</span>{{ ', ' if not loop.last else '' }}
+                {% endfor %}
+            {% endif %}
+            {% if log.details.items_dropped %}<br>Drops: <span style="color:#4499ff">{{ log.details.items_dropped|join(', ') }}</span>{% endif %}
+        </div>
+        <details style="margin-top:6px;"><summary style="cursor:pointer;color:#4499ff;">Technical record</summary><pre style="white-space:pre-wrap;max-width:720px;">{{ log.details_json }}</pre></details>
+        {% endif %}
+    </td>
+</tr>{% else %}<tr><td colspan="5">No NPC decisions recorded.</td></tr>{% endfor %}</table>
 <script>
 (() => {
   const form = document.getElementById('create-npc-form');

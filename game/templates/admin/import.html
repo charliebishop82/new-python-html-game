@@ -8,8 +8,10 @@
 {% if error %}<div class="error">⚠ {{ error }}</div>{% endif %}
 
 <p style="color:#666;margin-bottom:16px;">
-    Upload a new GameContent_Template.xlsx to stage it for the next midnight reset.
-    Validation errors will reject the entire file without changing live content.
+    Upload the revised game-content workbook to stage it for the next midnight reset.
+    Validation errors reject the entire file without changing live content. The workbook
+    becomes the active catalog: missing movies and content are retired, not deleted, so
+    existing inventories and historical records remain intact.
 </p>
 
 {% if pending %}

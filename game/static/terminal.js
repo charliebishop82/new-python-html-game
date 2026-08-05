@@ -253,6 +253,36 @@ function updateStatusFromFragment(container) {
     if (xpThreshold !== undefined) setEl('status-xp-threshold', xpThreshold);
     if (xpNext !== undefined) setEl('status-xp-next', xpNext);
     if (cr    !== undefined) setEl('status-credits',  cr);
+
+    if (el.dataset.combatEnded === 'true') {
+        // The combat result is appended asynchronously, while the sidebar was
+        // rendered before the final round. Clear the stale warning immediately
+        // and fetch authoritative button/status markup without losing the
+        // combat transcript currently visible in the terminal.
+        const combatFlag = document.querySelector('#status-block .status-combat');
+        if (combatFlag) combatFlag.remove();
+        refreshSidebarState();
+    }
+}
+
+async function refreshSidebarState() {
+    try {
+        const response = await fetch(window.location.href, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store'
+        });
+        if (!response.ok) return;
+        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+        for (const id of ['status-block', 'action-buttons']) {
+            const current = document.getElementById(id);
+            const fresh = page.getElementById(id);
+            if (current && fresh) current.innerHTML = fresh.innerHTML;
+        }
+        bindTerminalForms();
+    } catch (error) {
+        // Status numbers were already updated from the combat fragment. A
+        // normal refresh remains a safe fallback if the sidebar request fails.
+    }
 }
 
 function setEl(id, value) {

@@ -10,6 +10,7 @@
     <div class="term-line term-grey" style="font-size:11px;">
         {{ opponent.flavor_text }}
     </div>
+    {% if opponent.description %}<div class="term-line term-white" style="font-size:11px;">Appearance: {{ opponent.description }}</div>{% endif %}
     <div style="display:flex;gap:8px;margin-top:8px;">
         <form class="terminal-action"
               action="{{ url_for('actions.action_boss_confirm') }}" method="POST">

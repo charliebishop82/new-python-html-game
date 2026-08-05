@@ -141,6 +141,7 @@ def _load_active_combat(player: dict) -> dict | None:
         "session_id": combat_session["id"], "intel": None, "intel_detail": None,
         "opponent_health": hp_status(opponent["current_hp"], opponent_max_hp),
         "boss_flavor": opponent.get("flavor_text", ""),
+        "opponent_description": opponent.get("description", ""),
         "boss_phase": opponent.get("current_phase", 1), "inventory": inventory,
     }
 

@@ -6,6 +6,7 @@
     <div class="term-line term-grey">
         {{ minion.flavor_text }}
     </div>
+    {% if minion.description %}<div class="term-line term-white" style="font-size:11px;">Appearance: {{ minion.description }}</div>{% endif %}
     <div class="term-line term-system">
         {{ per_result.detail }}
     </div>

@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS npc_action_log (
     decision    TEXT NOT NULL,
     reason      TEXT NOT NULL,
     result      TEXT NOT NULL,
+    details_json TEXT,
     occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -366,6 +367,7 @@ CREATE TABLE IF NOT EXISTS bosses (
     drop_credit_min          INTEGER NOT NULL,
     drop_credit_max          INTEGER NOT NULL,
     flavor_text              TEXT    NOT NULL,
+    description              TEXT    NOT NULL DEFAULT '',
     imported_at              TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -387,6 +389,7 @@ CREATE TABLE IF NOT EXISTS minions (
     drop_credit_min          INTEGER NOT NULL,
     drop_credit_max          INTEGER NOT NULL,
     flavor_text   TEXT    NOT NULL,
+    description   TEXT    NOT NULL DEFAULT '',
     imported_at   TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -405,6 +408,7 @@ CREATE TABLE IF NOT EXISTS weapons (
     lck_bonus       INTEGER NOT NULL DEFAULT 0,
     per_bonus       INTEGER NOT NULL DEFAULT 0,
     associated_to   TEXT,
+    description     TEXT NOT NULL DEFAULT '',
     credit_cost     INTEGER NOT NULL,
     drop_chance     REAL    NOT NULL,
     starting_durability INTEGER NOT NULL DEFAULT 100,
@@ -431,6 +435,7 @@ CREATE TABLE IF NOT EXISTS armor (
     lck_bonus       INTEGER NOT NULL DEFAULT 0,
     per_bonus       INTEGER NOT NULL DEFAULT 0,
     associated_to   TEXT,
+    description     TEXT NOT NULL DEFAULT '',
     credit_cost     INTEGER NOT NULL,
     drop_chance     REAL    NOT NULL,
     starting_durability INTEGER NOT NULL DEFAULT 100,
@@ -444,6 +449,7 @@ CREATE TABLE IF NOT EXISTS special_items (
     is_active       INTEGER NOT NULL DEFAULT 1,
     associated_to   TEXT    NOT NULL,
     association_type TEXT   NOT NULL,
+    description      TEXT   NOT NULL DEFAULT '',
     str_bonus       INTEGER NOT NULL DEFAULT 0,
     end_bonus       INTEGER NOT NULL DEFAULT 0,
     agi_bonus       INTEGER NOT NULL DEFAULT 0,
@@ -506,6 +512,7 @@ CREATE TABLE IF NOT EXISTS master (
     minion_armor_id         INTEGER NOT NULL REFERENCES armor(id),
     minion_special_item_id  INTEGER NOT NULL REFERENCES special_items(id),
     protagonist_name        TEXT,
+    protagonist_description TEXT,
     protagonist_weapon_id   INTEGER REFERENCES weapons(id),
     protagonist_armor_id    INTEGER REFERENCES armor(id),
     protagonist_special_item_id INTEGER REFERENCES special_items(id),

@@ -19,6 +19,7 @@
     </div>
 
     {% if boss_flavor %}<div class="term-line term-grey">{{ boss_flavor }}</div>{% endif %}
+    {% if opponent_description|default('') %}<div class="term-line term-white" style="font-size:11px;">Appearance: {{ opponent_description }}</div>{% endif %}
 
     {% if intel and intel_detail %}
     <div class="term-line term-blue">[KNOWN INTEL - previous encounter data]</div>

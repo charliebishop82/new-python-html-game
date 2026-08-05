@@ -69,6 +69,8 @@
                 <div>{{ item.name }}
                     <span style="color:var(--grey);font-size:11px;">({{ item.current_durability }}%)</span>
                 </div>
+                {% if item.description %}<p class="item-description">{{ item.description }}</p>{% endif %}
+                {% include "fragments/item_combat_stats.html" %}
                 <form method="POST" action="{{ url_for('character.unequip') }}" style="display:inline">
                     <input type="hidden" name="slot" value="{{ slot }}">
                     <button type="submit" class="btn-small">Unequip</button>
@@ -133,6 +135,7 @@
                 <span style="color:var(--amber)">★ </span>
                 {% endif %}
                 {{ item.name }}
+                {% include "fragments/item_combat_stats.html" %}
             </td>
             <td style="font-size:11px;color:var(--grey);">
                 {% if item.item_type == 'WEAPON' %}

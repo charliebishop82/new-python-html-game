@@ -5,6 +5,7 @@ import math
 import random
 import hashlib
 import json
+import ast
 from datetime import datetime, timedelta
 
 import config_defaults as cfg
@@ -305,7 +306,7 @@ def retire_npc(player_id: int):
 
 
 def _finish_active_combat(player_id: int, session_id: int | None = None,
-                          profile: dict | None = None) -> str:
+                          profile: dict | None = None) -> dict | str:
     """Provide the internal finish active combat operation used by this module."""
     if session_id is None:
         row = execute_one(
@@ -322,12 +323,15 @@ def _finish_active_combat(player_id: int, session_id: int | None = None,
             player_id, "combat_action", {"session_id": session_id, "action_type": action}
         )
         if any(entry.get("escaped") for entry in final.get("round_log", [])):
-            return f"Combat {session_id} ended by escape"
+            return _combat_decision_summary(session_id, player_id, final,
+                                            "NPC escaped combat")
         if final.get("combat_ended"):
-            return f"Combat {session_id} completed ({final.get('winner_side')})"
+            return _combat_decision_summary(session_id, player_id, final,
+                                            "Combat completed")
         if final.get("at_round_limit"):
-            enqueue_and_process(player_id, "combat_resolve", {"session_id": session_id})
-            return f"Combat {session_id} resolved at round limit"
+            resolved = enqueue_and_process(player_id, "combat_resolve", {"session_id": session_id})
+            return _combat_decision_summary(session_id, player_id, resolved,
+                                            "Resolved at round limit")
     # An automated character cannot leave an unbounded fight active forever.
     # After the normal batch, attempt the same AP-backed Escape action available
     # to a human player. A failed roll leaves combat active for a later turn.
@@ -342,9 +346,14 @@ def _finish_active_combat(player_id: int, session_id: int | None = None,
         escape_event = next((event for event in escaped.get("round_log", [])
                              if event.get("action") == "ESCAPE"), {})
         if escape_event.get("escaped"):
-            return f"Combat {session_id} exceeded the safety window; NPC escaped"
-        return f"Combat {session_id} exceeded the safety window; escape attempt failed"
-    return f"Combat {session_id} remains active after safety limit; insufficient AP to escape"
+            return _combat_decision_summary(session_id, player_id, escaped,
+                                            "Safety-window escape succeeded")
+        return _combat_decision_summary(session_id, player_id, escaped,
+                                        "Safety-window escape failed; combat remains active")
+    return _combat_decision_summary(
+        session_id, player_id, None,
+        "Combat remains active after safety limit; insufficient AP to escape"
+    )
 
 
 def _choose_combat_action(player_id: int, session_id: int, profile: dict | None) -> str:
@@ -409,7 +418,7 @@ def _choose_combat_action(player_id: int, session_id: int, profile: dict | None)
     return "attack"
 
 
-def _finish_thief_combat(player_id: int, session_id: int | None = None) -> str:
+def _finish_thief_combat(player_id: int, session_id: int | None = None) -> dict | str:
     """Use only the normal Steal and Escape actions available to players."""
     if session_id is None:
         row = execute_one(
@@ -420,27 +429,157 @@ def _finish_thief_combat(player_id: int, session_id: int | None = None) -> str:
             return "No active thief combat found"
         session_id = row["id"]
 
-    stole = False
+    # Preserve the thief's goal across scheduled turns. Successful steal logs
+    # exist only when loot was actually taken, so an interrupted thief resumes
+    # with Escape instead of stealing repeatedly after AP is replenished.
+    stole = bool(execute_one(
+        """SELECT 1 FROM combat_logs WHERE combat_session_id=?
+           AND actor='ATTACKER' AND action_type='STEAL' LIMIT 1""",
+        (session_id,)
+    ))
     for _ in range(20):
         session_row = execute_one("SELECT status FROM combat_sessions WHERE id=?", (session_id,))
         if not session_row or session_row["status"] != "ACTIVE":
-            return f"Combat {session_id} ended after {'a successful steal' if stole else 'the steal attempt'}"
+            return _combat_decision_summary(
+                session_id, player_id, None,
+                f"Combat ended after {'a successful steal' if stole else 'the steal attempt'}"
+            )
         if not stole:
             result = enqueue_and_process(player_id, "combat_steal", {"session_id": session_id})
             steal_action = next((a for a in result.get("round_log", []) if a.get("action") == "STEAL"), {})
             stole = bool(steal_action.get("success"))
             if result.get("combat_ended"):
-                return f"Combat {session_id} ended before escape"
+                return _combat_decision_summary(session_id, player_id, result,
+                                                "Combat ended before escape")
         else:
+            # Escape is a normal AP-backed player action. A successful steal or
+            # the opponent's reply may leave the thief with no AP, so recheck
+            # immediately before submitting rather than creating a known-bad
+            # queue entry. The active fight can resume after AP is restored.
+            player = get_player(player_id)
+            escape_cost = get_all_settings().get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE)
+            if not player or player["current_ap"] < escape_cost:
+                # An NPC may not pause safely inside combat. Attack is the same
+                # zero-AP fallback available to a human, so fight toward a
+                # normal victory/defeat/round-limit resolution until Escape
+                # becomes affordable on a later scheduled turn.
+                result = enqueue_and_process(
+                    player_id, "combat_action",
+                    {"session_id": session_id, "action_type": "attack"}
+                )
+                if result.get("combat_ended"):
+                    return _combat_decision_summary(
+                        session_id, player_id, result,
+                        "Escape was unaffordable after stealing; fought to a combat result"
+                    )
+                if result.get("at_round_limit"):
+                    resolved = enqueue_and_process(
+                        player_id, "combat_resolve", {"session_id": session_id}
+                    )
+                    return _combat_decision_summary(
+                        session_id, player_id, resolved,
+                        "Escape was unaffordable after stealing; fight resolved at round limit"
+                    )
+                continue
             result = enqueue_and_process(
                 player_id, "combat_action", {"session_id": session_id, "action_type": "escape"}
             )
             escape_action = next((a for a in result.get("round_log", []) if a.get("action") == "ESCAPE"), {})
             if escape_action.get("escaped"):
-                return f"Stole successfully and escaped combat {session_id}"
+                return _combat_decision_summary(session_id, player_id, result,
+                                                "Stole successfully and escaped")
             if result.get("combat_ended"):
-                return f"Stole successfully but combat {session_id} ended before escape"
-    return f"Combat {session_id} remains active after thief safety limit"
+                return _combat_decision_summary(session_id, player_id, result,
+                                                "Stole successfully; combat ended before escape")
+    return _combat_decision_summary(session_id, player_id, None,
+                                    "Combat remains active after thief safety limit")
+
+
+def _combat_decision_summary(session_id: int, player_id: int,
+                             action_result: dict | None, note: str) -> dict:
+    """Build a durable, administrator-readable summary of an NPC combat."""
+    combat = execute_one(
+        """SELECT cs.*,att.character_name attacker_name,def.character_name defender_name,
+                  b.name boss_name,m.name minion_name
+           FROM combat_sessions cs
+           JOIN players att ON att.id=cs.attacker_player_id
+           LEFT JOIN players def ON def.id=cs.defender_player_id
+           LEFT JOIN boss_instances bi ON bi.id=cs.boss_instance_id
+           LEFT JOIN bosses b ON b.id=bi.boss_id
+           LEFT JOIN minion_instances mi ON mi.id=cs.minion_instance_id
+           LEFT JOIN minions m ON m.id=mi.minion_id
+           WHERE cs.id=?""", (session_id,)
+    )
+    if not combat:
+        return {"summary": note, "combat_id": session_id, "status": "MISSING"}
+
+    opponent_name = (combat.get("defender_name") or combat.get("boss_name")
+                     or combat.get("minion_name") or "Unknown opponent")
+    final = (action_result or {}).get("final_result") or {}
+    winner_side = (action_result or {}).get("winner_side") or final.get("winner_side")
+    if winner_side == "ATTACKER":
+        winner, loser = combat["attacker_name"], opponent_name
+    elif winner_side == "DEFENDER":
+        winner, loser = opponent_name, combat["attacker_name"]
+    else:
+        winner = loser = None
+
+    steals = []
+    for row in execute(
+        """SELECT outcome_detail FROM combat_logs
+           WHERE combat_session_id=? AND action_type='STEAL' ORDER BY id""",
+        (session_id,)
+    ):
+        try:
+            detail = ast.literal_eval(row["outcome_detail"])
+        except (ValueError, SyntaxError, TypeError):
+            continue
+        if isinstance(detail, dict) and any(detail.get(k) for k in
+                                            ("item_name", "credits", "xp_bonus")):
+            steals.append({k: detail.get(k) for k in
+                           ("item_name", "credits", "xp_bonus") if detail.get(k)})
+
+    drops = final.get("drops") or {}
+    acquired = [value for key, value in drops.items()
+                if key in ("weapon", "armor", "special") and value]
+    player_after = get_player(player_id)
+    feed = execute_one(
+        """SELECT flavor_text FROM daily_feed WHERE combat_session_id=?
+           AND event_category='COMBAT' ORDER BY id DESC LIMIT 1""", (session_id,)
+    )
+    result_type = final.get("result_type") or combat.get("result")
+    if result_type == "ESCAPE":
+        outcome = f"{combat['attacker_name']} escaped from {opponent_name}."
+    elif winner:
+        outcome = f"{winner} defeated {loser}."
+    elif combat["status"] == "ACTIVE":
+        outcome = f"Fight with {opponent_name} remains active."
+    else:
+        outcome = feed["flavor_text"] if feed else note
+
+    return {
+        "summary": outcome,
+        "note": note,
+        "combat_id": session_id,
+        "combat_type": combat["combat_type"],
+        "opponent": opponent_name,
+        "status": combat["status"],
+        "result_type": result_type,
+        "winner": winner,
+        "loser": loser,
+        "rounds": combat["current_round"],
+        "damage_dealt": combat.get("attacker_total_damage_dealt", 0),
+        "damage_received": combat.get("defender_total_damage_dealt", 0),
+        "npc_hp_after": player_after["current_hp"] if player_after else None,
+        "npc_ap_after": player_after["current_ap"] if player_after else None,
+        "xp_earned": final.get("xp_earned", 0),
+        "credits_won_or_stolen": final.get("credits_stolen", 0),
+        "item_stolen_on_victory": final.get("item_stolen"),
+        "combat_steals": steals,
+        "drop_credits": drops.get("credits", 0),
+        "items_dropped": acquired,
+        "feed_result": final.get("flavor") or (feed["flavor_text"] if feed else None),
+    }
 
 
 def _assign_pending_levelup(player_id: int, profile: dict):
@@ -846,16 +985,20 @@ def _finish_turn(profile: dict, decision: str, reason: str, result) -> dict:
     with exclusive_transaction():
         execute_write("UPDATE npc_profiles SET last_action_at=? WHERE player_id=?",
                       (now, profile["player_id"]))
-    _log(profile["player_id"], decision, reason, str(result))
-    return {"player_id": profile["player_id"], "decision": decision, "result": str(result)}
+    _log(profile["player_id"], decision, reason, result)
+    return {"player_id": profile["player_id"], "decision": decision, "result": result}
 
 
-def _log(player_id: int, decision: str, reason: str, result: str):
+def _log(player_id: int, decision: str, reason: str, result):
     """Record NPC rationale in both specialist and per-character audit logs."""
+    details = result if isinstance(result, dict) else {"summary": str(result)}
+    result_text = details.get("summary") or str(result)
     with exclusive_transaction():
         execute_write(
-            "INSERT INTO npc_action_log(player_id,decision,reason,result) VALUES(?,?,?,?)",
-            (player_id, decision, reason[:500], result[:1000])
+            """INSERT INTO npc_action_log
+               (player_id,decision,reason,result,details_json) VALUES(?,?,?,?,?)""",
+            (player_id, decision, reason[:500], result_text[:2000],
+             json.dumps(details, default=str)[:12000])
         )
         execute_write(
             """INSERT INTO player_activity_log
@@ -863,5 +1006,5 @@ def _log(player_id: int, decision: str, reason: str, result: str):
                VALUES(?, 'NPC', ?, 'SUCCESS', ?, ?, 'NPC')""",
             (player_id, decision, reason[:1000],
              json.dumps({"decision": decision, "reason": reason,
-                         "result": result}, default=str)[:8000])
+                         "result": details}, default=str)[:12000])
         )

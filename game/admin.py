@@ -66,6 +66,8 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/players/<int:pid>/edit", "admin_edit",         admin_edit,          methods=["POST"])
     app.add_url_rule("/admin/players/<int:pid>/replenish-ap", "admin_player_replenish_ap",
                      admin_player_replenish_ap, methods=["POST"])
+    app.add_url_rule("/admin/players/replenish-ap-all", "admin_replenish_all_ap",
+                     admin_replenish_all_ap, methods=["POST"])
     app.add_url_rule("/admin/config",                 "admin_config",       admin_config,        methods=["GET","POST"])
     app.add_url_rule("/admin/reset/midnight",         "admin_midnight",     admin_midnight,      methods=["POST"])
     app.add_url_rule("/admin/reset/full",             "admin_full_reset",   admin_full_reset,    methods=["POST"])
@@ -186,6 +188,43 @@ def admin_player_replenish_ap(pid: int):
     return redirect(url_for(
         "admin_players",
         feedback=f"{player['character_name'] or player['username']} AP replenished from {before} to {restored}."
+    ))
+
+
+def admin_replenish_all_ap():
+    """Restore every active human and NPC character to their calculated AP maximum."""
+    from database import get_player
+    rows = execute(
+        """SELECT p.id, CASE WHEN np.player_id IS NULL THEN 0 ELSE 1 END AS is_npc
+           FROM players p
+           LEFT JOIN npc_profiles np ON np.player_id=p.id
+           WHERE p.retired_at IS NULL AND p.is_banned=0
+             AND (np.player_id IS NULL OR (np.enabled=1 AND np.retired=0))
+           ORDER BY p.id"""
+    )
+    changed = []
+    npc_count = 0
+    player_count = 0
+    with exclusive_transaction():
+        for row in rows:
+            player = get_player(row["id"])
+            if not player:
+                continue
+            before = player["current_ap"]
+            restored = player["max_ap"]
+            execute_write("UPDATE players SET current_ap=? WHERE id=?", (restored, row["id"]))
+            changed.append({"player_id": row["id"], "before": before, "after": restored})
+            if row["is_npc"]:
+                npc_count += 1
+            else:
+                player_count += 1
+        _audit(
+            "REPLENISH_ALL_AP", "SYSTEM", reason="Admin testing refill",
+            details={"players": player_count, "npcs": npc_count, "changes": changed},
+        )
+    return redirect(url_for(
+        "admin_index",
+        feedback=f"AP replenished for {player_count} player(s) and {npc_count} NPC(s)."
     ))
 
 
@@ -373,9 +412,9 @@ def admin_health():
 
 ITEM_TABLES = {"weapon": "weapons", "armor": "armor", "special": "special_items"}
 ITEM_EDIT_FIELDS = {
-    "weapon": ("name","is_active","level","weapon_type","damage_die","damage_type","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","credit_cost","drop_chance","starting_durability"),
-    "armor": ("name","is_active","level","ac_bonus","res_blade","res_blunt","res_ballistic","res_energy","res_arcane","res_explosive","res_venom","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","credit_cost","drop_chance","starting_durability"),
-    "special": ("name","is_active","associated_to","association_type","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","initiative_bonus","extra_attack","crit_chance_bonus","crit_dmg_multiplier","ac_bonus","credit_cost","drop_chance","starting_durability","steal_bonus","xp_multiplier","credit_multiplier","bonus_ap","hp_regen_bonus","durability_reduction","shop_discount","sell_bonus","encounter_bonus"),
+    "weapon": ("name","description","is_active","level","weapon_type","damage_die","damage_type","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","credit_cost","drop_chance","starting_durability"),
+    "armor": ("name","description","is_active","level","ac_bonus","res_blade","res_blunt","res_ballistic","res_energy","res_arcane","res_explosive","res_venom","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","credit_cost","drop_chance","starting_durability"),
+    "special": ("name","description","is_active","associated_to","association_type","str_bonus","end_bonus","agi_bonus","lck_bonus","per_bonus","initiative_bonus","extra_attack","crit_chance_bonus","crit_dmg_multiplier","ac_bonus","credit_cost","drop_chance","starting_durability","steal_bonus","xp_multiplier","credit_multiplier","bonus_ap","hp_regen_bonus","durability_reduction","shop_discount","sell_bonus","encounter_bonus"),
 }
 
 
@@ -715,6 +754,11 @@ def admin_npcs():
         """SELECT nal.*,p.character_name FROM npc_action_log nal JOIN players p ON p.id=nal.player_id
            ORDER BY nal.id DESC LIMIT 50"""
     )
+    for log in logs:
+        try:
+            log["details"] = json.loads(log.get("details_json") or "{}")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            log["details"] = {}
     inventory = execute(
         """SELECT ii.*,CASE ii.item_type WHEN 'WEAPON' THEN w.name WHEN 'ARMOR' THEN a.name ELSE si.name END item_name
            FROM inventory_items ii LEFT JOIN weapons w ON w.id=ii.item_id AND ii.item_type='WEAPON'
@@ -1093,12 +1137,37 @@ def admin_full_reset():
             url_for("admin_index") + "?error=Full+reset+requires+typing+RESET+to+confirm."
         )
 
-    import sqlite3, os
+    import sqlite3, os, shutil
+
+    # Validate the staged workbook before deleting anything. A malformed file
+    # must never leave the game empty without the revised content available.
+    if os.path.exists(cfg.PENDING_IMPORT_PATH):
+        from importer import parse_workbook, validate
+        try:
+            staged_errors = validate(parse_workbook(cfg.PENDING_IMPORT_PATH))
+        except Exception as exc:
+            staged_errors = [f"Could not read staged workbook: {exc}"]
+        if staged_errors:
+            logger.error("Full reset cancelled; staged import is invalid: %s", staged_errors)
+            return redirect(
+                url_for("admin_index")
+                + "?error=Full+reset+cancelled:+the+staged+workbook+failed+validation."
+            )
 
     logger.warning("Admin: initiating FULL GAME RESET")
 
+    # Keep a recoverable snapshot beside the database before the destructive step.
+    backup_dir = os.path.join(os.path.dirname(cfg.DB_PATH), "backups")
+    os.makedirs(backup_dir, exist_ok=True)
+    backup_path = os.path.join(
+        backup_dir, f"game_pre_reset_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.db"
+    )
+    shutil.copy2(cfg.DB_PATH, backup_path)
+    logger.warning("Pre-reset database backup created at %s", backup_path)
+
     # Drop all operational tables (content tables survive)
     operational = [
+        "npc_action_log", "npc_profiles", "player_activity_log",
         "combat_buffs", "combat_logs", "combat_sessions",
         "boss_instances", "minion_instances", "boss_intel",
         "inventory_items", "item_history", "special_item_registry",
@@ -1116,23 +1185,35 @@ def admin_full_reset():
     # Reinitialise schema (recreates dropped tables)
     init_db()
 
-    # Rebuild special_item_registry from existing special_items content
-    with exclusive_transaction():
-        specials = execute("SELECT id FROM special_items WHERE is_active = 1")
-        for s in specials:
-            execute_write(
-                "INSERT OR IGNORE INTO special_item_registry (special_item_id, status) VALUES (?, 'IN_POOL')",
-                (s["id"],)
-            )
-
     # Re-import if staged file exists
     if os.path.exists(cfg.PENDING_IMPORT_PATH):
         from importer import run_import
-        result = run_import(cfg.PENDING_IMPORT_PATH, full_reset=True)
+        # Content tables survive a player reset; update them in place instead
+        # of attempting duplicate inserts for existing named content.
+        result = run_import(cfg.PENDING_IMPORT_PATH, full_reset=False)
         logger.info("Post-reset import: %s", result)
+        if not result.get("success"):
+            logger.error("Post-reset import failed; backup available at %s", backup_path)
+            return redirect(
+                url_for("admin_index")
+                + "?error=Players+were+reset+but+content+import+failed.+Restore+the+automatic+backup."
+            )
+
+    # Build the unique-special pool only after the revised catalog is active.
+    with exclusive_transaction():
+        execute_write("DELETE FROM special_item_registry")
+        specials = execute("SELECT id FROM special_items WHERE is_active = 1")
+        for s in specials:
+            execute_write(
+                "INSERT INTO special_item_registry (special_item_id, status) VALUES (?, 'IN_POOL')",
+                (s["id"],)
+            )
 
     logger.warning("Admin: FULL GAME RESET complete")
-    return redirect(url_for("admin_index") + "?feedback=Full+game+reset+complete.")
+    return redirect(
+        url_for("admin_index")
+        + "?feedback=Full+game+reset+complete.+A+pre-reset+database+backup+was+saved."
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

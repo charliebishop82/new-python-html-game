@@ -555,7 +555,8 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
                            opponent_health=flavour.hp_status(
                                opponent_full.get("current_hp", opponent_full["max_hp"]),
                                opponent_full["max_hp"]),
-                           boss_flavor=opponent_full.get("flavor_text", ""))
+                           boss_flavor=opponent_full.get("flavor_text", ""),
+                           opponent_description=opponent_full.get("description", ""))
 
 
 @register_handler("start_boss_fight")
@@ -807,7 +808,7 @@ def action_pvp_fight():
                            opponent_health=flavour.hp_status(
                                target["current_hp"], engine.calc_max_hp(target)),
                            player=player,
-                           boss_flavor="")
+                           boss_flavor="", opponent_description="")
 
 
 @register_handler("start_pvp_fight")
@@ -856,6 +857,7 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
     movies = execute(
         """SELECT m.id, m.movie_name,
                   m.protagonist_name,
+                  m.protagonist_description,
                   m.protagonist_weapon_id,
                   m.protagonist_armor_id,
                   m.protagonist_special_item_id,
@@ -888,6 +890,7 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
     movie      = random.choices(candidates, weights=weights, k=1)[0]
 
     protagonist = movie["protagonist_name"]
+    protagonist_description = movie.get("protagonist_description")
     roll        = random.random()
 
     if roll < 0.40:
@@ -961,7 +964,9 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
             """INSERT INTO daily_feed (feed_scope, player_id, flavor_text, event_category)
                VALUES ('PERSONAL', ?, ?, 'RANDOM_EVENT')""",
             (player_id,
-             f"{protagonist} looks you over and hands you the {item_name}. No words. Just a nod.")
+             f"{protagonist} looks you over and hands you the {item_name}."
+             f"{' Their appearance is unmistakable: ' + protagonist_description if protagonist_description else ''}"
+             " No words. Just a nod.")
         )
         # Global feed for special items
         if item_type == "SPECIAL":

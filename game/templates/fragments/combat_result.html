@@ -8,7 +8,8 @@
      data-xp="{{ player.xp }}"
      data-xp-threshold="{{ '/' ~ player.next_level_xp if player.next_level_xp is not none else '' }}"
      data-xp-next="{% if player.xp_to_next_level is none %}MAX{% elif player.xp_to_next_level <= 0 %}LEVEL UP{% else %}{{ player.xp_to_next_level }} XP{% endif %}"
-     data-credits="{{ player.credits }}">
+     data-credits="{{ player.credits }}"
+     data-combat-ended="true">
 
     {% set fr = result.final_result %}
     {% set won = result.winner_side == 'ATTACKER' %}

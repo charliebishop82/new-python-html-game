@@ -19,6 +19,8 @@
             <div class="loadout-slot">{{ 'OUTFIT' if slot == 'armor' else slot|upper }}</div>
             {% if item %}
             <h2>{{ item.name }}</h2>
+            {% if item.description %}<p class="item-description">{{ item.description }}</p>{% endif %}
+            {% include "fragments/item_combat_stats.html" %}
             <div class="durability"><span style="width:{{ item.current_durability }}%"></span></div>
             <small>{{ item.current_durability }}% condition</small>
             <form method="POST" action="{{ url_for('character.unequip') }}">
@@ -41,39 +43,13 @@
     {% for item in inventory %}
         <article class="equipment-card {{ 'is-equipped' if item.is_equipped }}">
             <div class="equipment-type">{{ item.item_type }}</div><h3>{{ item.name }}</h3>
-            <div class="item-properties">
+            {% if item.description %}<p class="item-description">{{ item.description }}</p>{% endif %}
+            <div class="item-properties item-reference-properties">
                 <span>Level {{ item.level or '—' }}</span>
                 <span>Shop value {{ item.sell_price }} CR</span>
                 <span>Base value {{ item.credit_cost }} CR</span>
-                {% if item.item_type == 'WEAPON' %}
-                    <span>{{ item.weapon_type }}</span>
-                    <span class="primary-property">Damage {{ item.damage_die }} {{ item.damage_type }}</span>
-                {% endif %}
-                {% if item.item_type == 'ARMOR' %}<span class="primary-property">Armor Class +{{ item.ac_bonus }}</span>{% endif %}
-                {% for stat, label in [('str_bonus','STR'),('end_bonus','END'),('agi_bonus','AGI'),('lck_bonus','LCK'),('per_bonus','PER')] %}
-                    {% if item.get(stat, 0) %}<span class="bonus">{{ label }} {{ '%+d'|format(item.get(stat, 0)) }}</span>{% endif %}
-                {% endfor %}
-                {% if item.item_type in ('ARMOR', 'SPECIAL') %}
-                    {% for field, label in [('res_blade','Blade'),('res_blunt','Blunt'),('res_ballistic','Ballistic'),('res_energy','Energy'),('res_arcane','Arcane'),('res_explosive','Explosive'),('res_venom','Venom')] %}
-                        {% if item.get(field, 0) %}<span class="resistance">Resists {{ label }}</span>{% endif %}
-                    {% endfor %}
-                {% endif %}
-                {% if item.get('initiative_bonus', 0) %}<span class="bonus">Initiative +{{ item.initiative_bonus }}</span>{% endif %}
-                {% if item.get('extra_attack', 0) %}<span class="bonus">Extra Attack</span>{% endif %}
-                {% if item.get('crit_chance_bonus', 0) %}<span class="bonus">Critical chance +{{ (item.crit_chance_bonus * 100)|round|int }}%</span>{% endif %}
-                {% if item.get('crit_dmg_multiplier', 0) %}<span class="bonus">Critical damage +{{ (item.crit_dmg_multiplier * 100)|round|int }}%</span>{% endif %}
-                {% if item.get('ac_bonus', 0) and item.item_type == 'SPECIAL' %}<span class="bonus">Armor Class +{{ item.ac_bonus }}</span>{% endif %}
-                {% if item.get('bonus_damage_amount', 0) %}<span class="bonus">Bonus damage +{{ item.bonus_damage_amount }} {{ item.bonus_damage_type }}</span>{% endif %}
-                {% if item.get('xp_multiplier', 0) %}<span class="bonus">XP +{{ (item.xp_multiplier * 100)|int }}%</span>{% endif %}
-                {% if item.get('credit_multiplier', 0) %}<span class="bonus">Credits earned +{{ (item.credit_multiplier * 100)|round|int }}%</span>{% endif %}
-                {% if item.get('steal_bonus', 0) %}<span class="bonus">Steal +{{ (item.steal_bonus * 100)|int }}%</span>{% endif %}
-                {% if item.get('bonus_ap', 0) %}<span class="bonus">Daily AP +{{ item.bonus_ap }}</span>{% endif %}
-                {% if item.get('hp_regen_bonus', 0) %}<span class="bonus">HP regeneration +{{ item.hp_regen_bonus }}</span>{% endif %}
-                {% if item.get('durability_reduction', 0) %}<span class="bonus">Durability loss -{{ (item.durability_reduction * 100)|round|int }}%</span>{% endif %}
-                {% if item.get('shop_discount', 0) %}<span class="bonus">Shop discount +{{ (item.shop_discount * 100)|round|int }}%</span>{% endif %}
-                {% if item.get('sell_bonus', 0) %}<span class="bonus">Selling value +{{ (item.sell_bonus * 100)|round|int }}%</span>{% endif %}
-                {% if item.get('encounter_bonus', 0) %}<span class="bonus">Encounter bonus +{{ (item.encounter_bonus * 100)|round|int }}%</span>{% endif %}
             </div>
+            {% include "fragments/item_combat_stats.html" %}
             <div class="equipment-condition"><div class="durability"><span style="width:{{ item.current_durability }}%"></span></div>Durability {{ item.current_durability }}%</div>
             <div class="equipment-actions">
             {% if item.is_equipped %}<span class="equipped-badge">EQUIPPED</span>{% else %}

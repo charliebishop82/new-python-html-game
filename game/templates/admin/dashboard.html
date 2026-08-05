@@ -32,6 +32,15 @@
     </div>
 </div>
 
+<form method="POST" action="{{ url_for('admin_replenish_all_ap') }}"
+      onsubmit="return confirm('Restore every active player and NPC to their calculated maximum AP?');"
+      style="margin-bottom:24px;">
+    <button type="submit" class="btn"
+            title="Restore all active human players and NPCs to their individual calculated AP maximum. Retired and banned characters are excluded.">
+        Replenish Everyone's AP
+    </button>
+</form>
+
 {% if recent_errors %}
 <h2>Recent Import Errors</h2>
 <div style="background:#0d0d0d;padding:10px;border:1px solid #222;
@@ -41,11 +50,16 @@
 {% endif %}
 
 <h2>Danger Zone</h2>
+{% if not pending_import %}
+<div class="error" style="margin-bottom:10px;">
+    No workbook is staged. Upload the revised workbook through Import Excel before resetting.
+</div>
+{% endif %}
 <form method="POST" action="/admin/reset/full"
-      onsubmit="return confirm('⚠ THIS WIPES ALL PLAYER DATA. Are you absolutely sure?');"
+      onsubmit="return confirm('This permanently wipes all player and NPC progress. A database backup will be created first. Continue?');"
       style="display:flex;gap:8px;align-items:center;">
     <input type="text" name="confirm" placeholder='Type RESET to confirm' style="width:220px;">
-    <button type="submit" class="btn btn-danger">Full Game Reset</button>
+    <button type="submit" class="btn btn-danger" {% if not pending_import %}disabled{% endif %}>Full Game Reset</button>
 </form>
 {% endblock %}
 

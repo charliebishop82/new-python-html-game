@@ -331,17 +331,22 @@ def _diff_table(rows: list, table: str, name_col_excel: str,
 
     inserts = []
     updates = []
+    incoming_names = set()
     for row in rows:
         name = row.get(name_col_excel)
         if not name:
             continue
         mapped = mapper_fn(row)
         mapped["name"] = str(name).strip()
+        mapped["is_active"] = 1
+        incoming_names.add(mapped["name"])
         if mapped["name"] in existing:
             updates.append({"db_row": existing[mapped["name"]], "new_data": mapped})
         else:
             inserts.append(mapped)
-    return {"insert": inserts, "update": updates}
+    deactivate = [r["id"] for name, r in existing.items()
+                  if name not in incoming_names and r.get("is_active", 1)]
+    return {"insert": inserts, "update": updates, "deactivate": deactivate}
 
 
 def _diff_settings(rows: list) -> list:
@@ -426,6 +431,7 @@ def _map_boss(r: dict) -> dict:
         "drop_credit_min":           _i(r.get("Drop_Credit_Min")),
         "drop_credit_max":           _i(r.get("Drop_Credit_Max")),
         "flavor_text":               _s(r.get("FlavorText")),
+        "description":               _s(r.get("Description")),
     }
 
 
@@ -442,6 +448,7 @@ def _map_minion(r: dict) -> dict:
         "drop_credit_min":          _i(r.get("Drop_Credit_Min")),
         "drop_credit_max":          _i(r.get("Drop_Credit_Max")),
         "flavor_text":              _s(r.get("FlavorText")),
+        "description":              _s(r.get("Description")),
     }
 
 
@@ -456,6 +463,7 @@ def _map_weapon(r: dict) -> dict:
         "agi_bonus":   _i(r.get("AGI")), "lck_bonus": _i(r.get("LCK")),
         "per_bonus":   _i(r.get("PER")),
         "associated_to":       _s(r.get("AssociatedTo")),
+        "description":         _s(r.get("Description")),
         "credit_cost":         _i(r.get("CreditCost")),
         "drop_chance":         _f(r.get("DropChance")),
         "starting_durability": _i(r.get("StartingDurability"), 100),
@@ -472,6 +480,7 @@ def _map_armor(r: dict) -> dict:
         "agi_bonus": _i(r.get("AGI")), "lck_bonus": _i(r.get("LCK")),
         "per_bonus": _i(r.get("PER")),
         "associated_to":       _s(r.get("AssociatedTo")),
+        "description":         _s(r.get("Description")),
         "credit_cost":         _i(r.get("CreditCost")),
         "drop_chance":         _f(r.get("DropChance")),
         "starting_durability": _i(r.get("StartingDurability"), 100),
@@ -483,6 +492,7 @@ def _map_special_item(r: dict) -> dict:
     return {
         "associated_to":   _s(r.get("AssociatedTo")),
         "association_type": _s(r.get("AssociationType")),
+        "description":      _s(r.get("Description")),
         "str_bonus": _i(r.get("STR")), "end_bonus": _i(r.get("END")),
         "agi_bonus": _i(r.get("AGI")), "lck_bonus": _i(r.get("LCK")),
         "per_bonus": _i(r.get("PER")),
@@ -538,6 +548,21 @@ def apply_changes(changes: dict, full_reset: bool = False) -> dict:
         data   = changes[key]
         inserts = data.get("insert", [])
         updates = data.get("update", [])
+        deactivate = data.get("deactivate", [])
+        for row_id in deactivate:
+            execute_write(f"UPDATE {tbl} SET is_active=0 WHERE id=?", (row_id,))
+            listing_type = {
+                "weapons": "WEAPON",
+                "armor": "ARMOR",
+                "special_items": "SPECIAL",
+            }.get(tbl)
+            if listing_type:
+                # Retired definitions remain available to existing owners and logs,
+                # but must no longer be offered as active shop inventory.
+                execute_write(
+                    "DELETE FROM shop_listings WHERE item_type=? AND item_id=?",
+                    (listing_type, row_id),
+                )
         for row in inserts:
             _upsert_row(tbl, row, None)
             # Create special_item_registry row for new special items
@@ -551,7 +576,8 @@ def apply_changes(changes: dict, full_reset: bool = False) -> dict:
                     )
         for item in updates:
             _upsert_row(tbl, item["new_data"], item["db_row"]["id"])
-        summary[key] = {"insert": len(inserts), "update": len(updates)}
+        summary[key] = {"insert": len(inserts), "update": len(updates),
+                        "deactivate": len(deactivate)}
 
     # Settings: upsert by constant_name
     for s in changes.get("settings", []):
@@ -590,6 +616,7 @@ def _upsert_row(table: str, data: dict, existing_id: int | None):
 def _apply_master(master_rows: list):
     """Process master sheet: upsert master rows, linking by name.
     Now includes protagonist FK columns."""
+    execute_write("UPDATE master SET is_active=0")
     for r in master_rows:
         movie = _s(r.get('MovieName'))
         if not movie:
@@ -611,6 +638,7 @@ def _apply_master(master_rows: list):
         min_armor_id     = get_id('armor',         r.get('MinionArmor'))
         min_special_id   = get_id('special_items', r.get('MinionSpecialItem'))
         prot_name        = _s(r.get('ProtagonistName')) or None
+        prot_description = _s(r.get('ProtagonistDescription')) or None
         prot_weapon_id   = get_id('weapons',       r.get('ProtagonistWeapon'))
         prot_armor_id    = get_id('armor',         r.get('ProtagonistArmor'))
         prot_special_id  = get_id('special_items', r.get('ProtagonistSpecialItem'))
@@ -628,11 +656,13 @@ def _apply_master(master_rows: list):
                    boss_id=?, boss_weapon_id=?, boss_armor_id=?, boss_special_item_id=?,
                    minion_id=?, minion_weapon_id=?, minion_armor_id=?, minion_special_item_id=?,
                    protagonist_name=?, protagonist_weapon_id=?, protagonist_armor_id=?,
-                   protagonist_special_item_id=?, imported_at=?
+                   protagonist_special_item_id=?, protagonist_description=?,
+                   is_active=1, imported_at=?
                    WHERE movie_name=?""",
                 (boss_id, boss_weapon_id, boss_armor_id, boss_special_id,
                  minion_id, min_weapon_id, min_armor_id, min_special_id,
                  prot_name, prot_weapon_id, prot_armor_id, prot_special_id,
+                 prot_description,
                  now, movie)
             )
         else:
@@ -641,11 +671,12 @@ def _apply_master(master_rows: list):
                    (movie_name, boss_id, boss_weapon_id, boss_armor_id, boss_special_item_id,
                     minion_id, minion_weapon_id, minion_armor_id, minion_special_item_id,
                     protagonist_name, protagonist_weapon_id, protagonist_armor_id,
-                    protagonist_special_item_id, imported_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    protagonist_special_item_id, protagonist_description, imported_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (movie, boss_id, boss_weapon_id, boss_armor_id, boss_special_id,
                  minion_id, min_weapon_id, min_armor_id, min_special_id,
-                 prot_name, prot_weapon_id, prot_armor_id, prot_special_id, now)
+                 prot_name, prot_weapon_id, prot_armor_id, prot_special_id,
+                 prot_description, now)
             )
 
 def clear_stale_intel(changes: dict):

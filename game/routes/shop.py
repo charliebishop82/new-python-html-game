@@ -62,7 +62,7 @@ def _get_listings_with_detail(discount: float) -> list[dict]:
     )
     result = []
     for row in rows:
-        detail = _get_item_detail(row["item_type"], row["item_id"])
+        detail = _get_item_detail(row["item_type"], row["item_id"], active_only=True)
         if detail is None:
             continue
         discounted_price = max(0, int(row["price"] * (1 - discount)))
@@ -72,12 +72,13 @@ def _get_listings_with_detail(discount: float) -> list[dict]:
     return result
 
 
-def _get_item_detail(item_type: str, item_id: int) -> dict | None:
-    """Load item detail from current database state."""
+def _get_item_detail(item_type: str, item_id: int, active_only: bool = False) -> dict | None:
+    """Load item detail, optionally excluding content retired by a later import."""
     table = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}.get(item_type)
     if not table:
         return None
-    return execute_one(f"SELECT * FROM {table} WHERE id = ?", (item_id,))
+    active_clause = " AND is_active = 1" if active_only else ""
+    return execute_one(f"SELECT * FROM {table} WHERE id = ?{active_clause}", (item_id,))
 
 
 def _get_sellable_items(player: dict) -> list[dict]:
@@ -174,6 +175,8 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
     listing = execute_one("SELECT * FROM shop_listings WHERE id = ?", (listing_id,))
     if listing is None:
         raise ValueError("Item is no longer available.")
+    if _get_item_detail(listing["item_type"], listing["item_id"], active_only=True) is None:
+        raise ValueError("This item has been retired from the active catalog.")
 
     # Calculate discounted price
     per_discount     = math.floor(player["per_stat"] / 2) / 100
@@ -199,6 +202,8 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
         listing = execute_one("SELECT * FROM shop_listings WHERE id = ?", (listing_id,))
         if listing is None:
             raise ValueError("Item was purchased by another player.")
+        if _get_item_detail(listing["item_type"], listing["item_id"], active_only=True) is None:
+            raise ValueError("This item has been retired from the active catalog.")
 
         durability = listing["durability_at_listing"] or 100
         inv_id = execute_write(

@@ -42,12 +42,14 @@
     <form method="POST" action="/admin/items/{{ selected }}/{{ item.id }}/edit"
           style="display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:8px;margin-top:10px">
         {% for field in fields %}
-        <label class="item-field-label">
+        <label class="item-field-label"{% if field == 'description' %} style="grid-column:1/-1;"{% endif %}>
             {{ field }}<br>
+            {% if field == 'description' %}<textarea name="{{ field }}" rows="3" style="width:100%;">{{ item[field] if item[field] is not none else '' }}</textarea>{% else %}
             <input name="{{ field }}"
                    value="{{ item[field] if item[field] is not none else '' }}"
                    class="{{ 'item-effect-value' if field in effect_fields else '' }}"
                    style="width:100%">
+            {% endif %}
         </label>
         {% endfor %}
         <label style="grid-column:span 3">

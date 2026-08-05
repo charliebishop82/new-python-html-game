@@ -27,7 +27,10 @@
         </tr>
         {% for item in listings %}
         <tr>
-            <td>{{ item.name }}</td>
+            <td>
+                {{ item.name }}
+                {% if item.description %}<div class="item-description">{{ item.description }}</div>{% endif %}
+            </td>
             <td>
                 {% if item.item_type == 'WEAPON' %}
                     {{ item.weapon_type }} · {{ item.damage_die }} {{ item.damage_type }}
@@ -85,7 +88,10 @@
         </tr>
         {% for item in sellable %}
         <tr>
-            <td>{{ item.name }}</td>
+            <td>
+                {{ item.name }}
+                {% if item.description %}<div class="item-description">{{ item.description }}</div>{% endif %}
+            </td>
             <td>
                 {% if item.item_type == 'SPECIAL' %}
                     <span style="color:var(--amber)">★ Special</span>

@@ -65,6 +65,18 @@ def init_db():
             columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
             if "encounter_max_hp" not in columns:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN encounter_max_hp INTEGER")
+        npc_log_columns = {row[1] for row in conn.execute("PRAGMA table_info(npc_action_log)")}
+        if "details_json" not in npc_log_columns:
+            conn.execute("ALTER TABLE npc_action_log ADD COLUMN details_json TEXT")
+        for table in ("bosses", "minions", "weapons", "armor", "special_items"):
+            columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+            if "description" not in columns:
+                conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN description TEXT NOT NULL DEFAULT ''"
+                )
+        master_columns = {row[1] for row in conn.execute("PRAGMA table_info(master)")}
+        if "protagonist_description" not in master_columns:
+            conn.execute("ALTER TABLE master ADD COLUMN protagonist_description TEXT")
         # Older builds recorded permanent level choices in level_up_history but
         # did not publish them to the player's dashboard feed. Backfill each
         # historical choice once, keyed by player and original timestamp.
