@@ -3,7 +3,7 @@
 import logging
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, g, session
-from database import execute, get_all_settings
+from database import execute, execute_write, exclusive_transaction, get_all_settings
 import config_defaults as cfg
 
 bp = Blueprint('dashboard', __name__)
@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 @bp.route('/')
 def index():
     """Handle the index workflow."""
+    # Returning to the dashboard ends the current shop visit. Clicking Shop
+    # again starts a new visit and charges its single admission AP.
+    session.pop("shop_access_granted", None)
     player   = g.player
     settings = get_all_settings()
 
@@ -97,6 +100,24 @@ def index():
     ]
     active_combat = _load_active_combat(player)
 
+    # Hostile actions can happen while a player is offline and may cross the
+    # midnight feed reset. Persistent unseen defense events are therefore shown
+    # prominently once, while the permanent activity record remains for admin.
+    unread_defense_events = execute(
+        """SELECT id,message,status,occurred_at
+           FROM player_activity_log
+           WHERE player_id=? AND source='PVP_DEFENSE' AND seen_at IS NULL
+           ORDER BY datetime(occurred_at) ASC,id ASC""",
+        (player["id"],)
+    )
+    if unread_defense_events:
+        placeholders = ",".join("?" for _ in unread_defense_events)
+        with exclusive_transaction():
+            execute_write(
+                f"UPDATE player_activity_log SET seen_at=? WHERE id IN ({placeholders})",
+                (datetime.utcnow().isoformat(), *[event["id"] for event in unread_defense_events])
+            )
+
     return render_template(
         'dashboard.html',
         terminal_history=terminal_history,
@@ -105,6 +126,7 @@ def index():
         now_iso=now_iso,
         effect_labels=effect_labels,
         active_combat=active_combat,
+        unread_defense_events=unread_defense_events,
     )
 
 

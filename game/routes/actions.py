@@ -6,6 +6,7 @@
 import math
 import random
 import logging
+import json
 from datetime import datetime
 
 from flask import Blueprint, render_template, request, session, g
@@ -837,6 +838,28 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
                 attacker_hp_start, defender_hp_start)
                VALUES ('PVP', ?, ?, 'ACTIVE', ?, ?)""",
             (player_id, target_id, new_hp, target["current_hp"])
+        )
+        incoming_text = (
+            f"{player['character_name']} initiated PvP combat against you. "
+            "The fight will resolve under the same rules as any player battle."
+        )
+        details = {
+            "combat_session_id": session_id,
+            "attacker_player_id": player_id,
+            "attacker_name": player["character_name"],
+            "defender_hp_before": target["current_hp"],
+        }
+        execute_write(
+            """INSERT INTO daily_feed
+               (feed_scope,player_id,flavor_text,event_category,combat_session_id)
+               VALUES('PERSONAL',?,?,'PVP_DEFENSE',?)""",
+            (target_id, incoming_text, session_id)
+        )
+        execute_write(
+            """INSERT INTO player_activity_log
+               (player_id,category,action,status,message,details_json,source)
+               VALUES(?, 'PVP', 'INCOMING_PVP', 'NOTICE', ?, ?, 'PVP_DEFENSE')""",
+            (target_id, incoming_text, json.dumps(details))
         )
 
     return {"session_id": session_id, "new_ap": new_ap, "new_hp": new_hp}

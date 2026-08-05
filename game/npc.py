@@ -668,7 +668,7 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
     """Occasionally sell obsolete gear or buy a meaningful, affordable upgrade.
 
     The NPC sees only its own inventory and the same public shop listings as a
-    human player. One sale or purchase consumes the normal configured Shop AP.
+    human player. It pays the same admission AP immediately before trading.
     """
     ap_cost = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
     if player["current_ap"] < ap_cost:
@@ -688,11 +688,11 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
                 candidates = non_specials
             elif candidates:
                 victim = min(candidates, key=lambda item: item["credit_cost"])
-                result = enqueue_and_process(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+                result = _npc_shop_transaction(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
                 return (f"Inventory was full; sold cheapest special {victim['name']}", str(result))
         if candidates:
             victim = min(candidates, key=lambda item: (item["score"], item["credit_cost"]))
-            result = enqueue_and_process(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+            result = _npc_shop_transaction(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
             return (f"Inventory was full; sold obsolete {victim['name']}", str(result))
         return None
 
@@ -710,7 +710,7 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
                             if item["inv_id"] not in equipped and item["score"] < best_score * 0.75)
         if obsolete:
             victim = min(obsolete, key=lambda item: (item["score"], item["credit_cost"]))
-            result = enqueue_and_process(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+            result = _npc_shop_transaction(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
             return (f"Sold obsolete {victim['name']} to keep inventory useful", str(result))
 
     # Temperament creates stable differences between otherwise identical NPCs,
@@ -763,10 +763,20 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
     if not upgrades:
         return None
     _, improvement, _, listing, detail = max(upgrades, key=lambda row: row[:3])
-    result = enqueue_and_process(player["id"], "shop_buy", {"listing_id": listing["id"]})
+    result = _npc_shop_transaction(player["id"], "shop_buy", {"listing_id": listing["id"]})
     _equip_best_items(player["id"], profile)
     return (f"Bought {detail['name']} as a meaningful {listing['item_type'].lower()} upgrade",
             f"estimated improvement {improvement:.1f}; {result}")
+
+
+def _npc_shop_transaction(player_id: int, action_type: str, payload: dict) -> dict:
+    """Pay shop admission once, then perform one NPC trading visit."""
+    # The separate admin Flask process does not register player blueprints, so
+    # load the Shop module here to make its queued handlers available to NPCs.
+    from routes import shop as _shop_handlers  # noqa: F401
+    admission = enqueue_and_process(player_id, "shop_enter", {})
+    result = enqueue_and_process(player_id, action_type, payload)
+    return {"admission": admission, "transaction": result}
 
 
 def _eligible_pvp_targets(player: dict) -> list[dict]:

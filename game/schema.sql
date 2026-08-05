@@ -282,6 +282,7 @@ CREATE TABLE IF NOT EXISTS player_activity_log (
     details_json TEXT,
     queue_id    INTEGER REFERENCES action_queue(id),
     source      TEXT NOT NULL DEFAULT 'GAME',
+    seen_at     TEXT,
     occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

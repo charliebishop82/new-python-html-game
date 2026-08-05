@@ -21,9 +21,40 @@ logger = logging.getLogger(__name__)
 # GET /shop
 # ─────────────────────────────────────────────────────────────────────────────
 
+@bp.route("/shop/enter", methods=["POST"])
+def enter():
+    """Charge the one-time admission AP, then open a free trading visit."""
+    try:
+        enqueue_and_process(session["player_id"], "shop_enter", {})
+        session["shop_access_granted"] = True
+        return redirect(url_for("shop.index"))
+    except RuntimeError as exc:
+        return redirect(url_for("dashboard.index", error=str(exc)))
+
+
+@register_handler("shop_enter")
+def handle_shop_enter(player_id: int, payload: dict) -> dict:
+    """Spend the configured Shop AP once; purchases and sales are then free."""
+    settings = get_all_settings()
+    ap_cost = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
+    player = execute_one("SELECT current_ap,in_combat FROM players WHERE id=?", (player_id,))
+    if not player:
+        raise ValueError("Player not found.")
+    if player["in_combat"]:
+        raise ValueError("The shop is unavailable during combat.")
+    if player["current_ap"] < ap_cost:
+        raise ValueError(f"Not enough AP. Need {ap_cost}.")
+    with exclusive_transaction():
+        execute_write("UPDATE players SET current_ap=current_ap-? WHERE id=?", (ap_cost, player_id))
+    return {"success": True, "ap_spent": ap_cost}
+
 @bp.route("/shop")
 def index():
     """Handle the index workflow."""
+    if not session.get("shop_access_granted"):
+        return redirect(url_for(
+            "dashboard.index", error="Enter the shop from the dashboard to spend its AP cost."
+        ))
     player   = g.player
     settings = get_all_settings()
 
@@ -150,6 +181,8 @@ def _get_special_sell_bonus(player: dict) -> float:
 @bp.route("/shop/buy", methods=["POST"])
 def buy():
     """Handle the buy workflow."""
+    if not session.get("shop_access_granted"):
+        return redirect(url_for("dashboard.index", error="Enter the shop before buying."))
     listing_id = request.form.get("listing_id", type=int)
     if not listing_id:
         return redirect(url_for("shop.index", error="Invalid listing."))
@@ -167,10 +200,6 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
     listing_id = payload["listing_id"]
     settings   = get_all_settings()
     player     = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
-    ap_cost    = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
-
-    if player["current_ap"] < ap_cost:
-        raise ValueError(f"Not enough AP. Need {ap_cost}.")
 
     listing = execute_one("SELECT * FROM shop_listings WHERE id = ?", (listing_id,))
     if listing is None:
@@ -214,8 +243,8 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
         )
         execute_write("DELETE FROM shop_listings WHERE id = ?", (listing_id,))
         execute_write(
-            "UPDATE players SET credits = credits - ?, current_ap = current_ap - ? WHERE id = ?",
-            (final_price, ap_cost, player_id)
+            "UPDATE players SET credits = credits - ? WHERE id = ?",
+            (final_price, player_id)
         )
         execute_write(
             """INSERT INTO item_history
@@ -237,7 +266,7 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
 
     logger.info("Player %d bought item %s/%d for %d credits",
                 player_id, listing["item_type"], listing["item_id"], final_price)
-    return {"success": True, "credits_spent": final_price, "ap_spent": ap_cost,
+    return {"success": True, "credits_spent": final_price, "ap_spent": 0,
             "inventory_item_id": inv_id}
 
 
@@ -248,6 +277,8 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
 @bp.route("/shop/sell", methods=["POST"])
 def sell():
     """Handle the sell workflow."""
+    if not session.get("shop_access_granted"):
+        return redirect(url_for("dashboard.index", error="Enter the shop before selling."))
     inv_id = request.form.get("inv_id", type=int)
     if not inv_id:
         return redirect(url_for("shop.index", error="Invalid item."))
@@ -266,10 +297,6 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
     settings = get_all_settings()
     sell_pct = settings.get("SELL_PRICE_PERCENT", cfg.SELL_PRICE_PERCENT)
     player   = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
-    ap_cost  = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
-
-    if player["current_ap"] < ap_cost:
-        raise ValueError(f"Not enough AP. Need {ap_cost}.")
 
     inv = execute_one(
         "SELECT * FROM inventory_items WHERE id = ? AND player_id = ?",
@@ -299,8 +326,8 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
         execute_write("DELETE FROM inventory_items WHERE id = ?", (inv_id,))
         # Credit player
         execute_write(
-            "UPDATE players SET credits = credits + ?, current_ap = current_ap - ? WHERE id = ?",
-            (sell_price, ap_cost, player_id)
+            "UPDATE players SET credits = credits + ? WHERE id = ?",
+            (sell_price, player_id)
         )
         # Create shop listing
         listing_id = execute_write(
@@ -332,7 +359,7 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
 
     logger.info("Player %d sold item %s/%d for %d credits",
                 player_id, inv["item_type"], inv["item_id"], sell_price)
-    return {"success": True, "sell_price": sell_price, "ap_spent": ap_cost}
+    return {"success": True, "sell_price": sell_price, "ap_spent": 0}
 
 
 def _get_item_name(item_type: str, item_id: int) -> str:

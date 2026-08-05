@@ -93,14 +93,20 @@
                 'pvp': 'actions.action_pvp',
                 'tavern': 'actions.action_tavern',
                 'blacksmith': 'blacksmith.index',
-                'shop': 'shop.index'
+                'shop': 'shop.enter'
             } %}
             {% for action, state in button_states.items() %}
                 {% if state.enabled %}
-                    {% if action in ('blacksmith', 'shop') %}
+                    {% if action == 'blacksmith' %}
                     <a class="action-btn action-link" href="{{ url_for(action_endpoints[action]) }}">
                         {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
                     </a>
+                    {% elif action == 'shop' %}
+                    <form action="{{ url_for(action_endpoints[action]) }}" method="POST">
+                        <button type="submit" class="action-btn">
+                            {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
+                        </button>
+                    </form>
                     {% else %}
                     <form class="terminal-action" action="{{ url_for(action_endpoints[action]) }}" method="POST">
                     <button type="submit" class="action-btn">

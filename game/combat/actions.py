@@ -7,6 +7,7 @@
 import math
 import random
 import logging
+import json
 from datetime import datetime
 
 from database import (execute, execute_one, execute_write, get_player,
@@ -1293,6 +1294,8 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
     loser = opponent if winner_is_attacker else attacker
 
     xp_earned     = 0
+    defender_xp    = 0
+    winner_bonus_xp = 0
     credits_stolen = 0
     item_stolen    = None
     drops           = None
@@ -1383,11 +1386,16 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                 execute_write("UPDATE players SET xp = xp + ? WHERE id = ?",
                               (defender_xp, defender["id"]))
 
+        winner_special = (state["attacker_equipped"].get("special")
+                          if winner_is_attacker
+                          else state["defender_equipped"].get("special"))
+
         # Step 2: Credits stolen
         if winner and loser:
             cr_pct    = settings.get("CREDIT_STEAL_PERCENT",       cfg.CREDIT_STEAL_PERCENT)
             cr_lck_mult = settings.get("CREDIT_STEAL_LUCK_MULTIPLIER", cfg.CREDIT_STEAL_LUCK_MULTIPLIER)
-            steal_bonus = (special.get("steal_bonus", 0.0) if special else 0.0)
+            steal_bonus = (winner_special.get("steal_bonus", 0.0)
+                           if winner_special else 0.0)
             final_pct   = cr_pct + steal_bonus
             loser_player = execute_one("SELECT credits FROM players WHERE id = ?", (loser["id"],))
             credits_stolen = max(0, int(loser_player["credits"] * final_pct))
@@ -1398,6 +1406,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
 
             if credits_stolen == 0:
                 # Zero credit bonus
+                winner_bonus_xp = zero_xp_bonus
                 with exclusive_transaction():
                     execute_write("UPDATE players SET xp = xp + ? WHERE id = ?",
                                   (zero_xp_bonus, winner["id"]))
@@ -1430,7 +1439,8 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
         if winner and loser and result_type == "1HP_WIN":
             loser_eq  = (state["attacker_equipped"] if not winner_is_attacker
                          else state["defender_equipped"])
-            steal_bonus = (special.get("steal_bonus", 0.0) if special else 0.0)
+            steal_bonus = (winner_special.get("steal_bonus", 0.0)
+                           if winner_special else 0.0)
             loser_player = (state["defender"] if winner_is_attacker else attacker)
             roll_r = engine.resolve_opposed_roll(
                 actor_agi=winner["agi_stat"], actor_lck=winner["lck_stat"],
@@ -1464,6 +1474,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
     # A completed loss still teaches the defeated character something. Escapes
     # and stalemates are deliberately excluded from this consolation award.
     defeat_xp_earned = 0
+    loser_defeat_xp = 0
     if result_type in ("1HP_WIN", "SCORE_WIN"):
         loser_player_id = None
         if session["combat_type"] == "PVP" and loser:
@@ -1473,6 +1484,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
         if loser_player_id:
             defeat_xp = settings.get("COMBAT_DEFEAT_XP", getattr(cfg, "COMBAT_DEFEAT_XP", 10))
             _award_action_xp(loser_player_id, defeat_xp)
+            loser_defeat_xp = defeat_xp
             if loser_player_id == attacker["id"]:
                 defeat_xp_earned = defeat_xp
                 xp_earned += defeat_xp
@@ -1518,6 +1530,64 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                VALUES ('PERSONAL', ?, ?, 'COMBAT', ?)""",
             (attacker["id"], global_text, session_id)
         )
+        if session["combat_type"] == "PVP" and state.get("defender"):
+            defender = state["defender"]
+            defender_won = winner_side == "DEFENDER"
+            defender_reward_xp = (
+                defender_xp + winner_bonus_xp if defender_won else loser_defeat_xp
+            )
+            if defender_won:
+                parts = [
+                    f"DEFENSE VICTORY: You defeated {attacker['character_name']}",
+                    f"+{defender_reward_xp} XP" if defender_reward_xp else "No XP awarded",
+                ]
+                if credits_stolen:
+                    parts.append(f"+{credits_stolen} credits")
+                if item_stolen:
+                    parts.append(f"seized {item_stolen}")
+            else:
+                parts = [
+                    f"DEFENSE DEFEAT: {attacker['character_name']} defeated you",
+                    f"+{defender_reward_xp} XP for the completed fight" if defender_reward_xp else "No XP awarded",
+                ]
+                if credits_stolen:
+                    parts.append(f"-{credits_stolen} credits")
+                if item_stolen:
+                    parts.append(f"lost {item_stolen}")
+                parts.append("equipped gear may have lost durability")
+            defender_after = execute_one(
+                "SELECT current_hp,xp,credits,pending_levelup FROM players WHERE id=?",
+                (defender["id"],)
+            )
+            parts.append(f"HP {defender_after['current_hp']}")
+            if defender_after["pending_levelup"]:
+                parts.append("level-up available")
+            defender_text = ". ".join(parts) + "."
+            defense_details = {
+                "combat_session_id": session_id,
+                "attacker_player_id": attacker["id"],
+                "attacker_name": attacker["character_name"],
+                "outcome": "VICTORY" if defender_won else "DEFEAT",
+                "xp_awarded": defender_reward_xp,
+                "credits_changed": credits_stolen if defender_won else -credits_stolen,
+                "item_received": item_stolen if defender_won else None,
+                "item_lost": item_stolen if not defender_won else None,
+                "result_type": result_type,
+                "player_state_after": dict(defender_after),
+            }
+            execute_write(
+                """INSERT INTO daily_feed
+                   (feed_scope,player_id,flavor_text,event_category,combat_session_id)
+                   VALUES('PERSONAL',?,?,'PVP_DEFENSE',?)""",
+                (defender["id"], defender_text, session_id)
+            )
+            execute_write(
+                """INSERT INTO player_activity_log
+                   (player_id,category,action,status,message,details_json,source)
+                   VALUES(?, 'PVP', 'DEFENSE_RESULT', ?, ?, ?, 'PVP_DEFENSE')""",
+                (defender["id"], "SUCCESS" if defender_won else "DEFEAT",
+                 defender_text, json.dumps(defense_details, default=str))
+            )
 
     return {
         "winner_side":     winner_side,

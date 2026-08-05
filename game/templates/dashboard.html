@@ -10,6 +10,17 @@
     <span><b class="feed-scope feed-system">SYSTEM</b> Rules, tutorial, and service notices</span>
     <span>Bottom bar: live <b class="feed-scope feed-world">WORLD</b> ticker</span>
 </div>
+{% if unread_defense_events %}
+<section class="defense-alerts" aria-labelledby="defense-alert-title">
+    <h2 id="defense-alert-title">Actions Taken Against You</h2>
+    {% for event in unread_defense_events %}
+    <div class="defense-alert {{ 'defense-win' if event.status == 'SUCCESS' else 'defense-loss' if event.status == 'DEFEAT' else 'defense-notice' }}">
+        <strong>{{ event.message }}</strong>
+        <time>{{ event.occurred_at[:16] }}</time>
+    </div>
+    {% endfor %}
+</section>
+{% endif %}
 <div id="terminal" role="log" aria-live="polite">
     {# Pre-populate with last N personal feed entries on every load #}
     {% for entry in terminal_history %}
@@ -24,6 +35,8 @@
             <span class="feed-scope feed-you">YOU · EVENT</span>
             {% elif entry.event_category == 'COMBAT' %}
             <span class="feed-scope feed-you">YOU · COMBAT</span>
+            {% elif entry.event_category == 'PVP_DEFENSE' %}
+            <span class="feed-scope feed-against-you">AGAINST YOU</span>
             {% else %}
             <span class="feed-scope feed-you">YOU</span>
             {% endif %}
