@@ -7,14 +7,14 @@
 <h2>Core Derived Values</h2>
 <table><tr><th>Concept</th><th>Formula / flow</th><th>Controls</th></tr>
 <tr><td>Stat modifier</td><td>floor(stat ÷ 2)</td><td>Shared combat rule</td></tr>
-<tr><td>Maximum HP</td><td>10 + END + (5 × level)</td><td>Code-defined</td></tr>
-<tr><td>Maximum AP</td><td>BASE_DAILY_AP + floor(END ÷ 2), limited by AP_CARRYOVER_CAP</td><td>{{ settings.get('BASE_DAILY_AP',20) }}, cap {{ settings.get('AP_CARRYOVER_CAP',40) }}</td></tr>
-<tr><td>Armor Class</td><td>10 + floor(AGI ÷ 2) + armor AC bonus</td><td>Armor content</td></tr>
+<tr><td>Maximum HP</td><td>10 + effective END + (5 × level)</td><td>Base, gear, status, and perk END</td></tr>
+<tr><td>Maximum AP</td><td>BASE_DAILY_AP + floor(effective END ÷ 2) + AP bonuses, limited by AP_CARRYOVER_CAP</td><td>{{ settings.get('BASE_DAILY_AP',20) }}, cap {{ settings.get('AP_CARRYOVER_CAP',40) }}</td></tr>
+<tr><td>Armor Class</td><td>10 + floor(effective AGI ÷ 2) + outfit/special/perk/temporary AC</td><td>Item, perk, and combat-buff content</td></tr>
 <tr><td>Initiative</td><td>d20 + floor(AGI ÷ 2) + equipment/status bonuses</td><td>Item/status content</td></tr>
 </table>
 
 <h2>Attack Resolution</h2>
-<ol style="line-height:1.7;margin-left:22px;"><li>Choose STR for melee or AGI for ranged.</li><li>Roll d20 + modifier + D&amp;D-style proficiency (+2, then +1 every four levels) against Armor Class.</li><li>If applicable, resolve the opposed dodge check.</li><li>Roll damage die + modifier; criticals double weapon damage.</li><li>Apply resistance, weakness, enemy damage scaling, HP, durability, and defeat checks.</li></ol>
+<ol style="line-height:1.7;margin-left:22px;"><li>Choose effective STR for melee or effective AGI for ranged.</li><li>Roll d20 + modifier + D&amp;D-style proficiency (+2, then +1 every four levels) against Armor Class.</li><li>On a hit, roll weapon damage and every active typed bonus-damage component.</li><li>Apply critical multipliers, each componentâ€™s resistance or weakness, enemy scaling, HP, durability, and defeat checks.</li><li>An Extra Attack effect repeats the full accuracy and damage process once.</li></ol>
 <table><tr><th>Rule</th><th>Active value</th><th>Meaning</th></tr>
 <tr><td>Minimum critical threshold</td><td>{{ settings.get('CRIT_MIN_THRESHOLD',15) }}</td><td>Luck and specials may lower the roll needed, but never below this.</td></tr>
 <tr><td>Stacked resistance floor</td><td>{{ settings.get('RESISTANCE_STACK_MIN_DAMAGE_PERCENT',0.25) }}</td><td>Minimum fraction of original damage after multiple resistance sources.</td></tr>
@@ -29,7 +29,8 @@
 <tr><td>Observe</td><td>Persist opponent intel for future fights.</td><td>No information revealed.</td></tr></table>
 
 <h2>Progression</h2>
-<p>Base XP is multiplied by level difference: +10% for each opponent level above; −15% for each level below, with a 10% minimum. Equipped XP multipliers apply afterward.</p>
+<p>Base XP is multiplied by level difference: +10% for each opponent level above; −15% for each level below, with a 10% minimum. Combined equipped-special and perk XP multipliers apply afterward, including eligible steal, defeat, and world-boss attempt XP.</p>
+<p>Every level grants one permanent core-stat choice. Levels divisible by three also grant one unowned perk whose content rank is no higher than the characterâ€™s new level plus two. Imported perk magnitudes pass through the global perk scale and safety caps before use.</p>
 <table><tr><th>Encounter</th><th>Active base XP</th></tr><tr><td>Minion</td><td>{{ settings.get('MINION_XP_PER_LEVEL',20) }} × level</td></tr><tr><td>Boss</td><td>{{ settings.get('BOSS_XP_PER_LEVEL',35) }} × level</td></tr><tr><td>PvP</td><td>{{ settings.get('PVP_XP_PER_LEVEL',25) }} × opponent level</td></tr><tr><td>Successful steal / defeat</td><td>{{ settings.get('SUCCESSFUL_STEAL_XP',10) }} / {{ settings.get('COMBAT_DEFEAT_XP',10) }}</td></tr></table>
 <details><summary>XP thresholds</summary><table><tr>{% for level,xp in xp_curve.items() %}<th>L{{ level }}</th>{% endfor %}</tr><tr>{% for level,xp in xp_curve.items() %}<td>{{ xp }}</td>{% endfor %}</tr></table></details>
 

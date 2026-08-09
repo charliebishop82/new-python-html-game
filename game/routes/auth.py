@@ -439,7 +439,7 @@ def get_tutorial_messages() -> list[tuple[str, str]]:
         ("SYSTEM",       "BOSS — Challenge a movie villain. Defeat them for XP, credits, and gear. Watch for phase transitions as their HP drops."),
         ("SYSTEM",       "PVP — Fight another player. Win to steal credits and items. Lose and you drop to 1 HP. Choose your targets carefully."),
         ("SYSTEM",       "TAVERN — Spend credits to restore HP. No AP cost once inside."),
-        ("SYSTEM",       "BLACKSMITH — Repair damaged gear. Durability matters — broken weapons deal less damage."),
+        ("SYSTEM",       "BLACKSMITH — Repair damaged gear before it reaches zero durability and is destroyed."),
         ("SYSTEM",       "SHOP — Buy and sell weapons, armor, and special items. Special items are unique. Only one copy exists in the world at a time."),
         ("SYSTEM",       "OBSERVE in combat to learn an enemy's resistances and weaknesses. That intel is stored permanently for future fights."),
         ("SYSTEM",       "Level up by earning XP. Each level grants one permanent stat point. Choose carefully — there is no going back."),

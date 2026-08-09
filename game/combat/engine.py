@@ -156,7 +156,7 @@ def calc_weapon_damage(attacker: dict, weapon: dict, is_crit: bool) -> tuple[int
 
 
 def calc_bonus_damage(special: dict, is_crit: bool) -> tuple[int, str]:
-    """Calculate bonus damage from an equipped special item.
+    """Calculate one typed bonus-damage profile component.
     Doubles on crit. Returns (damage, damage_type)."""
     if not special or not special.get("bonus_damage_amount"):
         return 0, ""
@@ -217,7 +217,10 @@ def resolve_weakness(damage: int, damage_type: str, boss: dict) -> tuple[int, st
 
 def resolve_dodge(defender: dict, attacker: dict,
                   brace_dodge_bonus: int = 0) -> tuple[bool, str]:
-    """Player-only dodge check. Bosses/minions do not dodge.
+    """Legacy optional dodge resolver retained for configurable variants.
+
+    The standard attack flow resolves accuracy directly against Armor Class
+    and does not call this helper.
     Defender: d20 + floor(AGI/2) + floor(LCK/2) + BRACE_DODGE_BONUS
     Attacker: d20 + floor(AGI/2)  (Initiative Bonus does NOT apply here)
     Ties go to attacker (harder to dodge).

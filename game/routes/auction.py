@@ -24,6 +24,7 @@ def enter():
 
 @register_handler("auction_enter")
 def handle_enter(player_id: int, payload: dict) -> dict:
+    """Validate auction admission and deduct its one-time AP cost."""
     settings = get_all_settings()
     cost = settings.get("AP_COST_AUCTION", cfg.AP_COST_AUCTION)
     player = execute_one("SELECT current_ap,in_combat FROM players WHERE id=?", (player_id,))
@@ -40,6 +41,7 @@ def handle_enter(player_id: int, payload: dict) -> dict:
 
 @bp.get("/auction")
 def index():
+    """Display live listings and the playerâ€™s auction-eligible specials."""
     if not session.get("auction_access_granted"):
         return redirect(url_for("dashboard.index", error="Enter the auction house from the dashboard first."))
     settle_expired_auctions()
@@ -65,6 +67,7 @@ def index():
 
 @bp.post("/auction/list")
 def create_listing():
+    """Queue a validated 24- or 48-hour special-item listing request."""
     try:
         enqueue_and_process(session["player_id"], "auction_list", {
             "inv_id": request.form.get("inv_id", type=int),
@@ -78,6 +81,7 @@ def create_listing():
 
 @register_handler("auction_list")
 def handle_list(player_id: int, payload: dict) -> dict:
+    """Place one owned, unequipped special item on public auction hold."""
     inv_id = int(payload.get("inv_id") or 0)
     minimum = int(payload.get("minimum_bid") or 0)
     hours = int(payload.get("duration_hours") or 0)
@@ -120,6 +124,7 @@ def handle_list(player_id: int, payload: dict) -> dict:
 
 @bp.post("/auction/bid")
 def bid():
+    """Queue a public bid using the submitted listing and credit amount."""
     try:
         result = enqueue_and_process(session["player_id"], "auction_bid", {
             "listing_id": request.form.get("listing_id", type=int),
@@ -132,6 +137,7 @@ def bid():
 
 @register_handler("auction_bid")
 def handle_bid(player_id: int, payload: dict) -> dict:
+    """Reserve bidder credits atomically and refund the previous high bidder."""
     listing_id = int(payload.get("listing_id") or 0)
     amount = int(payload.get("amount") or 0)
     with exclusive_transaction():
@@ -247,6 +253,7 @@ def release_player_auctions(player_id: int) -> None:
 
 
 def _listing_item(inv_id: int) -> dict:
+    """Load display and valuation data for an auction-held inventory copy."""
     return execute_one(
         """SELECT ii.item_id,ii.current_durability,si.name,si.description,si.credit_cost
            FROM inventory_items ii JOIN special_items si ON si.id=ii.item_id WHERE ii.id=?""",
@@ -255,6 +262,7 @@ def _listing_item(inv_id: int) -> dict:
 
 
 def _active_listings() -> list[dict]:
+    """Return active auctions with seller, bidder, item, and condition data."""
     return execute(
         """SELECT a.*,si.name,si.description,si.credit_cost,ii.current_durability,
                   seller.character_name AS seller_name,bidder.character_name AS bidder_name

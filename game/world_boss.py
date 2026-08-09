@@ -12,10 +12,12 @@ from database import (execute, execute_one, execute_write, exclusive_transaction
 
 
 def _utcnow():
+    """Return a timezone-neutral UTC timestamp for SQLite persistence."""
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def _next_monday(now):
+    """Return the next Monday 00:00 UTC after the supplied timestamp."""
     days = (7 - now.weekday()) % 7
     if days == 0:
         days = 7
@@ -109,6 +111,7 @@ def standings(event_id):
            WHERE c.event_id=? AND c.attempts>0""", (event_id,)
     )
     def tie_key(row):
+        """Create a stable, auditable pseudo-random order for exact ties."""
         digest = hashlib.sha256(f"{event_id}:{row['player_id']}".encode()).hexdigest()
         return digest
     return sorted(rows, key=lambda row: (-row["damage"], tie_key(row)))
@@ -330,6 +333,7 @@ def close_event(event_id, reason="WEEK_ENDED", defeated_by=None):
 
 
 def _log(event_id, player_id, category, message, details=None):
+    """Append one structured entry to the event-specific shared log."""
     execute_write(
         """INSERT INTO world_boss_event_log(event_id,player_id,category,message,details_json)
            VALUES(?,?,?,?,?)""", (event_id, player_id, category, message,

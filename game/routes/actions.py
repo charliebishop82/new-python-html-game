@@ -1,7 +1,7 @@
 """HTTP and queued handlers for Tavern, boss, minion, PvP, and random events."""
-# routes/actions.py  (Phase 5 — full implementation)
-# Terminal-fragment POST routes for all AP actions.
-# Replaces the Phase 3 stub with full boss/minion/random event logic.
+# Player-facing action routes and their queued handlers.
+# AP actions and resumable roaming-minion interruptions shared by human and
+# automated characters.
 
 import math
 import random
@@ -110,7 +110,7 @@ def check_random_event(player: dict, settings: dict) -> dict | None:
     lck_bonus_per = settings.get("RANDOM_EVENT_LCK_BONUS",   cfg.RANDOM_EVENT_LCK_BONUS)
 
     lck_steps    = math.floor(player["lck_stat"] / 2)
-    # Check for encounter_bonus from equipped special
+    # Combined special/perk modifier affects frequency, alignment, and rarity.
     encounter_bonus = math.floor(
         float(get_player_bonus_profile(player["id"]).get("encounter_bonus", 0) or 0) * 20
     )
@@ -324,7 +324,7 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TAVERN  (carried forward from Phase 3 — already complete)
+# TAVERN
 # ─────────────────────────────────────────────────────────────────────────────
 
 @bp.route("/action/tavern", methods=["POST"])

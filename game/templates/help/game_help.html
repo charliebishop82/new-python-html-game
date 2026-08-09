@@ -13,7 +13,7 @@
 
     <section id="turns"><h2>Turns and Action Points</h2>
         <p>AP pays for major activities. The normal daily allowance is restored at midnight UTC, scheduled trickles add AP during the day, and AP never exceeds its configured cap.</p>
-        <div class="formula">Maximum AP = base daily AP + floor(END ÷ 2), limited by the AP cap.</div>
+        <div class="formula">Maximum AP = base daily AP + floor(effective END ÷ 2) + AP bonuses, limited by the AP cap.</div>
         <p>Entering Boss or PvP combat pays the listed AP cost. The Shop and Auction House charge when you enter; transactions during that visit are free. Combat actions normally use turns rather than additional AP, except actions that explicitly display an AP cost.</p>
     </section>
 
@@ -21,10 +21,10 @@
         <table><tr><th>Stat</th><th>Main effects</th></tr>
         <tr><td>STR</td><td>Melee attack and damage; inventory capacity.</td></tr>
         <tr><td>END</td><td>Maximum HP, maximum AP, healing and regeneration.</td></tr>
-        <tr><td>AGI</td><td>Ranged attack and damage, Armor Class, initiative, dodge, stealing, and escape.</td></tr>
-        <tr><td>LCK</td><td>Critical range, dodge, opposed actions, events, repairs, and some rewards.</td></tr>
+        <tr><td>AGI</td><td>Ranged attack and damage, Armor Class, initiative, stealing, escape, detection, and observation.</td></tr>
+        <tr><td>LCK</td><td>Critical range, opposed actions, events, detection, observation, and repairs.</td></tr>
         <tr><td>PER</td><td>Observe attempts, detection, and selected shopping calculations.</td></tr></table>
-        <div class="formula">Maximum HP = 10 + END + (5 × level). &nbsp; Armor Class = 10 + floor(AGI ÷ 2) + equipped armor bonus.</div>
+        <div class="formula">Maximum HP = 10 + effective END + (5 × level). &nbsp; Armor Class = 10 + floor(effective AGI ÷ 2) + outfit, special, and perk AC bonuses.</div>
     </section>
 
     <section id="combat"><h2>Combat Flow</h2>
@@ -35,8 +35,7 @@
         <div class="formula">Initiative = d20 + floor(AGI ÷ 2) + equipment/status initiative bonuses.</div>
         <h3>Attack and damage</h3>
         <div class="formula">Melee attack = d20 + floor(STR ÷ 2) + proficiency. Ranged attack = d20 + floor(AGI ÷ 2) + proficiency. Proficiency starts at +2 and rises by +1 every four levels. The attack hits when its total equals or exceeds Armor Class.</div>
-        <p>A hit rolls the weapon’s damage die and adds the same relevant stat modifier. Critical hits double normal weapon damage. Resistance halves matching damage from one resistance source; stacked resistance reduces it to the configured floor. A matching boss weakness doubles damage.</p>
-        <p>Some eligible attacks also receive an opposed dodge check. The defender must roll strictly higher; a tie favors the attacker.</p>
+        <p>A hit rolls the weapon’s damage die and adds the same relevant stat modifier. Typed bonus damage from specials and perks is shown separately and receives its own resistance or weakness check. Critical hits double weapon and typed bonus damage, then apply any additional critical-damage modifier. One resistance source halves matching damage; stacked resistance uses the configured floor. A matching boss weakness doubles that damage type.</p>
         <h3>PvP round-limit resolution</h3>
         <p>If PvP reaches its round limit, it may be extended for AP or resolved by score.</p>
         <div class="formula">Score = remaining HP percentage × {{ settings.get('COMBAT_WIN_HP_WEIGHT', 0.40) }} + share of total damage dealt × {{ settings.get('COMBAT_WIN_DMG_WEIGHT', 0.60) }}.</div>
@@ -46,14 +45,14 @@
         <table><tr><th>Action</th><th>What happens</th></tr>
         <tr><td>Attack</td><td>Make the normal attack, damage, resistance, weakness, and critical checks.</td></tr>
         <tr><td>Steal</td><td>Opposed AGI/LCK roll. In PvP, success attempts an unequipped item, then credits, then consolation XP. Items are transferred out of the victim’s inventory.</td></tr>
-        <tr><td>Brace</td><td>Restore some HP and gain temporary AC and dodge protection until the next hit.</td></tr>
+        <tr><td>Brace</td><td>Restore {{ (settings.get('BRACE_HEAL_PERCENT', 0.15) * 100)|round|int }}% of missing HP and gain temporary AC until the next attack resolves. The action wears equipped armor.</td></tr>
         <tr><td>Escape</td><td>Pay the displayed AP and win an opposed AGI/LCK roll. Success safely ends the encounter; failure consumes the turn.</td></tr>
         <tr><td>Observe</td><td>Opposed AGI/LCK/PER roll. Success permanently records enemy resistances, weaknesses, and abilities for later encounters.</td></tr>
         <tr><td>Change Equipment</td><td>Swap owned gear, use the turn, allow the opponent to act, and accept temporary accuracy and defense penalties.</td></tr></table>
     </section>
 
     <section id="rewards"><h2>Experience, Rewards, and Leveling</h2>
-        <p>Victory XP begins with the opponent’s level and encounter type, then adjusts for level difference and equipped XP bonuses. Higher-level opponents add 10% per level; lower-level opponents reduce rewards by 15% per level, with a 10% minimum.</p>
+        <p>Victory XP begins with the opponent’s level and encounter type, then adjusts for level difference and active special/perk XP bonuses. Higher-level opponents add 10% per level; lower-level opponents reduce rewards by 15% per level, with a 10% minimum.</p>
         <div class="formula">Base victory XP: Minion {{ settings.get('MINION_XP_PER_LEVEL', 20) }} × level; Boss {{ settings.get('BOSS_XP_PER_LEVEL', 35) }} × level; PvP {{ settings.get('PVP_XP_PER_LEVEL', 25) }} × opponent level.</div>
         <p>Successful steals and completed defeats can award smaller XP amounts. XP never decreases. Crossing a threshold raises your level and requires one permanent stat choice. At Levels 3, 6, 9, and every third level afterward, you also choose one unowned perk whose listed level is no higher than your new level plus two. Perk effects are permanent and are included anywhere the matching equipment-style bonus is calculated.</p>
         <details><summary>Level thresholds</summary><table><tr><th>Level</th><th>Total XP required</th></tr>{% for level, xp in xp_curve.items() %}<tr><td>{{ level }}</td><td>{{ xp }}</td></tr>{% endfor %}</table></details>
@@ -66,7 +65,8 @@
     </section>
 
     <section id="equipment"><h2>Equipment and Durability</h2>
-        <p>Weapons define attack type, damage die, and damage category. Armor supplies AC and resistances. Specials can alter statistics, initiative, criticals, rewards, durability, and other rules. Broken or worn equipment becomes less useful and should be repaired at the Blacksmith.</p>
+        <p>Weapons define attack type, damage die, damage category, and may modify core stats. Outfits supply AC, resistances, and may modify core stats. Specials can alter core stats, initiative, AC, resistances, typed damage, extra attacks, criticals, rewards, AP, regeneration, durability, stealing, shopping, selling, and random events. Permanent perks use the same effect vocabulary.</p>
+        <p>Weapon and outfit wear is applied by combat actions; specials wear each completed round. Durability protection applies to ordinary wear and PvP defeat wear. An item destroyed at zero durability is removed from inventory, so repair damaged equipment before it fails.</p>
         <p>New characters receive and automatically equip a starter weapon and armor. Equipment can be changed normally outside combat or by spending a combat turn.</p>
     </section>
 
@@ -74,7 +74,7 @@
         <ul><li><b>Shop:</b> pay AP once to enter, then buy and sell freely during the visit.</li>
         <li><b>Auction House:</b> pay AP to enter. You may hold up to two unequipped special items in public 24- or 48-hour auctions. Bids reserve credits; outbid credits are returned automatically. Auction-held items cannot be equipped, sold, dropped, stolen, or lose durability.</li>
         <li><b>Tavern:</b> spend AP and credits to restore health.</li><li><b>Blacksmith:</b> spend AP and credits to repair durability.</li>
-        <li><b>Random events:</b> may change AP, credits, stats, gear, or temporary effects; the result text states the applied effect and duration. Equipment labeled “Random event chance” modifies these events, not roaming-minion interruptions.</li>
+        <li><b>Random events:</b> may change AP, credits, stats, gear, or temporary effects; the result text states the applied effect and duration. A Random Event Modifier improves event frequency, favorable outcomes, and good-event rarity; it does not alter roaming-minion interruptions.</li>
         <li><b>Special items:</b> are globally unique; only one live copy may exist at a time.</li></ul>
     </section>
 

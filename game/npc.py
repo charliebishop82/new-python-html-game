@@ -717,6 +717,7 @@ def _assign_pending_levelup(player_id: int, profile: dict):
             # Personality-weighted utility with a small random term prevents
             # identical NPC builds from making identical perk choices.
             def perk_score(perk):
+                """Rank one eligible perk against this NPCâ€™s motivations."""
                 combat = (perk["str_bonus"] + perk["end_bonus"] + perk["agi_bonus"] +
                           perk["ac_bonus"] * 3 + perk["bonus_damage_amount"] * 2 +
                           perk["crit_chance_bonus"] * 20)
@@ -891,10 +892,9 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
     liquidation_enabled = len(unequipped) >= minimum_spares
 
     def sale_value(item: dict) -> int:
+        """Estimate ordinary resale proceeds using the active bonus profile."""
         sell_pct = settings.get("SELL_PRICE_PERCENT", cfg.SELL_PRICE_PERCENT)
-        special = next((owned_item for owned_item in owned
-                        if owned_item["inv_id"] == player.get("equipped_special_id")), None)
-        sell_bonus = float((special or {}).get("sell_bonus", 0) or 0)
+        sell_bonus = float(get_player_bonus_profile(player["id"]).get("sell_bonus", 0) or 0)
         return max(0, int(item["credit_cost"] * min(1.0, sell_pct + sell_bonus)))
 
     listings = execute("SELECT * FROM shop_listings ORDER BY id")
@@ -1249,6 +1249,7 @@ def _load_item_detail(item_type: str, item_id: int) -> dict | None:
 
 
 def _stat_bonus_score(item: dict, weights: dict[str, float]) -> float:
+    """Score an itemâ€™s five core-stat modifiers using archetype weights."""
     return sum(item.get(f"{stat}_bonus", 0) * weight for stat, weight in weights.items())
 
 

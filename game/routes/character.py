@@ -232,11 +232,11 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     attack_roll_modifier = attack_modifier + engine.proficiency_bonus(player["level"])
     initiative_modifier = math.floor(agi_total / 2) + \
                           int(b.get("initiative_bonus", 0) or 0)
-    dodge_modifier = math.floor(agi_total / 2) + math.floor(lck_total / 2)
+    opposed_modifier = math.floor(agi_total / 2) + math.floor(lck_total / 2)
     steal_roll_bonus = int(float(b.get("steal_bonus", 0) or 0) * 20)
-    steal_modifier = dodge_modifier + steal_roll_bonus
-    escape_modifier = dodge_modifier
-    observe_modifier = dodge_modifier + math.floor(per_total / 2)
+    steal_modifier = opposed_modifier + steal_roll_bonus
+    escape_modifier = opposed_modifier
+    observe_modifier = opposed_modifier + math.floor(per_total / 2)
     components = b.get("bonus_damage_components", [])
     bonus_damage = sum(int(part.get("amount", 0)) for part in components)
     bonus_damage_type = ", ".join(dict.fromkeys(part.get("type", "") for part in components if part.get("type")))
@@ -290,7 +290,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         "weapon_name": weapon_name, "weapon_type": weapon_type,
         "damage_die": damage_die, "damage_type": damage_type,
         "attack_modifier": attack_roll_modifier,
-        "initiative_modifier": initiative_modifier, "dodge_modifier": dodge_modifier,
+        "initiative_modifier": initiative_modifier,
         "steal_modifier": steal_modifier, "steal_roll_bonus": steal_roll_bonus,
         "escape_modifier": escape_modifier, "observe_modifier": observe_modifier,
         "damage_min": damage_min, "damage_max": damage_max,

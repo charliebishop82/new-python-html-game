@@ -709,8 +709,8 @@ def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
 
     with exclusive_transaction():
         execute_write("UPDATE players SET current_hp = ? WHERE id = ?", (new_hp, player_id))
-        # Brace refreshes the side's defensive stance; it must never stack into
-        # an ever-growing AC modifier across repeated rounds.
+        # Brace refreshes its AC stance instead of stacking across rounds. The
+        # legacy dodge row is cleared for databases created under older rules.
         execute_write(
             """DELETE FROM combat_buffs WHERE combat_session_id=? AND side=?
                AND buff_type IN ('BRACE_AC_BONUS','BRACE_DODGE_BONUS')""",
@@ -1897,7 +1897,7 @@ def _award_drops(player_id: int, player: dict, opponent: dict,
     cr_max  = opponent.get("drop_credit_max", 0)
     if cr_max > 0:
         credits = random.randint(cr_min, cr_max)
-        # Apply credit multiplier from equipped special item
+        # Apply the combined equipped-special and permanent-perk credit bonus.
         if equipped_special and equipped_special.get("credit_multiplier"):
             credits = int(credits * (1 + equipped_special["credit_multiplier"]))
         if credits > 0:

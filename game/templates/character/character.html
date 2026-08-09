@@ -30,16 +30,15 @@
 
             <h3 style="color:var(--amber);margin:14px 0 10px;">Combat Summary</h3>
             <table>
-                <tr><td>Armor Class</td><td id="d-ac">{{ derived.ac }}</td></tr>
-                <tr><td>Attack Bonus</td><td>{{ '%+d'|format(derived.attack_modifier) }} ({{ 'STR' if derived.weapon_type == 'Melee' else 'AGI' }})</td></tr>
-                <tr><td>Possible Damage</td><td id="d-damage">{{ derived.damage_min }}–{{ derived.damage_max }} {{ derived.damage_type }} <small>({{ derived.damage_die }}+{{ derived.attack_modifier }}{% if derived.bonus_damage %}, +{{ derived.bonus_damage }} {{ derived.bonus_damage_type }}{% endif %})</small></td></tr>
-                <tr><td>Critical Damage</td><td id="d-crit-damage">{{ derived.crit_damage_min }}–{{ derived.crit_damage_max }}</td></tr>
-                <tr><td>Critical Range</td><td>{{ derived.crit_range }} ({{ derived.crit_chance_pct }}%)</td></tr>
-                <tr><td>Damage Types</td><td id="d-damage-types">{{ derived.damage_types|join(', ') }}</td></tr>
-                <tr><td>Resistances</td><td id="d-resistances">{{ derived.resistances|join(', ') if derived.resistances else 'None' }}</td></tr>
+                <tr><td data-help-key="armor class">Armor Class</td><td id="d-ac">{{ derived.ac }}</td></tr>
+                <tr><td data-help-key="attack bonus">Attack Bonus</td><td>{{ '%+d'|format(derived.attack_modifier) }} ({{ 'STR' if derived.weapon_type == 'Melee' else 'AGI' }})</td></tr>
+                <tr><td data-help-key="possible damage">Possible Damage</td><td id="d-damage">{{ derived.damage_min }}–{{ derived.damage_max }} {{ derived.damage_type }} <small>({{ derived.damage_die }}+{{ derived.attack_modifier }}{% if derived.bonus_damage %}, +{{ derived.bonus_damage }} {{ derived.bonus_damage_type }}{% endif %})</small></td></tr>
+                <tr><td data-help-key="critical damage">Critical Damage</td><td id="d-crit-damage">{{ derived.crit_damage_min }}–{{ derived.crit_damage_max }}</td></tr>
+                <tr><td data-help-key="critical range">Critical Range</td><td>{{ derived.crit_range }} ({{ derived.crit_chance_pct }}%)</td></tr>
+                <tr><td data-help-key="damage types">Damage Types</td><td id="d-damage-types">{{ derived.damage_types|join(', ') }}</td></tr>
+                <tr><td data-help-key="resistances">Resistances</td><td id="d-resistances">{{ derived.resistances|join(', ') if derived.resistances else 'None' }}</td></tr>
                 <tr><td>Max HP</td><td id="d-maxhp">{{ derived.max_hp }}</td></tr>
                 <tr><td>Initiative Modifier</td><td>{{ '%+d'|format(derived.initiative_modifier) }}</td></tr>
-                <tr><td>Dodge Modifier</td><td>{{ '%+d'|format(derived.dodge_modifier) }}</td></tr>
             </table>
 
             <h3 style="color:var(--amber);margin:14px 0 10px;">Action Modifiers</h3>
@@ -51,17 +50,17 @@
 
             <h3 style="color:var(--amber);margin:14px 0 10px;">Utility &amp; Economy</h3>
             <table>
-                <tr><td>Inventory Limit</td><td id="d-invlimit">{{ derived.inv_limit }}</td></tr>
-                <tr><td>Daily AP</td><td id="d-ap">{{ derived.daily_ap }}</td></tr>
-                <tr><td>HP Regen/AP</td><td id="d-regen">{{ derived.passive_regen }}</td></tr>
+                <tr><td data-help-key="inventory limit">Inventory Limit</td><td id="d-invlimit">{{ derived.inv_limit }}</td></tr>
+                <tr><td data-help-key="daily ap">Daily AP</td><td id="d-ap">{{ derived.daily_ap }}</td></tr>
+                <tr><td data-help-key="hp regen/ap">HP Regen/AP</td><td id="d-regen">{{ derived.passive_regen }}</td></tr>
                 <tr><td>Brace Healing</td><td>{{ derived.brace_heal_pct }}% of missing HP</td></tr>
                 <tr><td>Tavern Healing</td><td>{{ derived.tavern_heal_pct }}% of missing HP</td></tr>
-                <tr><td>Shop Discount</td><td id="d-discount">{{ derived.shop_discount_pct }}%</td></tr>
-                <tr><td>Sell Bonus</td><td>{{ derived.sell_bonus_pct }}%</td></tr>
-                <tr><td>XP Reward Bonus</td><td>{{ derived.xp_multiplier_pct }}%</td></tr>
-                <tr><td>Credit Reward Bonus</td><td>{{ derived.credit_multiplier_pct }}%</td></tr>
-                <tr><td>Durability Protection</td><td>{{ derived.durability_reduction_pct }}%</td></tr>
-                <tr><td>Encounter Bonus</td><td>{{ derived.encounter_bonus_pct }}%</td></tr>
+                <tr><td data-help-key="shop discount">Shop Discount</td><td id="d-discount">{{ derived.shop_discount_pct }}%</td></tr>
+                <tr><td data-help-key="sell bonus">Sell Bonus</td><td>{{ derived.sell_bonus_pct }}%</td></tr>
+                <tr><td data-help-key="xp reward bonus">XP Reward Bonus</td><td>{{ derived.xp_multiplier_pct }}%</td></tr>
+                <tr><td data-help-key="credit reward bonus">Credit Reward Bonus</td><td>{{ derived.credit_multiplier_pct }}%</td></tr>
+                <tr><td data-help-key="durability protection">Durability Protection</td><td>{{ derived.durability_reduction_pct }}%</td></tr>
+                <tr><td data-help-key="encounter bonus">Encounter Bonus</td><td>{{ derived.encounter_bonus_pct }}%</td></tr>
             </table>
         </div>
 

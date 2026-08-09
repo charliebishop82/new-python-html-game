@@ -1,5 +1,5 @@
 """Read-only public progression, combat, economy, and shame rankings."""
-# routes/scoreboards.py  (Phase 6 — full implementation)
+# Public progression, PvP, world-boss, and Hall of Shame standings.
 # Full-page leaderboards. All data computed via live DB queries.
 # Inactive players (7+ days without login) excluded from all boards.
 

@@ -1,6 +1,6 @@
 """Run UTC AP awards, feed archives, imports, recovery, and midnight maintenance."""
-# scheduler.py  (Phase 7 — full implementation)
-# Replaces the Phase 1 stub with complete midnight_reset and ap_trickle.
+# Scheduled maintenance entry points.
+# Scheduled AP, NPC, reset, archive, recovery, and content-maintenance jobs.
 
 import math
 import random
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# AP TRICKLE  (unchanged from Phase 1 — full from the start)
+# AP TRICKLE
 # ─────────────────────────────────────────────────────────────────────────────
 
 def ap_trickle():

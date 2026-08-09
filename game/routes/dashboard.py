@@ -1,5 +1,5 @@
 """Main player dashboard and context-sensitive action availability."""
-# routes/dashboard.py  (Phase 9 — adds now_iso injection for JS feed polling)
+# Dashboard feed assembly, action availability, and polling timestamps.
 import logging
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, g, session

@@ -15,6 +15,7 @@ bp = Blueprint("world_boss", __name__)
 
 @bp.route("/world-boss")
 def index():
+    """Display the active event, standings, live log, and pending prizes."""
     # New encounters are activated only by midnight maintenance (or an
     # explicit admin action), never merely because somebody opened this page.
     active_event = get_active_event()
@@ -111,6 +112,7 @@ def handle_start_world_boss_fight(player_id, payload):
 
 @bp.route("/world-boss/status")
 def status():
+    """Return the polled shared HP, standings, and newly appended log rows."""
     event = get_active_event()
     if not event:
         return jsonify({"active": False})
@@ -124,6 +126,7 @@ def status():
 
 
 def _logs(event_id, after):
+    """Load ordered world-boss log rows newer than the supplied cursor."""
     return execute(
         """SELECT l.id,l.category,l.message,l.occurred_at,p.character_name
            FROM world_boss_event_log l LEFT JOIN players p ON p.id=l.player_id

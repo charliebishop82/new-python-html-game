@@ -1,6 +1,5 @@
 """Local admin application for operations, diagnostics, balance, and support."""
-# admin.py  (Phase 8)
-# Separate Flask app for admin tools.
+# Administrative dashboard, auditing, content balancing, and support tools.
 # Run with: flask --app admin:create_admin_app run --port 5001
 # Localhost only — never expose publicly.
 

@@ -1,5 +1,5 @@
 """Combat request routes that execute complete player/opponent rounds."""
-# routes/combat.py  (Phase 5 — full implementation)
+# HTTP and queued-action orchestration for every supported combat type.
 # All in-combat terminal-fragment POST routes.
 # Each route loads combat state, resolves the action, checks for combat end,
 # and returns an HTML fragment appended to the terminal by terminal.js.

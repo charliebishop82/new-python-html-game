@@ -1,5 +1,5 @@
 """Validate and atomically import the game-content Excel workbook."""
-# importer.py  (Phase 7 — full implementation)
+# Validated workbook ingestion for the complete current content schema.
 # Reads the staged Excel file, validates it, diffs against current DB content,
 # and applies changes atomically at midnight reset.
 # Called by scheduler.py (midnight) and admin.py (manual trigger / full reset).

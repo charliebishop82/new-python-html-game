@@ -1,32 +1,32 @@
 <div class="item-properties item-combat-stats">
     {% if item.item_type == 'WEAPON' %}
         <span>{{ item.weapon_type or 'Weapon' }}</span>
-        <span class="primary-property">Damage {{ item.damage_die }} · {{ item.damage_type }}</span>
+        <span class="primary-property" data-help-key="possible damage">Damage {{ item.damage_die }} · {{ item.damage_type }}</span>
     {% elif item.item_type == 'ARMOR' %}
-        <span class="primary-property">Armor Class +{{ item.ac_bonus or 0 }}</span>
+        <span class="primary-property" data-help-key="armor class">Armor Class +{{ item.ac_bonus or 0 }}</span>
     {% else %}
         <span class="primary-property">Special Item</span>
-        {% if item.get('ac_bonus', 0) %}<span class="bonus">Armor Class +{{ item.ac_bonus }}</span>{% endif %}
+        {% if item.get('ac_bonus', 0) %}<span class="bonus" data-help-key="armor class">Armor Class +{{ item.ac_bonus }}</span>{% endif %}
     {% endif %}
 
     {% for stat, label in [('str_bonus','STR'),('end_bonus','END'),('agi_bonus','AGI'),('lck_bonus','LCK'),('per_bonus','PER')] %}
-        {% if item.get(stat, 0) %}<span class="bonus">{{ label }} {{ '%+d'|format(item.get(stat, 0)) }}</span>{% endif %}
+        {% if item.get(stat, 0) %}<span class="bonus" data-help-key="{{ label|lower }}">{{ label }} {{ '%+d'|format(item.get(stat, 0)) }}</span>{% endif %}
     {% endfor %}
     {% for field, label in [('res_blade','Blade'),('res_blunt','Blunt'),('res_ballistic','Ballistic'),('res_energy','Energy'),('res_arcane','Arcane'),('res_explosive','Explosive'),('res_venom','Venom')] %}
-        {% if item.get(field, 0) %}<span class="resistance">{{ label }} resistance</span>{% endif %}
+        {% if item.get(field, 0) %}<span class="resistance" data-help-key="resistances">{{ label }} resistance</span>{% endif %}
     {% endfor %}
-    {% if item.get('initiative_bonus', 0) %}<span class="bonus">Initiative +{{ item.initiative_bonus }}</span>{% endif %}
-    {% if item.get('extra_attack', 0) %}<span class="bonus">Extra Attack</span>{% endif %}
-    {% if item.get('crit_chance_bonus', 0) %}<span class="bonus">Critical chance +{{ (item.crit_chance_bonus * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('crit_dmg_multiplier', 0) %}<span class="bonus">Critical damage +{{ (item.crit_dmg_multiplier * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('bonus_damage_amount', 0) %}<span class="bonus">Bonus damage +{{ item.bonus_damage_amount }} {{ item.bonus_damage_type }}</span>{% endif %}
-    {% if item.get('xp_multiplier', 0) %}<span class="bonus">XP +{{ (item.xp_multiplier * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('credit_multiplier', 0) %}<span class="bonus">Credits +{{ (item.credit_multiplier * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('steal_bonus', 0) %}<span class="bonus">Steal +{{ (item.steal_bonus * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('bonus_ap', 0) %}<span class="bonus">Daily AP +{{ item.bonus_ap }}</span>{% endif %}
-    {% if item.get('hp_regen_bonus', 0) %}<span class="bonus">HP regeneration +{{ item.hp_regen_bonus }}</span>{% endif %}
-    {% if item.get('durability_reduction', 0) %}<span class="bonus">Durability loss -{{ (item.durability_reduction * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('shop_discount', 0) %}<span class="bonus">Shop discount +{{ (item.shop_discount * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('sell_bonus', 0) %}<span class="bonus">Selling value +{{ (item.sell_bonus * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('encounter_bonus', 0) %}<span class="bonus">Random event chance +{{ (item.encounter_bonus * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('initiative_bonus', 0) %}<span class="bonus" data-help-key="initiative modifier">Initiative +{{ item.initiative_bonus }}</span>{% endif %}
+    {% if item.get('extra_attack', 0) %}<span class="bonus" data-help-key="extra attack">Extra Attack</span>{% endif %}
+    {% if item.get('crit_chance_bonus', 0) %}<span class="bonus" data-help-key="critical range">Critical chance +{{ (item.crit_chance_bonus * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('crit_dmg_multiplier', 0) %}<span class="bonus" data-help-key="critical damage">Critical damage +{{ (item.crit_dmg_multiplier * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('bonus_damage_amount', 0) %}<span class="bonus" data-help-key="damage types">Bonus damage +{{ item.bonus_damage_amount }} {{ item.bonus_damage_type }}</span>{% endif %}
+    {% if item.get('xp_multiplier', 0) %}<span class="bonus" data-help-key="xp reward bonus">XP +{{ (item.xp_multiplier * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('credit_multiplier', 0) %}<span class="bonus" data-help-key="credit reward bonus">Credits +{{ (item.credit_multiplier * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('steal_bonus', 0) %}<span class="bonus" data-help-key="steal modifier">Steal +{{ (item.steal_bonus * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('bonus_ap', 0) %}<span class="bonus" data-help-key="daily ap">Daily AP +{{ item.bonus_ap }}</span>{% endif %}
+    {% if item.get('hp_regen_bonus', 0) %}<span class="bonus" data-help-key="hp regen/ap">HP regeneration +{{ item.hp_regen_bonus }}</span>{% endif %}
+    {% if item.get('durability_reduction', 0) %}<span class="bonus" data-help-key="durability protection">Durability loss -{{ (item.durability_reduction * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('shop_discount', 0) %}<span class="bonus" data-help-key="shop discount">Shop discount +{{ (item.shop_discount * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('sell_bonus', 0) %}<span class="bonus" data-help-key="sell bonus">Selling value +{{ (item.sell_bonus * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('encounter_bonus', 0) %}<span class="bonus" data-help-key="encounter bonus">Random event modifier +{{ (item.encounter_bonus * 100)|round|int }}%</span>{% endif %}
 </div>

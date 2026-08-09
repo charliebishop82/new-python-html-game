@@ -39,7 +39,6 @@
         <span><b>{{ derived.ac }}</b> Armor Class</span><span><b>{{ derived.max_hp }}</b> Max HP</span>
         <span><b>{{ '%+d'|format(derived.attack_modifier) }}</b> Attack</span>
         <span><b>{{ '%+d'|format(derived.initiative_modifier) }}</b> Initiative</span>
-        <span><b>{{ '%+d'|format(derived.dodge_modifier) }}</b> Dodge</span>
         <span><b>{{ derived.crit_range }}</b> Critical ({{ derived.crit_chance_pct }}%)</span><span><b>{{ derived.daily_ap }}</b> Daily AP</span>
         <span><b>{{ derived.str }}/{{ derived.end }}/{{ derived.agi }}/{{ derived.lck }}/{{ derived.per }}</b> STR/END/AGI/LCK/PER</span>
     </section>
@@ -132,7 +131,6 @@
                 `<span>Armor Class ${numericDelta(next.ac, current.ac)}</span>` +
                 `<span>Attack ${numericDelta(next.attack_modifier, current.attack_modifier)}</span>` +
                 `<span>Initiative ${numericDelta(next.initiative_modifier, current.initiative_modifier)}</span>` +
-                `<span>Dodge ${numericDelta(next.dodge_modifier, current.dodge_modifier)}</span>` +
                 `<span>Steal / Escape / Observe <b>${next.steal_modifier >= 0 ? '+' : ''}${next.steal_modifier} / ${next.escape_modifier >= 0 ? '+' : ''}${next.escape_modifier} / ${next.observe_modifier >= 0 ? '+' : ''}${next.observe_modifier}</b></span>` +
                 `<span>Max HP ${numericDelta(next.max_hp, current.max_hp)}</span>` +
                 `<span>Critical ${numericDelta(next.crit_threshold, current.crit_threshold, true)}</span>` +
