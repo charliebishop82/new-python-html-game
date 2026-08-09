@@ -46,6 +46,37 @@ CREATE TABLE IF NOT EXISTS player_stats (
     updated_at           TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Excel-authored daily objectives. One is assigned to each active character per UTC day.
+CREATE TABLE IF NOT EXISTS contracts (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT UNIQUE NOT NULL,
+    is_active       INTEGER NOT NULL DEFAULT 1,
+    description     TEXT NOT NULL,
+    metric          TEXT NOT NULL,
+    target          INTEGER NOT NULL,
+    reward_xp       INTEGER NOT NULL DEFAULT 0,
+    reward_credits  INTEGER NOT NULL DEFAULT 0,
+    reward_ap       INTEGER NOT NULL DEFAULT 0,
+    min_level       INTEGER NOT NULL DEFAULT 1,
+    imported_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Daily assignment and progress ledger. Completed and expired rows remain auditable.
+CREATE TABLE IF NOT EXISTS player_daily_contracts (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id    INTEGER NOT NULL REFERENCES players(id),
+    contract_id  INTEGER NOT NULL REFERENCES contracts(id),
+    contract_date TEXT NOT NULL,
+    progress     INTEGER NOT NULL DEFAULT 0,
+    status       TEXT NOT NULL DEFAULT 'ACTIVE',
+    assigned_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at TEXT,
+    UNIQUE(player_id, contract_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_contract_player
+    ON player_daily_contracts(player_id, contract_date, status);
+
 -- Automated player characters. A profile row marks a normal player as an NPC.
 -- Automation motivations and scheduling state attached to otherwise normal player characters.
 CREATE TABLE IF NOT EXISTS npc_profiles (

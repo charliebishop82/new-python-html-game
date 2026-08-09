@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block title %}Daily Contract{% endblock %}
+{% block content %}<section class="intel-page"><h1>Daily Contract</h1><p class="page-deck">One substantial objective. Progress expires at the UTC midnight reset.</p>
+{% if contract %}<article class="contract-card"><div class="contract-status">{{ contract.status }}</div><h2>{{ contract.name }}</h2>
+<p>{{ contract.description }}</p><div class="contract-progress"><div style="width:{{ [100,(contract.progress * 100 / contract.target)|round]|min }}%"></div></div>
+<p><b>{{ contract.progress }} / {{ contract.target }}</b></p><p class="reward-line">Reward: {{ contract.reward_xp }} XP · {{ contract.reward_credits }} credits · {{ contract.reward_ap }} AP</p></article>
+{% else %}<p>No eligible contract is available. Ask the administrator to import the Contracts sheet.</p>{% endif %}</section>{% endblock %}

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 REQUIRED_SHEETS = {
     "Master", "Bosses", "Minions", "Weapons",
     "Armor", "SpecialItems", "Classes", "RandomEvents", "Settings"
-    , "WorldBosses", "Perks"
+    , "WorldBosses", "Perks", "Contracts"
 }
 
 DAMAGE_TYPES = ("Blade", "Blunt", "Ballistic", "Energy", "Arcane", "Explosive", "Venom")
@@ -359,6 +359,7 @@ def diff_content(raw_data: dict, full_reset: bool = False) -> dict:
     changes["special_items"] = _diff_table(raw_data.get("SpecialItems", []),   "special_items", "Name", _map_special_item)
     changes["perks"]         = _diff_table(raw_data.get("Perks", []),          "perks",         "Name", _map_perk)
     changes["random_events"] = _diff_table(raw_data.get("RandomEvents", []),   "random_events", "Name", _map_random_event)
+    changes["contracts"]     = _diff_table(raw_data.get("Contracts", []),      "contracts",     "Name", _map_contract)
     changes["settings"]      = _diff_settings(raw_data.get("Settings", []))
     changes["master_rows"]   = raw_data.get("Master", [])  # always reprocess
     changes["world_boss_rows"] = raw_data.get("WorldBosses", [])
@@ -586,6 +587,16 @@ def _map_random_event(r: dict) -> dict:
     }
 
 
+def _map_contract(r: dict) -> dict:
+    """Map an Excel-authored daily objective and its substantial completion reward."""
+    return {
+        "description": _s(r.get("Description")), "metric": _s(r.get("Metric")).upper(),
+        "target": max(1, _i(r.get("Target"), 1)), "reward_xp": max(0, _i(r.get("RewardXP"))),
+        "reward_credits": max(0, _i(r.get("RewardCredits"))),
+        "reward_ap": max(0, _i(r.get("RewardAP"))), "min_level": max(1, _i(r.get("MinLevel"), 1)),
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # APPLY CHANGES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -594,7 +605,7 @@ def apply_changes(changes: dict, full_reset: bool = False) -> dict:
     """Apply all inserts and updates. Must be called inside exclusive_transaction().
     Returns summary dict of counts."""
     summary = {}
-    order   = ["classes", "bosses", "world_bosses", "minions", "weapons", "armor", "special_items", "perks", "random_events"]
+    order   = ["classes", "bosses", "world_bosses", "minions", "weapons", "armor", "special_items", "perks", "random_events", "contracts"]
 
     for key in order:
         if key not in changes:

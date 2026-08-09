@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block title %}Player Directory{% endblock %}
+{% block content %}<section class="intel-page"><h1>Player Directory</h1>
+<p class="page-deck">Public signals only. Equipment, wealth, health, exact attributes, and player type remain private.</p>
+<div class="intel-grid">{% for p in players %}<article class="intel-card">
+<h2>{{ p.character_name }}</h2><div class="intel-facts"><span>Level <b>{{ p.level }}</b></span>
+<span>Reputation <b>{{ p.reputation }}</b></span><span>PvP victories <b>{{ p.pvp_wins }}</b></span>
+<span class="activity-{{ p.activity|lower|replace(' ','-') }}">{{ p.activity }}</span></div></article>{% else %}<p>No active characters.</p>{% endfor %}</div></section>{% endblock %}

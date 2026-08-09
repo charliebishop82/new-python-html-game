@@ -55,6 +55,8 @@ def midnight_reset():
     _step7_midnight_encounters()         # step 7
     _step8_9_10_shop_rotation()          # steps 8-10
     _step11_pending_feed_entries()       # step 11
+    from contracts import midnight_contract_turnover
+    midnight_contract_turnover()
 
     logger.info("=== MIDNIGHT RESET COMPLETE %s ===", datetime.utcnow().isoformat())
 

@@ -802,3 +802,16 @@ tr:nth-child(even) td { background: #0d0d0d; }
 .free-action-buttons{display:grid;gap:5px;margin-top:10px;padding-top:9px;border-top:1px solid var(--border)}.free-action-btn{display:flex;align-items:center;justify-content:space-between;border-color:var(--blue)!important;color:var(--blue)!important;text-decoration:none;background:color-mix(in srgb,var(--blue) 7%,var(--bg-panel))!important}.free-action-btn:hover{background:color-mix(in srgb,var(--blue) 16%,var(--bg-panel))!important}.free-cost{color:var(--green);font-size:9px;font-weight:bold;letter-spacing:.7px}
 :root[data-theme="light"] .active-players-dialog{background:#fffdf8;color:#191919;box-shadow:0 18px 50px rgba(40,30,15,.25)}:root[data-theme="light"] .active-players-heading button{color:#191919}
 .live-player-alert{position:fixed;z-index:1200;right:18px;bottom:48px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px 14px;width:min(720px,calc(100vw - 36px));padding:12px 14px;border:2px solid var(--blue);background:var(--bg-panel);color:var(--white);box-shadow:0 12px 40px rgba(0,0,0,.55);font:12px var(--font)}.live-player-alert[hidden]{display:none}.live-player-alert strong{color:var(--blue);white-space:nowrap}.live-player-alert a{color:var(--green);white-space:nowrap}.live-player-alert.live-alert-danger{border-color:var(--red)}.live-player-alert.live-alert-danger strong{color:var(--red)}:root[data-theme="light"] .live-player-alert{background:#fffdf8;color:#191919;box-shadow:0 12px 35px rgba(40,30,15,.25)}@media(max-width:700px){.live-player-alert{grid-template-columns:1fr}.live-player-alert strong,.live-player-alert a{white-space:normal}}
+/* Community dossier, contract, and War Room surfaces. */
+.intel-page { padding: 1rem 1.25rem 4rem; max-width: 1200px; margin: 0 auto; }
+.page-deck { opacity: .78; max-width: 75ch; margin-bottom: 1.4rem; }
+.intel-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:.8rem; margin-bottom:1.6rem; }
+.intel-card,.contract-card { border:1px solid var(--border, #3a3a3a); background:var(--panel-bg, rgba(255,255,255,.025)); padding:1rem; }
+.intel-card h2,.intel-card h3 { margin:.1rem 0 .65rem; color:var(--accent, #ffb000); }
+.intel-facts { display:flex; gap:.55rem; flex-wrap:wrap; }
+.intel-facts span,.reputation-strip span { border:1px solid var(--border, #444); padding:.35rem .55rem; }
+.contract-card { max-width:720px; border-color:var(--accent, #ffb000); }
+.contract-status { float:right; letter-spacing:.12em; color:var(--accent, #ffb000); }
+.contract-progress { height:14px; border:1px solid var(--border, #555); margin:1rem 0 .35rem; }
+.contract-progress div { height:100%; background:linear-gradient(90deg,#00b875,var(--accent,#ffb000)); }
+.reward-line { color:var(--accent, #ffb000); font-weight:bold; }

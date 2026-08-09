@@ -1416,6 +1416,9 @@ def _finalize_world_boss_attempt(session_id: int, state: dict,
             (player["id"], flavor_text, session_id)
         )
     engine.check_level_up(player["id"], player["xp"] + xp, player["level"])
+    from contracts import record_progress
+    record_progress(player["id"], "WORLD_BOSS_ATTEMPTS", 1)
+    record_progress(player["id"], "DAMAGE_DEALT", damage)
     return {"result_type": result_type, "flavor": flavor_text,
             "xp_earned": xp, "credits_stolen": credits,
             "item_stolen": None, "drops": None}
@@ -1783,6 +1786,24 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                 (defender["id"], "SUCCESS" if defender_won else "DEFEAT",
                  defender_text, json.dumps(defense_details, default=str))
             )
+
+    # Contract progress is recorded only after combat has resolved successfully.
+    from contracts import record_progress
+    attacker_damage = execute_one(
+        "SELECT attacker_total_damage_dealt damage FROM combat_sessions WHERE id=?", (session_id,)
+    )["damage"]
+    record_progress(attacker["id"], "DAMAGE_DEALT", attacker_damage)
+    if winner_is_attacker:
+        record_progress(attacker["id"], "COMBAT_WINS", 1)
+        if session["combat_type"] == "PVP":
+            record_progress(attacker["id"], "PVP_WINS", 1)
+        elif session["combat_type"] == "BOSS":
+            record_progress(attacker["id"], "BOSS_WINS", 1)
+        elif session["combat_type"] == "MINION":
+            record_progress(attacker["id"], "MINION_WINS", 1)
+    elif session["combat_type"] == "PVP" and state.get("defender"):
+        record_progress(state["defender"]["id"], "PVP_WINS", 1)
+        record_progress(state["defender"]["id"], "COMBAT_WINS", 1)
 
     return {
         "winner_side":     winner_side,
