@@ -373,12 +373,10 @@ def _apply_end_of_round(session_id: int, state: dict, settings: dict):
                 (new_dur, att_special["inv_id"])
             )
             if new_dur == 0:
-                execute_write(
-                    "DELETE FROM inventory_items WHERE id = ?", (att_special["inv_id"],)
-                )
-                execute_write(
-                    "UPDATE players SET equipped_special_id = NULL WHERE id = ?",
-                    (state["session"]["attacker_player_id"],)
+                combat_actions._destroy_item(
+                    att_special["inv_id"],
+                    {**att_special, "item_type": "SPECIAL", "item_id": att_special["id"]},
+                    state["session"]["attacker_player_id"]
                 )
 
         # Defender special item (PvP only)
@@ -394,12 +392,10 @@ def _apply_end_of_round(session_id: int, state: dict, settings: dict):
                     (new_dur, def_special["inv_id"])
                 )
                 if new_dur == 0:
-                    execute_write(
-                        "DELETE FROM inventory_items WHERE id = ?", (def_special["inv_id"],)
-                    )
-                    execute_write(
-                        "UPDATE players SET equipped_special_id = NULL WHERE id = ?",
-                        (state["session"]["defender_player_id"],)
+                    combat_actions._destroy_item(
+                        def_special["inv_id"],
+                        {**def_special, "item_type": "SPECIAL", "item_id": def_special["id"]},
+                        state["session"]["defender_player_id"]
                     )
 
         # Expire END_OF_ROUND buffs

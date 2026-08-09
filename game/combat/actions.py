@@ -1860,8 +1860,8 @@ def _apply_durability_loss(inv_id: int, loss: int, player_id: int):
 
 def _destroy_item(inv_id: int, row: dict, player_id: int):
     """Delete an item at 0 durability, null out equipped slot, return special to pool."""
-    execute_write("DELETE FROM inventory_items WHERE id = ?", (inv_id,))
-    # Null out equipped slot if this was equipped
+    # Clear every foreign-key reference before removing the inventory copy.
+    # SQLite correctly rejects the inverse ordering when equipped gear breaks.
     for col in ("equipped_weapon_id", "equipped_armor_id", "equipped_special_id"):
         execute_write(
             f"UPDATE players SET {col} = NULL WHERE id = ? AND {col} = ?",
@@ -1875,6 +1875,7 @@ def _destroy_item(inv_id: int, row: dict, player_id: int):
                WHERE special_item_id=?""",
             (datetime.utcnow().isoformat(), row["item_id"])
         )
+    execute_write("DELETE FROM inventory_items WHERE id = ?", (inv_id,))
     # Log destruction
     item_detail = execute_one(
         f"SELECT name FROM {'weapons' if row['item_type']=='WEAPON' else 'armor' if row['item_type']=='ARMOR' else 'special_items'} WHERE id = ?",

@@ -261,13 +261,16 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
 
         elif effect == "DURABILITY_LOSS_RANDOM":
             all_inv = execute(
-                "SELECT * FROM inventory_items WHERE player_id = ?", (player_id,)
+                """SELECT * FROM inventory_items ii WHERE player_id = ?
+                   AND NOT EXISTS(SELECT 1 FROM auction_listings a
+                                  WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')""",
+                (player_id,)
             )
             if all_inv:
                 target  = random.choice(all_inv)
                 new_dur = max(0, target["current_durability"] + amount)  # amount negative
                 if new_dur == 0:
-                    execute_write("DELETE FROM inventory_items WHERE id = ?", (target["id"],))
+                    combat_actions._destroy_item(target["id"], target, player_id)
                 else:
                     execute_write(
                         "UPDATE inventory_items SET current_durability = ? WHERE id = ?",

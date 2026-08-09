@@ -765,9 +765,13 @@ def _assign_pending_levelup(player_id: int, profile: dict):
 
 
 def _maybe_repair(player: dict, profile: dict):
-    """Repair equipped gear only when the NPC can afford the complete action."""
-    if random.randint(1, 100) > profile["repair_tendency"]:
-        return None
+    """Maintain equipped gear, prioritizing endangered items over full service.
+
+    Ordinary maintenance remains personality-driven. Durability below 20% is
+    an emergency: the NPC always evaluates repair, attempts a targeted repair
+    if full-loadout service is unaffordable, and protects a critically worn
+    unique special by unequipping it when no repair can be funded.
+    """
     settings = get_all_settings()
     if (player["current_ap"] < settings.get("AP_COST_BLACKSMITH", cfg.AP_COST_BLACKSMITH)
             or player["credits"] <= 0):
@@ -787,23 +791,59 @@ def _maybe_repair(player: dict, profile: dict):
     if not any(item["current_durability"] < threshold for item in damaged):
         return None
 
+    emergency = any(item["current_durability"] < 20 for item in damaged)
+    if not emergency and random.randint(1, 100) > profile["repair_tendency"]:
+        return None
+
     # The blacksmith repairs every damaged equipped item in this mode.  Check
     # that complete price before entering the queue so an unaffordable repair
     # is not logged as a failed action and retried without spending AP.
     item_tables = {"WEAPON": "weapons", "ARMOR": "armor", "SPECIAL": "special_items"}
     cost_pct = settings.get("REPAIR_COST_PERCENT", cfg.REPAIR_COST_PERCENT)
     total_cost = 0
+    repair_options = []
     for item in damaged:
         table = item_tables.get(item["item_type"])
         detail = execute_one(f"SELECT credit_cost FROM {table} WHERE id=?", (item["item_id"],)) if table else None
         if detail:
             missing = 100 - item["current_durability"]
-            total_cost += max(0, int(detail["credit_cost"] * cost_pct * (missing / 100)))
+            item_cost = max(0, int(detail["credit_cost"] * cost_pct * (missing / 100)))
+            total_cost += item_cost
+            repair_options.append({**item, "repair_cost": item_cost})
+
+    mode, inv_ids, repair_cost = "equipped", [], total_cost
     if player["credits"] < total_cost:
-        return None
+        candidates = ([item for item in repair_options if item["current_durability"] < 20]
+                      if emergency else repair_options)
+        affordable = [item for item in candidates if item["repair_cost"] <= player["credits"]]
+        if affordable:
+            # Lowest durability wins; specials win a tie because they are unique.
+            target = min(affordable, key=lambda item: (
+                item["current_durability"], 0 if item["item_type"] == "SPECIAL" else 1
+            ))
+            mode, inv_ids, repair_cost = "selected", [target["id"]], target["repair_cost"]
+        else:
+            endangered_special = next((item for item in repair_options
+                                       if item["item_type"] == "SPECIAL"
+                                       and item["current_durability"] < 15), None)
+            reason = (f"Maintenance needed: full service costs {total_cost} credits; "
+                      f"no endangered item is affordable with {player['credits']} credits")
+            if endangered_special:
+                with exclusive_transaction():
+                    execute_write(
+                        "UPDATE players SET equipped_special_id=NULL WHERE id=? AND equipped_special_id=?",
+                        (player["id"], endangered_special["id"])
+                    )
+                return (reason,
+                        f"Protected critically worn special at {endangered_special['current_durability']}% by unequipping it.")
+            _log(player["id"], "REPAIR_BLOCKED", reason,
+                 "NPC continued without service; credits must be rebuilt.")
+            return None
     try:
-        result = enqueue_and_process(player["id"], "blacksmith_repair", {"mode": "equipped", "inv_ids": []})
-        return (f"Equipped gear fell below {threshold}% durability", str(result))
+        result = enqueue_and_process(player["id"], "blacksmith_repair",
+                                     {"mode": mode, "inv_ids": inv_ids})
+        scope = "targeted emergency repair" if mode == "selected" else "full equipped service"
+        return (f"Equipped gear fell below {threshold}% durability; {scope} cost {repair_cost}", str(result))
     except RuntimeError as exc:
         return ("Repair was desirable but unaffordable", str(exc))
 
@@ -900,7 +940,15 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
     heal_reserve = settings.get("TAVERN_HEAL_COST", cfg.TAVERN_HEAL_COST)
     reserve_pct = max(0.10, 0.35 + profile["self_preservation"] / 400
                       - profile["hoarder"] / 500)
-    credit_reserve = max(heal_reserve, int(player["credits"] * reserve_pct))
+    # Keep a concrete maintenance cushion before optional shopping. This is
+    # based on 25% wear across the current loadout so valuable gear does not
+    # become unserviceable after a short run of combat.
+    equipped_values = [item["credit_cost"] for item in owned
+                       if item["inv_id"] in equipped_now]
+    repair_pct = float(settings.get("REPAIR_COST_PERCENT", cfg.REPAIR_COST_PERCENT))
+    repair_reserve = sum(max(1, int(value * repair_pct * 0.25)) for value in equipped_values)
+    credit_reserve = max(heal_reserve, repair_reserve,
+                         int(player["credits"] * reserve_pct))
     spendable = max(0, player["credits"] - credit_reserve)
     if spendable <= 0:
         return None
