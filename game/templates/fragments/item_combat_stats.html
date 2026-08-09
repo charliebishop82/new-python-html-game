@@ -28,5 +28,5 @@
     {% if item.get('durability_reduction', 0) %}<span class="bonus">Durability loss -{{ (item.durability_reduction * 100)|round|int }}%</span>{% endif %}
     {% if item.get('shop_discount', 0) %}<span class="bonus">Shop discount +{{ (item.shop_discount * 100)|round|int }}%</span>{% endif %}
     {% if item.get('sell_bonus', 0) %}<span class="bonus">Selling value +{{ (item.sell_bonus * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('encounter_bonus', 0) %}<span class="bonus">Encounter chance +{{ (item.encounter_bonus * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('encounter_bonus', 0) %}<span class="bonus">Random event chance +{{ (item.encounter_bonus * 100)|round|int }}%</span>{% endif %}
 </div>

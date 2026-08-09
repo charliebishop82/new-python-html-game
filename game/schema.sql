@@ -288,6 +288,14 @@ CREATE TABLE IF NOT EXISTS action_queue (
     processed_at TEXT
 );
 
+-- One activity temporarily displaced by a roaming-minion encounter.
+CREATE TABLE IF NOT EXISTS pending_interrupted_actions (
+    player_id    INTEGER PRIMARY KEY REFERENCES players(id),
+    action_type  TEXT NOT NULL CHECK(action_type IN ('BOSS','PVP','WORLD_BOSS','SHOP')),
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Unified per-character success, failure, diagnostic, and action history.
 CREATE TABLE IF NOT EXISTS player_activity_log (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,

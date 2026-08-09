@@ -86,6 +86,15 @@
     <div class="term-line term-amber combat-boundary">
         ═══════════════════════ COMBAT ENDS ═══════════════════════
     </div>
+    {% if pending_action %}
+    <div class="term-line term-good">The minion interruption is over. Your {{ pending_action.action_type|replace('_', ' ')|lower }} action now continues.</div>
+    <form class="terminal-action pending-action-resume" data-auto-submit="true"
+          action="{{ url_for('actions.resume_interrupted_action') }}" method="POST">
+        <button class="auth-btn" type="submit">Continue {{ pending_action.action_type|replace('_', ' ')|title }}</button>
+    </form>
+    {% elif interrupted_action_cancelled %}
+    <div class="term-line term-bad">Defeat cancelled your interrupted {{ interrupted_action_cancelled|replace('_', ' ')|lower }} action.</div>
+    {% endif %}
     <div class="combat-return-actions">
         <a class="auth-btn" href="{{ url_for('dashboard.index') }}">Return to Dashboard</a>
     </div>

@@ -662,8 +662,27 @@ def _render_combat_round(result: dict, session_id: int, player) -> str:
     # fragment. This prevents the health display from lagging one round behind.
     player = get_player(player["id"]) or player
     if result.get("combat_ended"):
+        pending_action = None
+        interrupted_action_cancelled = None
+        combat_row = execute_one(
+            "SELECT combat_type FROM combat_sessions WHERE id=?", (session_id,)
+        )
+        if combat_row and combat_row["combat_type"] == "MINION":
+            from routes.actions import (get_pending_interrupted_action,
+                                        clear_pending_interrupted_action)
+            pending = get_pending_interrupted_action(player["id"])
+            final = result.get("final_result") or {}
+            survived = (result.get("winner_side") == "ATTACKER"
+                        or final.get("result_type") in ("ESCAPE", "STALEMATE"))
+            if pending and survived:
+                pending_action = pending
+            elif pending:
+                interrupted_action_cancelled = pending["action_type"]
+                clear_pending_interrupted_action(player["id"])
         return render_template("fragments/combat_result.html",
-                               result=result, player=player)
+                               result=result, player=player,
+                               pending_action=pending_action,
+                               interrupted_action_cancelled=interrupted_action_cancelled)
     if result.get("at_round_limit"):
         settings = get_all_settings()
         timeout  = settings.get("COMBAT_EXTENSION_TIMEOUT", cfg.COMBAT_EXTENSION_TIMEOUT)

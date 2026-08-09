@@ -1248,6 +1248,7 @@ def admin_full_reset():
     operational = [
         "world_boss_event_log", "world_boss_rewards", "world_boss_contributions",
         "world_boss_events",
+        "pending_interrupted_actions",
         "npc_action_log", "npc_profiles", "player_activity_log",
         "combat_buffs", "combat_logs", "combat_sessions",
         "boss_instances", "minion_instances", "boss_intel",

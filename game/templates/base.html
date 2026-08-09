@@ -91,6 +91,7 @@
             {% set action_endpoints = {
                 'boss': 'actions.action_boss',
                 'pvp': 'actions.action_pvp',
+                'world_boss': 'world_boss.fight',
                 'tavern': 'actions.action_tavern',
                 'blacksmith': 'blacksmith.index',
                 'shop': 'shop.enter'
@@ -99,24 +100,24 @@
                 {% if state.enabled %}
                     {% if action == 'blacksmith' %}
                     <a class="action-btn action-link" href="{{ url_for(action_endpoints[action]) }}">
-                        {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
+                        {{ action|replace('_', ' ')|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
                     </a>
-                    {% elif action == 'shop' %}
-                    <form action="{{ url_for(action_endpoints[action]) }}" method="POST">
+                    {% elif action in ('shop', 'world_boss') %}
+                    <form class="terminal-action" action="{{ url_for(action_endpoints[action]) }}" method="POST">
                         <button type="submit" class="action-btn">
-                            {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
+                            {{ action|replace('_', ' ')|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
                         </button>
                     </form>
                     {% else %}
                     <form class="terminal-action" action="{{ url_for(action_endpoints[action]) }}" method="POST">
                     <button type="submit" class="action-btn">
-                        {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
+                        {{ action|replace('_', ' ')|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
                     </button>
                     </form>
                     {% endif %}
                 {% else %}
                 <button class="action-btn disabled" title="{{ state.reason }}" disabled>
-                    {{ action|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
+                    {{ action|replace('_', ' ')|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
                     <span class="btn-reason">{{ state.reason }}</span>
                 </button>
                 {% endif %}
@@ -124,14 +125,17 @@
         {% endif %}
     </div>
 
+    <button id="active-players-toggle" class="active-players-toggle" type="button"
+            data-url="{{ url_for('feeds.active_players') }}" aria-haspopup="dialog">
+        ACTIVE PLAYERS <span id="active-player-count">{{ active_player_count }}</span>
+    </button>
+
     <nav id="left-nav">
         <span class="nav-heading">PLAYER</span>
         <a href="{{ url_for('character.index') }}">Character</a>
         <a href="{{ url_for('character.equipment') }}">Equipment</a>
-        <a href="{{ url_for('world_boss.index') }}">Weekly World Boss</a>
         <a href="{{ url_for('scoreboards.index') }}">Scoreboards</a>
         <a href="{{ url_for('feeds.game_help') }}">How to Play</a>
-        <span class="nav-link-disabled" title="A shared weekly encounter is being designed.">Weekly Boss (Coming Soon)</span>
         <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
         <form action="{{ url_for('auth.logout') }}" method="POST" style="margin:0">
             <button type="submit" class="nav-link-btn">Logout</button>
@@ -139,6 +143,15 @@
     </nav>
 
 </div><!-- /left-col -->
+
+<dialog id="active-players-dialog" class="active-players-dialog" aria-labelledby="active-players-title">
+    <div class="active-players-heading">
+        <h2 id="active-players-title">Active Players</h2>
+        <button type="button" id="active-players-close" aria-label="Close">×</button>
+    </div>
+    <p>Characters that performed an action during the last five minutes.</p>
+    <div id="active-players-list">Loading…</div>
+</dialog>
 {% endif %}
 
 <!-- ═══════════════════════════════════════════════════════════════ -->

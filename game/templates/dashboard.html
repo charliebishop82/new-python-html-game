@@ -60,6 +60,10 @@
                 combat_inventory=active_combat.inventory, resumed=true %}
             {% include "fragments/combat_open.html" %}
         {% endwith %}
+    {% elif pending_action %}
+        {% with message="Your interrupted action is ready to continue.", player=player %}
+            {% include "fragments/interruption_resume.html" %}
+        {% endwith %}
     {% endif %}
 </div>
 {% endblock %}

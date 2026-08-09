@@ -166,6 +166,10 @@ def run_npc_turn(player_id: int) -> dict:
     world_chance = min(85, 5 + profile["world_boss_hunter"] * .70
                        + profile["boss_killer"] * .10)
     if world_event and player["current_ap"] >= world_cost and random.random() * 100 < world_chance:
+        interruption = _run_npc_minion_interruption(player, profile, settings)
+        if interruption and not interruption["survived"]:
+            return _finish_turn(profile, "MINION", "Minion interrupted the weekly fight",
+                                interruption)
         result = enqueue_and_process(player_id, "start_world_boss_fight",
                                      {"event_id": world_event["id"]})
         if not result.get("error"):
@@ -186,18 +190,10 @@ def run_npc_turn(player_id: int) -> dict:
         )
         steal_turn = not last_mode or last_mode["decision"] in ("BOSS", "MINION")
         if steal_turn and pvp_targets and can_pvp:
-            interrupted = _roll_minion_interruption(player, settings)
-            if interrupted:
-                result = enqueue_and_process(
-                    player_id, "start_boss_fight",
-                    {"opponent_id": interrupted["id"], "encounter_type": "MINION",
-                     "cost_ap": boss_cost}
-                )
-                if result.get("error"):
-                    return _finish_turn(profile, "MINION", "Minion interrupted PvP theft", result["error"])
-                combat = _finish_active_combat(player_id, result["session_id"], profile)
-                return _finish_turn(profile, "MINION",
-                                    f"{interrupted['name']} interrupted PvP theft", combat)
+            interruption = _run_npc_minion_interruption(player, profile, settings)
+            if interruption and not interruption["survived"]:
+                return _finish_turn(profile, "MINION", "Minion interrupted PvP theft",
+                                    interruption)
             target = random.choice(pvp_targets)
             result = enqueue_and_process(
                 player_id, "start_pvp_fight",
@@ -210,6 +206,11 @@ def run_npc_turn(player_id: int) -> dict:
         # Alternate with the same boss/minion encounter roll a human receives
         # from the Boss action. If PvP is unavailable, this is also the normal
         # combat fallback under the existing eligibility rules.
+        interruption = _run_npc_minion_interruption(player, profile, settings)
+        if interruption and not interruption["survived"]:
+            return _finish_turn(profile, "MINION", "Minion interrupted thief progression",
+                                interruption)
+        player = get_player(player_id)
         encounter_type, opponent = _choose_combat_encounter(player, settings)
         if opponent and can_boss:
             result = enqueue_and_process(
@@ -238,18 +239,10 @@ def run_npc_turn(player_id: int) -> dict:
         boss_score += profile["hoarder"]
 
     if can_pvp and pvp_targets and pvp_score >= boss_score:
-        interrupted = _roll_minion_interruption(player, settings)
-        if interrupted:
-            result = enqueue_and_process(
-                player_id, "start_boss_fight",
-                {"opponent_id": interrupted["id"], "encounter_type": "MINION",
-                 "cost_ap": boss_cost}
-            )
-            if result.get("error"):
-                return _finish_turn(profile, "MINION", "Minion interrupted PvP hunt", result["error"])
-            combat = _finish_active_combat(player_id, result["session_id"], profile)
-            return _finish_turn(profile, "MINION",
-                                f"{interrupted['name']} interrupted PvP hunt", combat)
+        interruption = _run_npc_minion_interruption(player, profile, settings)
+        if interruption and not interruption["survived"]:
+            return _finish_turn(profile, "MINION", "Minion interrupted PvP hunt",
+                                interruption)
         target = _choose_pvp_target(player, pvp_targets, profile["aggression"])
         result = enqueue_and_process(
             player_id, "start_pvp_fight",
@@ -260,6 +253,10 @@ def run_npc_turn(player_id: int) -> dict:
         combat = _finish_active_combat(player_id, result["session_id"], profile)
         return _finish_turn(profile, "PVP", f"Targeted {target['character_name']}", combat)
 
+    interruption = _run_npc_minion_interruption(player, profile, settings)
+    if interruption and not interruption["survived"]:
+        return _finish_turn(profile, "MINION", "Minion interrupted boss hunt", interruption)
+    player = get_player(player_id)
     encounter_type, opponent = _choose_combat_encounter(player, settings)
     if opponent and can_boss:
         result = enqueue_and_process(
@@ -1053,9 +1050,15 @@ def _npc_shop_transaction(player_id: int, action_type: str, payload: dict) -> di
     # The separate admin Flask process does not register player blueprints, so
     # load the Shop module here to make its queued handlers available to NPCs.
     from routes import shop as _shop_handlers  # noqa: F401
+    player = get_player(player_id)
+    profile = execute_one("SELECT * FROM npc_profiles WHERE player_id=?", (player_id,))
+    interruption = _run_npc_minion_interruption(player, profile, get_all_settings())
+    if interruption and not interruption["survived"]:
+        return {"interruption": interruption,
+                "error": "The minion defeated the NPC; the shop action was cancelled."}
     admission = enqueue_and_process(player_id, "shop_enter", {})
     result = enqueue_and_process(player_id, action_type, payload)
-    return {"admission": admission, "transaction": result}
+    return {"interruption": interruption, "admission": admission, "transaction": result}
 
 
 def _eligible_pvp_targets(player: dict) -> list[dict]:
@@ -1094,13 +1097,10 @@ def _choose_boss(player: dict):
 
 
 def _choose_combat_encounter(player: dict, settings: dict) -> tuple[str, dict | None]:
-    """Roll and select a boss or minion using the human encounter rules."""
-    minion_chance = max(0.0, min(1.0, settings.get(
-        "MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE
-    )))
-    encounter_type = "MINION" if random.random() < minion_chance else "BOSS"
-    singular = "minion" if encounter_type == "MINION" else "boss"
-    table = "minions" if encounter_type == "MINION" else "bosses"
+    """Select the intended boss after any separate minion interruption resolves."""
+    encounter_type = "BOSS"
+    singular = "boss"
+    table = "bosses"
     instances = f"{singular}_instances"
     id_column = f"{singular}_id"
 
@@ -1109,8 +1109,6 @@ def _choose_combat_encounter(player: dict, settings: dict) -> tuple[str, dict | 
         (player["id"],)
     )
     discovered_ids = [row[id_column] for row in discovered]
-    if encounter_type == "MINION":
-        return encounter_type, _choose_level_appropriate_minion(player, discovered_ids)
     if discovered_ids:
         placeholders = ",".join("?" for _ in discovered_ids)
         opponent = execute_one(
@@ -1150,7 +1148,7 @@ def _choose_level_appropriate_minion(player: dict, undiscovered_ids: list[int] |
 
 
 def _roll_minion_interruption(player: dict, settings: dict) -> dict | None:
-    """Return a minion when an NPC's attempted PvP action is interrupted."""
+    """Return a minion when any interruptible NPC activity is interrupted."""
     chance = max(0.0, min(1.0, settings.get(
         "MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE
     )))
@@ -1161,6 +1159,23 @@ def _roll_minion_interruption(player: dict, settings: dict) -> dict | None:
     )
     ids = [row["minion_id"] for row in discovered]
     return _choose_level_appropriate_minion(player, ids)
+
+
+def _run_npc_minion_interruption(player: dict, profile: dict, settings: dict) -> dict | None:
+    """Resolve a free minion interruption, then report whether activity may resume."""
+    minion = _roll_minion_interruption(player, settings)
+    if not minion:
+        return None
+    result = enqueue_and_process(
+        player["id"], "start_boss_fight",
+        {"opponent_id": minion["id"], "encounter_type": "MINION", "cost_ap": 0}
+    )
+    if result.get("error"):
+        return {"minion": minion["name"], "survived": False, "error": result["error"]}
+    combat = _finish_active_combat(player["id"], result["session_id"], profile)
+    after = get_player(player["id"])
+    survived = bool(after and after["current_hp"] > 1 and not after["in_combat"])
+    return {"minion": minion["name"], "survived": survived, "combat": combat}
 
 
 def _equip_best_items(player_id: int, profile: dict) -> list[str]:

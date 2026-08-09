@@ -64,4 +64,17 @@ def global_latest():
     return jsonify(rows)
 
 
+@bp.route("/players/active")
+def active_players():
+    """List characters that submitted an action during the last five minutes."""
+    rows = execute(
+        """SELECT p.character_name,MAX(q.created_at) AS last_action_at,
+                  CAST((julianday('now')-julianday(MAX(q.created_at)))*86400 AS INTEGER) seconds_ago
+           FROM action_queue q JOIN players p ON p.id=q.player_id
+           WHERE datetime(q.created_at)>=datetime('now','-5 minutes') AND p.is_banned=0
+           GROUP BY p.id,p.character_name ORDER BY MAX(q.created_at) DESC,p.character_name"""
+    )
+    return jsonify({"count": len(rows), "players": rows, "window_minutes": 5})
+
+
 ################################################################################

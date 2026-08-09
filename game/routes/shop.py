@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings,
-                      get_player_bonus_profile)
+                      get_player_bonus_profile, get_player)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -26,6 +26,18 @@ logger = logging.getLogger(__name__)
 def enter():
     """Charge the one-time admission AP, then open a free trading visit."""
     try:
+        player = get_player(session["player_id"])
+        from routes.actions import begin_minion_interruption
+        minion = begin_minion_interruption(player, "SHOP", settings=get_all_settings())
+        if minion:
+            result = enqueue_and_process(
+                player["id"], "start_boss_fight",
+                {"opponent_id": minion["id"], "encounter_type": "MINION", "cost_ap": 0}
+            )
+            if result.get("error"):
+                raise RuntimeError(result["error"])
+            session["combat_session_id"] = result["session_id"]
+            return redirect(url_for("dashboard.index"))
         enqueue_and_process(session["player_id"], "shop_enter", {})
         session["shop_access_granted"] = True
         return redirect(url_for("shop.index"))

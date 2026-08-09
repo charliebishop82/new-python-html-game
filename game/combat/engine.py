@@ -510,11 +510,20 @@ def apply_pvp_loss_durability_hits(player_id: int, equipped: dict):
     Called from post-combat resolution BEFORE item steal roll.
     Imported and called by combat/actions.py."""
     from database import execute_write, exclusive_transaction
-    for slot, item in equipped.items():
+    # Combat state also carries an aggregate `bonuses` entry. It is not an
+    # inventory item and must never be processed as durability-bearing gear.
+    for slot in ("weapon", "armor", "special"):
+        item = equipped.get(slot)
         if item is None:
             continue
-        inv_id   = item["inv_id"]
-        new_dur  = max(0, item["current_durability"] - 10)  # flat -10 on PvP loss
+        inv_id = item.get("inv_id")
+        if not inv_id:
+            logger.warning(
+                "Skipping PvP durability loss for player %d %s: inventory id missing",
+                player_id, slot,
+            )
+            continue
+        new_dur = max(0, item.get("current_durability", 0) - 10)  # flat -10 on PvP loss
         with exclusive_transaction():
             execute_write(
                 "UPDATE inventory_items SET current_durability = ? WHERE id = ?",

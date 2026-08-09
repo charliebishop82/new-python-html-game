@@ -57,10 +57,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
 document.addEventListener('DOMContentLoaded', () => {
     bindTerminalForms();
+    autoResumePendingAction();
+    bindActivePlayers();
     bindClassSelection();
     bindLevelUpSelection();
     scrollTerminalToLatest();
 });
+
+function bindActivePlayers() {
+    const toggle = document.getElementById('active-players-toggle');
+    const dialog = document.getElementById('active-players-dialog');
+    const close = document.getElementById('active-players-close');
+    const list = document.getElementById('active-players-list');
+    const count = document.getElementById('active-player-count');
+    if (!toggle || !dialog || !list) return;
+
+    const refresh = async () => {
+        try {
+            const response = await fetch(toggle.dataset.url, {cache: 'no-store'});
+            if (!response.ok) throw new Error('request failed');
+            const data = await response.json();
+            count.textContent = data.count;
+            list.replaceChildren();
+            if (!data.players.length) {
+                const empty = document.createElement('p');
+                empty.className = 'active-players-empty';
+                empty.textContent = 'No characters have acted in the last five minutes.';
+                list.appendChild(empty);
+                return;
+            }
+            data.players.forEach(player => {
+                const row = document.createElement('div');
+                row.className = 'active-player-row';
+                const name = document.createElement('strong');
+                name.textContent = player.character_name;
+                const ago = document.createElement('span');
+                const seconds = Math.max(0, Number(player.seconds_ago || 0));
+                ago.textContent = seconds < 60 ? 'active moments ago' :
+                    `active ${Math.floor(seconds / 60)} minute${Math.floor(seconds / 60) === 1 ? '' : 's'} ago`;
+                row.append(name, ago);
+                list.appendChild(row);
+            });
+        } catch (error) {
+            list.textContent = 'Active-player information is temporarily unavailable.';
+        }
+    };
+
+    toggle.addEventListener('click', async () => {
+        await refresh();
+        if (typeof dialog.showModal === 'function') dialog.showModal();
+        else dialog.setAttribute('open', '');
+    });
+    if (close) close.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', event => {
+        if (event.target === dialog) dialog.close();
+    });
+    setInterval(refresh, 60000);
+}
 
 /**
  * Open a pre-rendered daily transcript at its newest entry. Live actions and
@@ -130,6 +183,10 @@ function bindTerminalForms() {
                 body: new FormData(form),
                 headers: { 'X-Requested-With': 'XMLHttpRequest' }
             });
+            if (response.redirected) {
+                window.location.assign(response.url);
+                return;
+            }
             const html = await response.text();
             if (!response.ok) {
                 appendToTerminal(`<div class="term-line term-error">Action failed (${response.status}). Please try again or check the server log.</div>`);
@@ -142,8 +199,16 @@ function bindTerminalForms() {
             appendToTerminal(html);
             // Rebind any new terminal-action forms inside the fragment
             bindTerminalForms();
+            autoResumePendingAction();
         });
     });
+}
+
+function autoResumePendingAction() {
+    const form = document.querySelector('.pending-action-resume[data-auto-submit="true"]:not([data-auto-started])');
+    if (!form) return;
+    form.dataset.autoStarted = 'true';
+    setTimeout(() => form.requestSubmit(), 250);
 }
 
 function appendToTerminal(html) {

@@ -10,7 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 import config_defaults as cfg
-from database import (get_db, close_db, init_db, get_player, get_all_settings,
+from database import (get_db, close_db, init_db, get_player, get_all_settings, execute_one,
                       reconcile_combat_state)
 from queue_handler import startup_cleanup
 
@@ -91,7 +91,13 @@ def _context_processor() -> dict:
     player = g.get("player")
     if not player:
         return {"settings": settings}
-    return {"player": player, "settings": settings}
+    active_count = execute_one(
+        """SELECT COUNT(DISTINCT q.player_id) AS cnt FROM action_queue q
+           JOIN players p ON p.id=q.player_id
+           WHERE datetime(q.created_at)>=datetime('now','-5 minutes') AND p.is_banned=0"""
+    )["cnt"]
+    return {"player": player, "settings": settings,
+            "active_player_count": active_count}
 
 
 def _check_auth():

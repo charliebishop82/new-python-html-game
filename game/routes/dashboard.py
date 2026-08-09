@@ -99,6 +99,9 @@ def index():
         for e in active_effects
     ]
     active_combat = _load_active_combat(player)
+    from routes.actions import get_pending_interrupted_action
+    pending_action = (None if active_combat else
+                      get_pending_interrupted_action(player["id"]))
 
     # Hostile actions can happen while a player is offline and may cross the
     # midnight feed reset. Persistent unseen defense events are therefore shown
@@ -126,6 +129,7 @@ def index():
         now_iso=now_iso,
         effect_labels=effect_labels,
         active_combat=active_combat,
+        pending_action=pending_action,
         unread_defense_events=unread_defense_events,
     )
 
@@ -179,10 +183,14 @@ def _get_button_states(player: dict, settings: dict) -> dict:
 
     ap_boss       = settings.get('AP_COST_BOSS',       cfg.AP_COST_BOSS)
     ap_pvp        = settings.get('AP_COST_PVP',        cfg.AP_COST_PVP)
+    ap_world      = settings.get('AP_COST_WORLD_BOSS', cfg.AP_COST_WORLD_BOSS)
     ap_tavern     = settings.get('AP_COST_TAVERN',     cfg.AP_COST_TAVERN)
     ap_blacksmith = settings.get('AP_COST_BLACKSMITH', cfg.AP_COST_BLACKSMITH)
     ap_shop       = settings.get('AP_COST_SHOP',       cfg.AP_COST_SHOP)
     tavern_cost   = settings.get('TAVERN_HEAL_COST',   cfg.TAVERN_HEAL_COST)
+
+    from world_boss import get_active_event
+    world_event = get_active_event()
 
     # Boss/PvP: blocked by in_combat, blackout, or insufficient AP
     if in_combat:
@@ -197,6 +205,17 @@ def _get_button_states(player: dict, settings: dict) -> dict:
     else:
         boss_ok, boss_reason = True, None
         pvp_ok,  pvp_reason  = current_ap >= ap_pvp, (None if current_ap >= ap_pvp else f'Need {ap_pvp} AP')
+
+    if not world_event:
+        world_ok, world_reason = False, 'No active weekly boss'
+    elif in_combat:
+        world_ok, world_reason = False, 'In combat'
+    elif blackout:
+        world_ok, world_reason = False, 'Approaching midnight reset'
+    elif current_ap < ap_world:
+        world_ok, world_reason = False, f'Need {ap_world} AP'
+    else:
+        world_ok, world_reason = True, None
 
     # Tavern: no blackout restriction
     if in_combat:
@@ -231,6 +250,7 @@ def _get_button_states(player: dict, settings: dict) -> dict:
     return {
         'boss':       {'enabled': boss_ok,   'reason': boss_reason,   'ap_cost': ap_boss},
         'pvp':        {'enabled': pvp_ok,    'reason': pvp_reason,    'ap_cost': ap_pvp},
+        'world_boss': {'enabled': world_ok,  'reason': world_reason,  'ap_cost': ap_world},
         'tavern':     {'enabled': tavern_ok, 'reason': tavern_reason, 'ap_cost': ap_tavern},
         'blacksmith': {'enabled': bs_ok,     'reason': bs_reason,     'ap_cost': ap_blacksmith},
         'shop':       {'enabled': shop_ok,   'reason': shop_reason,   'ap_cost': ap_shop},

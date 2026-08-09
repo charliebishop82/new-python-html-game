@@ -392,13 +392,23 @@ def action_boss():
         return err
 
     # Random event check (fires before AP deducted)
-    event = check_random_event(player, settings)
+    event = None if session.pop("skip_random_event_once", False) else check_random_event(player, settings)
     if event:
         player = get_player(player["id"]) or player
 
-    # A minion can interrupt the attempted boss hunt; otherwise find a boss.
-    minion_chance = settings.get("MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE)
-    encounter_type = "MINION" if random.random() < minion_chance else "BOSS"
+    # A roaming minion temporarily displaces the hunt. The boss action is
+    # retained and resumes after the player survives this free interruption.
+    minion = begin_minion_interruption(player, "BOSS", settings=settings)
+    if minion:
+        per_result = _minion_per_check(player, minion)
+        if per_result["spotted"]:
+            content = render_template("fragments/minion_spotted.html",
+                                      minion=minion, per_result=per_result, player=player)
+        else:
+            content = _start_boss_fight(player, minion, "MINION", 0, settings)
+        return _with_random_event(event, player, content)
+
+    encounter_type = "BOSS"
 
     # Determine which boss/minion
     existing_instances = execute(
@@ -439,16 +449,6 @@ def action_boss():
                                   player=player)
         return _with_random_event(event, player, content)
 
-    # Minion: PER check
-    if encounter_type == "MINION":
-        per_result = _minion_per_check(player, opponent)
-        if per_result["spotted"]:
-            content = render_template("fragments/minion_spotted.html",
-                                      minion=opponent,
-                                      per_result=per_result,
-                                      player=player)
-            return _with_random_event(event, player, content)
-
     # Start the fight
     content = _start_boss_fight(player, opponent, encounter_type, cost_ap, settings)
     return _with_random_event(event, player, content)
@@ -465,6 +465,13 @@ def action_boss_confirm():
     action       = request.form.get("action", "fight")  # fight or avoid
 
     if action == "avoid":
+        pending = get_pending_interrupted_action(player["id"])
+        if pending and encounter_type == "MINION":
+            return render_template(
+                "fragments/interruption_resume.html",
+                message="You spotted the minion and slipped past. Your original action continues.",
+                pending_action=pending, player=player
+            )
         # AP refunded — just return a message
         return render_template("fragments/event_result.html",
                                event={"flavor_text": "You slip past undetected.",
@@ -476,6 +483,8 @@ def action_boss_confirm():
     if not opponent:
         return _error_fragment("Opponent not found.")
 
+    if encounter_type == "MINION" and get_pending_interrupted_action(player["id"]):
+        cost_ap = 0
     return _start_boss_fight(player, opponent, encounter_type, cost_ap, settings)
 
 
@@ -647,27 +656,19 @@ def action_pvp():
         return err
 
     # Random event check
-    event = check_random_event(player, settings)
+    event = None if session.pop("skip_random_event_once", False) else check_random_event(player, settings)
     if event:
         player = get_player(player["id"]) or player
 
-    # Roaming minions can interrupt the PvP search before a target is chosen.
-    minion_chance = settings.get("MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE)
-    if random.random() < minion_chance:
-        minion = _choose_minion_for_player(player)
-        if minion:
-            minion_cost = settings.get("AP_COST_BOSS", cfg.AP_COST_BOSS)
-            if player["current_ap"] < minion_cost:
-                return _with_random_event(
-                    event, player, _error_fragment("A minion interrupts you, but you lack the AP to engage.")
-                )
-            per_result = _minion_per_check(player, minion)
-            if per_result["spotted"]:
-                content = render_template("fragments/minion_spotted.html",
-                                          minion=minion, per_result=per_result, player=player)
-            else:
-                content = _start_boss_fight(player, minion, "MINION", minion_cost, settings)
-            return _with_random_event(event, player, content)
+    minion = begin_minion_interruption(player, "PVP", settings=settings)
+    if minion:
+        per_result = _minion_per_check(player, minion)
+        if per_result["spotted"]:
+            content = render_template("fragments/minion_spotted.html",
+                                      minion=minion, per_result=per_result, player=player)
+        else:
+            content = _start_boss_fight(player, minion, "MINION", 0, settings)
+        return _with_random_event(event, player, content)
 
     # Build eligible opponent list
     opponents = _get_eligible_opponents(player, settings)
@@ -701,6 +702,80 @@ def _choose_minion_for_player(player: dict) -> dict | None:
         "SELECT * FROM minions WHERE is_active=1 ORDER BY ABS(level-?), RANDOM() LIMIT 1",
         (player["level"],)
     )
+
+
+def get_pending_interrupted_action(player_id: int) -> dict | None:
+    """Return a durable action displaced by a minion, including decoded data."""
+    row = execute_one(
+        "SELECT * FROM pending_interrupted_actions WHERE player_id=?", (player_id,)
+    )
+    if not row:
+        return None
+    player = get_player(player_id)
+    if not player or player["current_hp"] <= 1:
+        with exclusive_transaction():
+            execute_write("DELETE FROM pending_interrupted_actions WHERE player_id=?", (player_id,))
+        return None
+    try:
+        payload = json.loads(row.get("payload_json") or "{}")
+    except (TypeError, ValueError):
+        payload = {}
+    return {**row, "payload": payload}
+
+
+def clear_pending_interrupted_action(player_id: int) -> dict | None:
+    """Atomically consume and return a pending interrupted activity."""
+    pending = get_pending_interrupted_action(player_id)
+    if pending:
+        with exclusive_transaction():
+            execute_write("DELETE FROM pending_interrupted_actions WHERE player_id=?", (player_id,))
+    return pending
+
+
+def begin_minion_interruption(player: dict, action_type: str, payload: dict | None = None,
+                              settings: dict | None = None) -> dict | None:
+    """Roll once and preserve the original activity when a minion interrupts."""
+    if session.pop("skip_minion_interruption", False):
+        return None
+    settings = settings or get_all_settings()
+    chance = max(0.0, min(1.0, float(settings.get(
+        "MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE
+    ))))
+    if random.random() >= chance:
+        return None
+    minion = _choose_minion_for_player(player)
+    if not minion:
+        return None
+    with exclusive_transaction():
+        execute_write(
+            """INSERT INTO pending_interrupted_actions(player_id,action_type,payload_json)
+               VALUES(?,?,?) ON CONFLICT(player_id) DO UPDATE SET
+               action_type=excluded.action_type,payload_json=excluded.payload_json,
+               created_at=datetime('now')""",
+            (player["id"], action_type, json.dumps(payload or {}))
+        )
+    return minion
+
+
+@bp.route("/action/resume-interrupted", methods=["POST"])
+def resume_interrupted_action():
+    """Consume a saved action and execute it once without another interruption."""
+    pending = clear_pending_interrupted_action(g.player["id"])
+    if not pending:
+        return _error_fragment("There is no interrupted action waiting to resume.")
+    session["skip_minion_interruption"] = True
+    session["skip_random_event_once"] = True
+    if pending["action_type"] == "BOSS":
+        return action_boss()
+    if pending["action_type"] == "PVP":
+        return action_pvp()
+    if pending["action_type"] == "WORLD_BOSS":
+        from routes.world_boss import fight
+        return fight()
+    if pending["action_type"] == "SHOP":
+        from routes.shop import enter
+        return enter()
+    return _error_fragment("The interrupted action type is no longer supported.")
 
 
 def _get_eligible_opponents(player: dict, settings: dict) -> list[dict]:

@@ -1,0 +1,8 @@
+<div class="fragment" data-hp="{{ player.current_hp }}" data-max-hp="{{ player.max_hp }}"
+     data-ap="{{ player.current_ap }}" data-max-ap="{{ player.max_ap }}">
+  <div class="term-line term-good">{{ message }}</div>
+  <form class="terminal-action pending-action-resume" data-auto-submit="true"
+        action="{{ url_for('actions.resume_interrupted_action') }}" method="POST">
+    <button class="auth-btn" type="submit">Continue {{ pending_action.action_type|replace('_', ' ')|title }}</button>
+  </form>
+</div>

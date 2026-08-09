@@ -57,6 +57,19 @@ def fight():
     event = get_active_event()
     if not event:
         return redirect(url_for("world_boss.index"))
+    from routes.actions import begin_minion_interruption
+    minion = begin_minion_interruption(
+        g.player, "WORLD_BOSS", {"event_id": event["id"]}, get_all_settings()
+    )
+    if minion:
+        result = enqueue_and_process(
+            g.player["id"], "start_boss_fight",
+            {"opponent_id": minion["id"], "encounter_type": "MINION", "cost_ap": 0}
+        )
+        if result.get("error"):
+            return redirect(url_for("world_boss.index", error=result["error"]))
+        session["combat_session_id"] = result["session_id"]
+        return redirect(url_for("dashboard.index"))
     result = enqueue_and_process(g.player["id"], "start_world_boss_fight",
                                  {"event_id": event["id"]})
     if result.get("error"):
