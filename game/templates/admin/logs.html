@@ -25,6 +25,17 @@
 {% endif %}
 
 <h2>Failed Queue Rows (last 50)</h2>
+<div class="admin-notice">
+    <strong>{{ failure_counts.unreviewed or 0 }} unreviewed</strong> · {{ failure_counts.reviewed or 0 }} historical/reviewed
+    · <a href="{{ url_for('admin_logs', show='all') if not show_reviewed else url_for('admin_logs') }}">{{ 'Show all history' if not show_reviewed else 'Show unreviewed only' }}</a>
+    {% if failure_counts.unreviewed %}
+    <form method="post" action="{{ url_for('admin_queue_acknowledge_all') }}" style="display:inline;margin-left:12px" onsubmit="return confirm('Acknowledge every current failed queue row? The records will be preserved as history.');">
+        <input type="hidden" name="return_to" value="logs">
+        <input type="hidden" name="note" value="Bulk acknowledged after investigation">
+        <button class="btn" type="submit">Acknowledge All Failures</button>
+    </form>
+    {% endif %}
+</div>
 {% if failed_queue %}
 <p style="color:#888;max-width:900px;">Each failed row is an immutable receipt. “Later succeeded” means the same character subsequently completed that action in the same combat, so the failure is historical rather than a stuck current action.</p>
 <table>
@@ -42,7 +53,9 @@
             {% else %}No combat session{% endif %}
             <br><strong style="color:{% if row.later_succeeded %}#00cc88{% else %}#ffaa00{% endif %}">{{ 'Later succeeded' if row.later_succeeded else 'Review required' }}</strong>
         </td>
-        <td style="min-width:150px"><details><summary>View details</summary>
+        <td style="min-width:150px">
+            {% if row.admin_acknowledged_at %}<span class="status-pill status-resolved">REVIEWED</span><br><small>{{ row.admin_acknowledged_at }} · {{ row.admin_note or 'No note' }}</small>{% endif %}
+            <details><summary>View details</summary>
             <div style="margin-top:6px;color:#aaa"><strong>Payload</strong><pre style="white-space:pre-wrap">{{ row.payload_data|tojson(indent=2) }}</pre></div>
             <div style="color:#aaa"><strong>Recorded diagnostic</strong><pre style="white-space:pre-wrap;max-width:520px;overflow:auto">{{ row.details_data|tojson(indent=2) }}</pre></div>
         </details></td>
@@ -50,6 +63,6 @@
     {% endfor %}
 </table>
 {% else %}
-<p style="color:#666">No failed queue rows.</p>
+<p style="color:#666">{{ 'No failed queue rows.' if show_reviewed else 'No unreviewed failed queue rows.' }}</p>
 {% endif %}
 {% endblock %}

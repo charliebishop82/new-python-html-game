@@ -74,6 +74,7 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/reputation",             "admin_reputation", admin_reputation)
     app.add_url_rule("/admin/operations",             "admin_operations", admin_operations)
     app.add_url_rule("/admin/queue/<int:queue_id>/acknowledge", "admin_queue_acknowledge", admin_queue_acknowledge, methods=["POST"])
+    app.add_url_rule("/admin/queue/acknowledge-all", "admin_queue_acknowledge_all", admin_queue_acknowledge_all, methods=["POST"])
     app.add_url_rule("/admin/combat/<int:session_id>", "admin_combat_detail", admin_combat_detail)
     app.add_url_rule("/admin/players/<int:pid>/repair-state", "admin_repair_player_state", admin_repair_player_state, methods=["POST"])
     app.add_url_rule("/admin/import",                 "admin_import",       admin_import,        methods=["GET","POST"])
@@ -234,6 +235,7 @@ def admin_reputation():
 
 def admin_operations():
     """Central operational view of combat, queue failures, interruptions, and scheduling."""
+    show_reviewed = request.args.get("show") == "all"
     combats = execute(
         """SELECT cs.*,a.character_name attacker,d.character_name defender,
           CASE cs.combat_type WHEN 'BOSS' THEN b.name WHEN 'MINION' THEN m.name
@@ -247,7 +249,13 @@ def admin_operations():
     )
     failures = execute(
         """SELECT q.*,p.character_name FROM action_queue q JOIN players p ON p.id=q.player_id
-           WHERE q.status='FAILED' ORDER BY q.id DESC LIMIT 100"""
+           WHERE q.status='FAILED' AND (? OR q.admin_acknowledged_at IS NULL)
+           ORDER BY q.id DESC LIMIT 100""", (int(show_reviewed),)
+    )
+    failure_counts = execute_one(
+        """SELECT SUM(CASE WHEN admin_acknowledged_at IS NULL THEN 1 ELSE 0 END) unreviewed,
+                  SUM(CASE WHEN admin_acknowledged_at IS NOT NULL THEN 1 ELSE 0 END) reviewed
+           FROM action_queue WHERE status='FAILED'"""
     )
     interruptions = execute(
         """SELECT pia.*,p.character_name FROM pending_interrupted_actions pia
@@ -259,7 +267,8 @@ def admin_operations():
     )
     scheduler = execute("SELECT * FROM scheduler_run_log ORDER BY id DESC LIMIT 40")
     return render_template("admin/operations.html", combats=combats, failures=failures,
-                           interruptions=interruptions, npcs=npcs, scheduler=scheduler)
+                           interruptions=interruptions, npcs=npcs, scheduler=scheduler,
+                           failure_counts=failure_counts, show_reviewed=show_reviewed)
 
 
 def admin_queue_acknowledge(queue_id: int):
@@ -272,6 +281,27 @@ def admin_queue_acknowledge(queue_id: int):
         )
         _audit("ACKNOWLEDGE_QUEUE_FAILURE", "ACTION_QUEUE", queue_id, note or "Reviewed")
     return redirect(url_for("admin_operations", feedback=f"Queue failure #{queue_id} marked reviewed."))
+
+
+def admin_queue_acknowledge_all():
+    """Acknowledge every unreviewed failure while preserving its audit row."""
+    note = request.form.get("note", "").strip()[:500] or "Bulk acknowledged after review"
+    return_to = request.form.get("return_to", "operations")
+    count = execute_one(
+        "SELECT COUNT(*) cnt FROM action_queue WHERE status='FAILED' AND admin_acknowledged_at IS NULL"
+    )["cnt"]
+    if count:
+        with exclusive_transaction():
+            execute_write(
+                """UPDATE action_queue SET admin_acknowledged_at=datetime('now'),admin_note=?
+                   WHERE status='FAILED' AND admin_acknowledged_at IS NULL""", (note,)
+            )
+            _audit("ACKNOWLEDGE_ALL_QUEUE_FAILURES", "ACTION_QUEUE", None,
+                   f"{count} failures reviewed: {note}")
+    endpoint = "admin_logs" if return_to == "logs" else "admin_operations"
+    feedback = (f"Acknowledged {count} failed queue row(s). Audit history was preserved."
+                if count else "There were no unreviewed queue failures.")
+    return redirect(url_for(endpoint, feedback=feedback))
 
 
 def admin_combat_detail(session_id: int):
@@ -1601,6 +1631,7 @@ def admin_full_reset():
 def admin_logs():
     """Render or process the logs administrative workflow."""
     import os
+    show_reviewed = request.args.get("show") == "all"
 
     def read_tail(path: str, n: int = 100) -> list[str]:
         """Handle the read tail workflow."""
@@ -1628,8 +1659,13 @@ def admin_logs():
            LEFT JOIN player_activity_log l ON l.queue_id=q.id AND l.status='FAILED'
            LEFT JOIN combat_sessions cs
              ON cs.id=json_extract(q.payload,'$.session_id')
-           WHERE q.status='FAILED'
-           ORDER BY q.created_at DESC LIMIT 50"""
+           WHERE q.status='FAILED' AND (? OR q.admin_acknowledged_at IS NULL)
+           ORDER BY q.created_at DESC LIMIT 50""", (int(show_reviewed),)
+    )
+    failure_counts = execute_one(
+        """SELECT SUM(CASE WHEN admin_acknowledged_at IS NULL THEN 1 ELSE 0 END) unreviewed,
+                  SUM(CASE WHEN admin_acknowledged_at IS NOT NULL THEN 1 ELSE 0 END) reviewed
+           FROM action_queue WHERE status='FAILED'"""
     )
     for row in failed_queue:
         try:
@@ -1644,7 +1680,9 @@ def admin_logs():
     return render_template("admin/logs.html",
                            import_errors=import_errors,
                            orphan_log=orphan_log,
-                           failed_queue=failed_queue)
+                           failed_queue=failed_queue,
+                           failure_counts=failure_counts,
+                           show_reviewed=show_reviewed)
 
 
 ################################################################################

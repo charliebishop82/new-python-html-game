@@ -57,12 +57,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
 document.addEventListener('DOMContentLoaded', () => {
     bindTerminalForms();
+    bindDefenseAlerts();
     autoResumePendingAction();
     bindActivePlayers();
     bindClassSelection();
     bindLevelUpSelection();
     scrollTerminalToLatest();
 });
+
+/**
+ * Offline PvP results deserve attention, but must not permanently occupy the
+ * play surface. Players may dismiss them explicitly; starting any new action
+ * also dismisses the already-seen panel before its result is rendered.
+ */
+function bindDefenseAlerts() {
+    const panel = document.querySelector('.defense-alerts');
+    if (!panel) return;
+    const dismiss = panel.querySelector('.defense-alert-dismiss');
+    if (dismiss) dismiss.addEventListener('click', dismissDefenseAlerts);
+}
+
+function dismissDefenseAlerts() {
+    const panel = document.querySelector('.defense-alerts');
+    if (!panel) return;
+    panel.classList.add('defense-alerts-dismissed');
+    panel.setAttribute('aria-hidden', 'true');
+    window.setTimeout(() => panel.remove(), 180);
+}
 
 function bindActivePlayers() {
     const toggle = document.getElementById('active-players-toggle');
@@ -172,6 +193,7 @@ function bindTerminalForms() {
 
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
+            dismissDefenseAlerts();
             const actionUrl = form.getAttribute('action');
             if (!actionUrl) {
                 appendToTerminal('<div class="term-line term-error">This action is unavailable because its destination is missing.</div>');
@@ -219,6 +241,11 @@ function appendToTerminal(html) {
     div.innerHTML = html;
     terminal.appendChild(div);
     terminal.scrollTop = terminal.scrollHeight;
+    // The dashboard may itself be the scrolling surface. Bring the newly
+    // requested action into view instead of leaving it below feed notices.
+    requestAnimationFrame(() => {
+        div.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
     // Extract and apply any status updates embedded in the fragment
     updateStatusFromFragment(div);
     const extensionPrompt = div.querySelector('[data-extension-timeout]');

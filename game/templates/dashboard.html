@@ -20,13 +20,18 @@
 </div>
 {% if unread_defense_events %}
 <section class="defense-alerts" aria-labelledby="defense-alert-title">
-    <h2 id="defense-alert-title">Actions Taken Against You</h2>
+    <div class="defense-alert-head">
+        <h2 id="defense-alert-title">Actions Taken Against You</h2>
+        <button type="button" class="defense-alert-dismiss" aria-label="Dismiss actions taken against you">Acknowledge &amp; Continue</button>
+    </div>
+    <div class="defense-alert-list">
     {% for event in unread_defense_events %}
     <div class="defense-alert {{ 'defense-win' if event.status == 'SUCCESS' else 'defense-loss' if event.status == 'DEFEAT' else 'defense-notice' }}">
         <strong>{{ event.message }}</strong>
         <time>{{ event.occurred_at[:16] }}</time>
     </div>
     {% endfor %}
+    </div>
 </section>
 {% endif %}
 <div id="terminal" role="log" aria-live="polite">
