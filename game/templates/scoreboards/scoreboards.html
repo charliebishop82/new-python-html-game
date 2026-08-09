@@ -4,6 +4,9 @@
 <div id="page-content">
     <a href="{{ url_for('dashboard.index') }}" class="back-link">← Back to Dashboard</a>
     <h2 class="page-title">🏆 SCOREBOARDS</h2>
+    <h3 style="color:var(--amber);margin-bottom:8px;">Crew Standings</h3>
+    {% if crew_board %}<table style="margin-bottom:24px;"><tr><th>#</th><th>Crew</th><th>Members</th><th>Rating</th><th>PvP</th><th>Bosses</th><th>World Damage</th></tr>
+    {% for c in crew_board %}<tr><td>{{ loop.index }}</td><td>{{ c.name }} [{{ c.tag }}]</td><td>{{ c.members }}</td><td>{{ c.rating|int }}</td><td>{{ c.pvp_wins }}</td><td>{{ c.boss_wins }}</td><td>{{ c.world_damage|int }}</td></tr>{% endfor %}</table>{% else %}<p>No crews have been founded.</p>{% endif %}
 
     <!-- TOP LEVEL / XP -->
     <h3 style="color:var(--amber);margin-bottom:8px;">Top Level / XP</h3>

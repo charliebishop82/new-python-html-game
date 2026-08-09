@@ -495,11 +495,13 @@ def _award_action_xp(player_id: int, amount: int) -> int:
         return 0
     multiplier = float(get_player_bonus_profile(player_id).get("xp_multiplier", 0) or 0)
     amount = max(0, int(amount * (1 + multiplier)))
-    new_xp = player["xp"] + amount
+    from crews import contribute_earnings
+    net_amount, _unused_credits = contribute_earnings(player_id, amount, 0, "COMBAT_ACTION")
+    new_xp = player["xp"] + net_amount
     with exclusive_transaction():
         execute_write("UPDATE players SET xp=? WHERE id=?", (new_xp, player_id))
     engine.check_level_up(player_id, new_xp, player["level"])
-    return amount
+    return net_amount
 
 
 def _pvp_steal_cascade(attacker_id: int, defender_id: int,
@@ -552,11 +554,13 @@ def _pvp_steal_cascade(attacker_id: int, defender_id: int,
         steal_pct = steal_cr_pct + steal_bonus
         amount    = max(0, int(defender["credits"] * steal_pct))
         if amount > 0:
+            from crews import contribute_earnings
+            _unused_xp, net_amount = contribute_earnings(attacker_id, 0, amount, "PVP_STEAL")
             with exclusive_transaction():
                 execute_write("UPDATE players SET credits = credits - ? WHERE id = ?",
                               (amount, defender_id))
                 execute_write("UPDATE players SET credits = credits + ? WHERE id = ?",
-                              (amount, attacker_id))
+                              (net_amount, attacker_id))
             _announce_pvp_theft(attacker_id, defender_id, credits=amount)
             return {"credits": amount, "xp_bonus": 0}
 
@@ -681,10 +685,12 @@ def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
         opponent["level"] * (cr_multiplier + steal_bonus * cr_multiplier) *
         (1 + credit_bonus)
     )
+    from crews import contribute_earnings
+    _unused_xp, net_credits = contribute_earnings(player_id, 0, credits_stolen, "ENCOUNTER_STEAL")
     with exclusive_transaction():
         execute_write("UPDATE players SET credits = credits + ? WHERE id = ?",
-                      (credits_stolen, player_id))
-    return {"credits": credits_stolen}
+                      (net_credits, player_id))
+    return {"credits": net_credits}
 
 def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
     """Process the queued brace action against validated game state."""
@@ -1419,6 +1425,8 @@ def _finalize_world_boss_attempt(session_id: int, state: dict,
     from contracts import record_progress
     record_progress(player["id"], "WORLD_BOSS_ATTEMPTS", 1)
     record_progress(player["id"], "DAMAGE_DEALT", damage)
+    from crews import divert_awarded_earnings
+    divert_awarded_earnings(player["id"], xp, credits, "WORLD_BOSS_ATTEMPT")
     return {"result_type": result_type, "flavor": flavor_text,
             "xp_earned": xp, "credits_stolen": credits,
             "item_stolen": None, "drops": None}
@@ -1804,6 +1812,19 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
     elif session["combat_type"] == "PVP" and state.get("defender"):
         record_progress(state["defender"]["id"], "PVP_WINS", 1)
         record_progress(state["defender"]["id"], "COMBAT_WINS", 1)
+
+    from crews import divert_awarded_earnings, record_crew_score
+    attacker_credits = credits_stolen if winner_is_attacker else 0
+    if drops:
+        attacker_credits += int(drops.get("credits", 0) or 0)
+    divert_awarded_earnings(attacker["id"], xp_earned, attacker_credits, f"{session['combat_type']}_COMBAT")
+    if winner_is_attacker:
+        score_type = {"PVP":"PVP_WIN","BOSS":"BOSS_WIN","MINION":"MINION_WIN"}.get(session["combat_type"])
+        if score_type:
+            record_crew_score(attacker["id"], score_type, {"PVP":5,"BOSS":3,"MINION":1}[session["combat_type"]])
+    elif session["combat_type"] == "PVP" and state.get("defender"):
+        divert_awarded_earnings(state["defender"]["id"], defender_xp + winner_bonus_xp, credits_stolen, "PVP_DEFENSE")
+        record_crew_score(state["defender"]["id"], "PVP_WIN", 5)
 
     return {
         "winner_side":     winner_side,

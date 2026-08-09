@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Crews{% endblock %}
+{% block content %}
+<section class="intel-page">
+  <h1>Crews</h1>
+  <p class="page-deck">Film crews, criminal crews, action ensembles. Members cannot attack one another. Maximum size: {{ capacity }}.</p>
+  {% if request.args.get('error') %}<p class="error-message">{{ request.args.get('error') }}</p>{% endif %}
+  {% for i in invitations %}<article class="contract-card"><h3>Invitation from {{ i.name }} [{{ i.tag }}]</h3>
+    <form method="post" action="{{ url_for('crews.resolve',request_id=i.id,decision='accept') }}"><button>Accept</button></form>
+    <form method="post" action="{{ url_for('crews.resolve',request_id=i.id,decision='decline') }}"><button>Decline</button></form>
+  </article>{% endfor %}
+  {% if member %}<p>You belong to <a href="{{ url_for('crews.headquarters',crew_id=member.crew_id) }}">{{ member.crew_name }} [{{ member.tag }}]</a>.</p>
+  {% else %}<details class="contract-card"><summary>Create a Crew</summary><form method="post" action="{{ url_for('crews.create') }}">
+    <label>Name<input name="name" required></label><label>Tag<input name="tag" maxlength="6" required></label>
+    <label>Description<textarea name="description"></textarea></label><label>Motto<input name="motto"></label><button>Create Crew</button>
+  </form></details>{% endif %}
+  <div class="intel-grid">{% for c in crews %}<article class="intel-card">
+    <h2>{{ c.name }} [{{ c.tag }}]</h2><p><b>{{ c.reputation }}</b></p><p>{{ c.description }}</p>
+    <p><b>{{ c.members }}/{{ capacity }}</b> members · PvP {{ c.pvp_score|int }} · Boss {{ c.boss_score|int }} · World damage {{ c.world_damage|int }}</p>
+    <a href="{{ url_for('crews.headquarters',crew_id=c.id) }}">View crew</a>
+    {% if not member and c.members<capacity %}<form method="post" action="{{ url_for('crews.apply',crew_id=c.id) }}"><button>Apply to Join</button></form>{% endif %}
+  </article>{% else %}<p>No crews have been founded. Everyone is a Free Agent.</p>{% endfor %}</div>
+</section>
+{% endblock %}

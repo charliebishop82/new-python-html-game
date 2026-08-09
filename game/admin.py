@@ -88,6 +88,8 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/shop/<int:listing_id>/remove", "admin_shop_remove", admin_shop_remove, methods=["POST"])
     app.add_url_rule("/admin/analytics",              "admin_analytics",    admin_analytics)
     app.add_url_rule("/admin/npcs",                   "admin_npcs",         admin_npcs,          methods=["GET","POST"])
+    app.add_url_rule("/admin/crews",                  "admin_crews",        admin_crews)
+    app.add_url_rule("/admin/crews/member/<int:pid>/remove", "admin_crew_remove", admin_crew_remove, methods=["POST"])
     app.add_url_rule("/admin/npcs/audit",             "admin_npc_audit",    admin_npc_audit)
     app.add_url_rule("/admin/npcs/<int:pid>/edit",    "admin_npc_edit",     admin_npc_edit,      methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/run",     "admin_npc_run",      admin_npc_run,       methods=["POST"])
@@ -96,6 +98,31 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/npcs/<int:pid>/retire",  "admin_npc_retire",   admin_npc_retire,    methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/inventory/grant", "admin_npc_grant", admin_npc_grant, methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/inventory/<int:inv_id>/remove", "admin_npc_remove", admin_npc_remove, methods=["POST"])
+
+
+def admin_crews():
+    """Inspect membership, pools, pending requests, scores, and recent crew events."""
+    crews = execute("""SELECT c.*,(SELECT COUNT(*) FROM crew_memberships WHERE crew_id=c.id) members,
+      COALESCE((SELECT SUM(points) FROM crew_score_events WHERE crew_id=c.id),0) score
+      FROM crews c WHERE c.disbanded_at IS NULL ORDER BY score DESC""")
+    members = execute("""SELECT cm.*,p.character_name,c.name crew_name,
+      CASE WHEN np.player_id IS NULL THEN 'PLAYER' ELSE 'NPC' END character_type
+      FROM crew_memberships cm JOIN players p ON p.id=cm.player_id JOIN crews c ON c.id=cm.crew_id
+      LEFT JOIN npc_profiles np ON np.player_id=p.id ORDER BY c.name,cm.role,p.character_name""")
+    requests = execute("""SELECT r.*,p.character_name,c.name crew_name FROM crew_requests r
+      JOIN players p ON p.id=r.player_id JOIN crews c ON c.id=r.crew_id
+      WHERE r.status='PENDING' ORDER BY r.id DESC""")
+    logs = execute("SELECT * FROM crew_logs ORDER BY id DESC LIMIT 100")
+    from crews import crew_capacity
+    return render_template("admin/crews.html",crews=crews,members=members,requests=requests,
+                           logs=logs,capacity=crew_capacity())
+
+
+def admin_crew_remove(pid):
+    """Remove a member using the ordinary audited leave path and its PvP cooldown."""
+    from crews import leave_crew
+    leave_crew(pid)
+    return redirect(url_for("admin_crews",feedback="Crew member returned to Free Agent status."))
 
 
 def admin_world_boss():
@@ -942,11 +969,14 @@ def admin_npc_edit(pid: int):
     for name in ("player_hunter", "boss_killer", "world_boss_hunter", "hoarder", "thief", "aggression",
                  "self_preservation", "repair_tendency"):
         fields[name] = max(0, min(100, request.form.get(name, type=int, default=0)))
+    fields["actions_per_day"] = max(1, min(24, request.form.get(
+        "actions_per_day", type=int, default=4
+    )))
     fields["enabled"] = 1 if request.form.get("enabled") else 0
     with exclusive_transaction():
         execute_write(
             """UPDATE npc_profiles SET player_hunter=?,boss_killer=?,world_boss_hunter=?,hoarder=?,thief=?,aggression=?,
-               self_preservation=?,repair_tendency=?,enabled=? WHERE player_id=?""",
+               self_preservation=?,repair_tendency=?,actions_per_day=?,enabled=? WHERE player_id=?""",
             (*fields.values(), pid)
         )
     return redirect(url_for("admin_npcs", feedback="NPC behavior updated."))
@@ -1113,6 +1143,8 @@ def _create_npc(form) -> int:
     _award_starter_gear(pid)
     profile = execute_one("SELECT * FROM npc_profiles WHERE player_id=?", (pid,))
     _equip_best_items(pid, profile)
+    from contracts import ensure_daily_contract
+    ensure_daily_contract(pid)
     return pid
 
 

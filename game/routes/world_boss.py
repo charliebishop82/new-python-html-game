@@ -41,6 +41,12 @@ def index():
            AND status!='AWARDED' LIMIT 1""", (reward_event["id"], reward_event["place"])
     ))
     ranking = standings(event["id"]) if event else []
+    crew_ranking = execute(
+        """SELECT c.name,c.tag,SUM(se.points) damage,COUNT(DISTINCT se.player_id) contributors
+           FROM crew_score_events se JOIN crews c ON c.id=se.crew_id
+           WHERE se.event_type='WORLD_BOSS_DAMAGE' AND se.world_boss_event_id=?
+           GROUP BY c.id ORDER BY damage DESC,c.name""", (event["id"],)
+    ) if event else []
     personal = next((dict(row, rank=index + 1) for index, row in enumerate(ranking)
                      if row["player_id"] == g.player["id"]), None)
     damage_types = ("blade", "blunt", "ballistic", "energy", "arcane",
@@ -56,6 +62,7 @@ def index():
              else 1)
     return render_template("world_boss/index.html", event=event,
                            standings=ranking, personal=personal, logs=logs,
+                           crew_standings=crew_ranking,
                            resistances=resistances, weaknesses=weaknesses,
                            event_loot=_event_loot(event["world_boss_id"]) if event else [],
                            current_phase=phase,

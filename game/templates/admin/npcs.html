@@ -2,7 +2,7 @@
 {% block title %}NPCs{% endblock %}
 {% block content %}
 <h1>Automated Player Characters</h1>
-<p style="color:#666;margin-bottom:16px;">NPC wake times are staggered through the UTC day. AP alone limits their actions, with catch-up attempts during the final hour. World Boss priority controls how often an NPC joins the active weekly shared fight.</p>
+<p style="color:#666;margin-bottom:16px;">Ordinary NPC turns use daily-randomized UTC slots and a global spacing gap. At most two NPCs enter an ordinary scheduling window. PvP wake-ups and unresolved-combat recovery are exceptions; the final UTC hour still provides AP catch-up opportunities.</p>
 
 <h2>Create NPC</h2>
 <form id="create-npc-form" method="POST" action="/admin/npcs" style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;background:#111;padding:12px;border:1px solid #222;">
@@ -29,6 +29,7 @@
         {% for field,label in [('player_hunter','Hunter'),('boss_killer','Boss'),('world_boss_hunter','World Boss'),('hoarder','Hoarder'),('thief','Thief'),('aggression','Aggression'),('self_preservation','Safety'),('repair_tendency','Repair')] %}
         <label>{{ label }}<br><input style="width:70px" type="number" name="{{ field }}" min="0" max="100" value="{{ npc[field] }}"></label>
         {% endfor %}
+        <label title="Target ordinary action opportunities spread across the UTC day. AP and legal choices still limit actual actions.">Actions/day<br><input style="width:70px" type="number" name="actions_per_day" min="1" max="24" value="{{ npc.actions_per_day }}"></label>
         <label><input type="checkbox" name="enabled" {% if npc.enabled %}checked{% endif %}> Enabled</label>
         <button class="btn">Save</button>
     </form>

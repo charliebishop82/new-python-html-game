@@ -31,10 +31,12 @@ def _ensure_handlers_loaded():
 def run_due_npc_turns(now: datetime | None = None) -> dict:
     """Run staggered AP-driven NPC decisions.
 
-    There is one staggered wake time in each three-hour window plus a small
-    genuine random chance each minute. PvP contact queues one or two additional
-    wake actions. During 23:00-23:55 UTC, NPCs receive repeated opportunities
-    to use remaining AP. AP is never erased; only real player actions spend it.
+    Each NPC's configured daily opportunities are assigned stable randomized
+    positions across the UTC day. A global gap and two-actor cap prevent an
+    ordinary activity burst. PvP contact and unresolved combat bypass those
+    pacing limits. During 23:00-23:55 UTC, at most two ordinary NPCs per pass
+    receive catch-up opportunities to use remaining AP. AP is never erased;
+    only real player actions spend it.
     """
     now = now or datetime.utcnow()
     profiles = execute(
@@ -46,12 +48,31 @@ def run_due_npc_turns(now: datetime | None = None) -> dict:
            ORDER BY COALESCE(np.last_action_at, '') ASC"""
     )
     results = []
+    ordinary_actors = 0
+    max_ordinary_actors = 2
+    planned_actions = sum(max(1, int(p.get("actions_per_day", 4) or 4)) for p in profiles)
+    # Spread the configured daily action budget across the full UTC day. With
+    # the current seven NPCs this targets roughly one ordinary actor per hour.
+    global_gap = max(15, min(120, 1440 // max(1, planned_actions)))
+    latest_action = max(
+        (datetime.fromisoformat(p["last_action_at"]) for p in profiles if p.get("last_action_at")),
+        default=None,
+    )
     for profile in profiles:
         waking = int(profile.get("wake_actions", 0) or 0)
         if waking and profile["in_combat"] and not profile["has_active_attack"]:
             continue
-        if not profile["has_active_attack"] and not waking and not _npc_is_due(profile, now):
-            continue
+        exceptional = bool(waking or profile["has_active_attack"])
+        if not exceptional:
+            if ordinary_actors >= max_ordinary_actors:
+                continue
+            # The 23:00 catch-up hour may use two actors per scheduler pass so
+            # unused AP is not stranded. Earlier ordinary turns honor the
+            # global spacing target in addition to their personal slot.
+            if now.hour != 23 and latest_action and now - latest_action < timedelta(minutes=global_gap):
+                continue
+            if not _npc_is_due(profile, now):
+                continue
         try:
             wake_mode = waking > 0
             attempts = waking if waking else (12 if now.hour == 23 else 1)
@@ -78,35 +99,46 @@ def run_due_npc_turns(now: datetime | None = None) -> dict:
                         break
                 else:
                     no_ap_progress = 0
+            if not exceptional:
+                ordinary_actors += 1
+                latest_action = now
         except Exception as exc:
             logger.exception("NPC turn failed for player %d", profile["player_id"])
             _log(profile["player_id"], "ERROR", "Turn raised an exception", str(exc))
-    return {"processed": len(results), "results": results}
+    return {"processed": len(results), "ordinary_actors": ordinary_actors,
+            "ordinary_actor_cap": max_ordinary_actors, "target_gap_minutes": global_gap,
+            "results": results}
 
 
 def _npc_is_due(profile: dict, now: datetime) -> bool:
-    """Provide the internal npc is due operation used by this module."""
+    """Return whether the NPC's next deterministic-but-jittered daily slot has arrived."""
     last = None
     if profile.get("last_action_at"):
         try:
             last = datetime.fromisoformat(profile["last_action_at"])
         except ValueError:
             pass
-    settings = get_all_settings()
-    random_chance = max(0.0, min(1.0, float(settings.get(
-        "NPC_RANDOM_WAKE_CHANCE", cfg.NPC_RANDOM_WAKE_CHANCE
-    ))))
-    if (last is None or now - last >= timedelta(minutes=15)) and random.random() < random_chance:
-        return True
     if now.hour == 23:
         # One catch-up attempt per five-minute scheduler slot.
         slot = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
         return last is None or last < slot
-    window_start = now.replace(hour=(now.hour // 3) * 3, minute=0, second=0, microsecond=0)
-    identity = f"{now.date().isoformat()}:{profile['player_id']}:{now.hour // 3}".encode()
-    offset = int.from_bytes(hashlib.sha256(identity).digest()[:4], "big") % 165
-    scheduled = window_start + timedelta(minutes=offset)
-    return now >= scheduled and (last is None or last < scheduled)
+    actions_today = int(profile.get("actions_today", 0) or 0)
+    daily_target = max(1, int(profile.get("actions_per_day", 4) or 4))
+    if actions_today >= daily_target:
+        return False
+    slot_width = 1440 / daily_target
+    identity = f"{now.date().isoformat()}:{profile['player_id']}:{actions_today}".encode()
+    # Each action receives a stable daily point inside its own evenly divided
+    # time band. Clones therefore do not wake together, but restarts do not
+    # reshuffle today's already-promised schedule.
+    fraction = int.from_bytes(hashlib.sha256(identity).digest()[:4], "big") / 2**32
+    scheduled_minute = int(actions_today * slot_width + fraction * slot_width)
+    scheduled = now.replace(hour=0,minute=0,second=0,microsecond=0) + timedelta(minutes=scheduled_minute)
+    if now >= scheduled and (last is None or last < scheduled):
+        return True
+    # A rare out-of-slot decision keeps behavior organic, but still passes the
+    # global gap and two-actor caps enforced by the caller.
+    return bool(last and now-last >= timedelta(hours=2) and random.random() < 0.002)
 
 
 def run_npc_turn(player_id: int) -> dict:
@@ -1084,11 +1116,13 @@ def _npc_shop_transaction(player_id: int, action_type: str, payload: dict) -> di
 
 def _eligible_pvp_targets(player: dict) -> list[dict]:
     """Provide the internal eligible pvp targets operation used by this module."""
-    return execute(
+    from crews import are_pvp_protected
+    targets = execute(
         """SELECT p.* FROM players p WHERE p.id != ? AND p.is_banned=0 AND p.in_combat=0
            AND p.level>=3 AND p.current_hp>1 AND p.level<=?""",
         (player["id"], player["level"] + 4)
     )
+    return [target for target in targets if not are_pvp_protected(player["id"], target["id"])]
 
 
 def _choose_pvp_target(player: dict, targets: list[dict], aggression: int) -> dict:
@@ -1319,8 +1353,9 @@ def _finish_turn(profile: dict, decision: str, reason: str, result) -> dict:
     _assign_pending_levelup(profile["player_id"], profile)
     now = datetime.utcnow().isoformat()
     with exclusive_transaction():
-        execute_write("UPDATE npc_profiles SET last_action_at=? WHERE player_id=?",
-                      (now, profile["player_id"]))
+        execute_write("""UPDATE npc_profiles SET last_action_at=?,
+                         actions_today=actions_today+? WHERE player_id=?""",
+                      (now, 0 if decision in ("WAIT","SKIP") else 1, profile["player_id"]))
     _log(profile["player_id"], decision, reason, result)
     return {"player_id": profile["player_id"], "decision": decision, "result": result}
 

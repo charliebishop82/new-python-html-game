@@ -27,6 +27,13 @@ def index():
     top_minion_each= _top_minion_kills_per_minion(cutoff_expr)
     top_credits    = _top_credits(cutoff_expr)
     shame_board    = _shame_board(cutoff_expr)
+    crew_board     = execute(
+        """SELECT c.name,c.tag,(SELECT COUNT(*) FROM crew_memberships WHERE crew_id=c.id) members,
+          COALESCE((SELECT SUM(points) FROM crew_score_events WHERE crew_id=c.id),0) rating,
+          COALESCE((SELECT COUNT(*) FROM crew_score_events WHERE crew_id=c.id AND event_type='PVP_WIN'),0) pvp_wins,
+          COALESCE((SELECT COUNT(*) FROM crew_score_events WHERE crew_id=c.id AND event_type='BOSS_WIN'),0) boss_wins,
+          COALESCE((SELECT SUM(points) FROM crew_score_events WHERE crew_id=c.id AND event_type='WORLD_BOSS_DAMAGE'),0) world_damage
+          FROM crews c WHERE c.disbanded_at IS NULL ORDER BY rating DESC,c.name""")
 
     return render_template(
         "scoreboards/scoreboards.html",
@@ -38,6 +45,7 @@ def index():
         top_minion_each=top_minion_each,
         top_credits=top_credits,
         shame_board=shame_board,
+        crew_board=crew_board,
     )
 
 

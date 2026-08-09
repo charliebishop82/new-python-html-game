@@ -194,8 +194,12 @@ def settle_expired_auctions() -> dict:
                 winner = execute_one("SELECT character_name FROM players WHERE id=?", (listing["current_bidder_id"],))
                 execute_write("UPDATE inventory_items SET player_id=?,acquired_method='AUCTION_WIN' WHERE id=?",
                               (listing["current_bidder_id"], listing["inventory_item_id"]))
+                from crews import contribute_earnings
+                _unused_xp, seller_net = contribute_earnings(
+                    listing["seller_player_id"], 0, listing["current_bid"], "AUCTION_SALE"
+                )
                 execute_write("UPDATE players SET credits=credits+? WHERE id=?",
-                              (listing["current_bid"], listing["seller_player_id"]))
+                              (seller_net, listing["seller_player_id"]))
                 execute_write(
                     """UPDATE special_item_registry SET status='IN_INVENTORY',current_owner_player_id=?,
                        last_acquired_method='AUCTION_WIN',updated_at=datetime('now') WHERE inventory_item_id=?""",

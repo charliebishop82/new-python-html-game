@@ -182,8 +182,10 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
     with exclusive_transaction():
         if effect == "CREDITS":
             if amount >= 0:
+                from crews import contribute_earnings
+                net_xp, net_credits = contribute_earnings(player_id, 0, amount, "RANDOM_EVENT")
                 execute_write("UPDATE players SET credits = credits + ? WHERE id = ?",
-                              (amount, player_id))
+                              (net_credits, player_id))
             else:
                 execute_write(
                     "UPDATE players SET credits = MAX(0, credits + ?) WHERE id = ?",
@@ -790,6 +792,9 @@ def _get_eligible_opponents(player: dict, settings: dict) -> list[dict]:
     # Filter eligibility
     eligible = []
     for p in all_players:
+        from crews import are_pvp_protected
+        if are_pvp_protected(player["id"], p["id"]):
+            continue
         if p["level"] < 3:
             continue  # Level 1-2 protected
         if p["current_hp"] <= 1:
@@ -843,6 +848,9 @@ def action_pvp_fight():
     target = execute_one("SELECT * FROM players WHERE id = ?", (target_id,))
     if target is None:
         return _error_fragment("Opponent not found.")
+    from crews import are_pvp_protected
+    if are_pvp_protected(player["id"], target_id):
+        return _error_fragment("Crewmates and recently departed crewmates cannot attack one another.")
     if target["level"] < 3:
         return _error_fragment("That player cannot be attacked.")
     if target["current_hp"] <= 1:
@@ -889,6 +897,10 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
 
     player  = get_player(player_id)
     target  = combat_actions.apply_equipped_stat_bonuses(get_player(target_id))
+
+    from crews import are_pvp_protected
+    if are_pvp_protected(player_id, target_id):
+        return {"error": "Crewmates and recently departed crewmates cannot attack one another."}
 
     if player["in_combat"] or target["in_combat"]:
         return {"error": "A player is already in combat."}

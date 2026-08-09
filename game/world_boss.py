@@ -256,6 +256,9 @@ def record_damage(event_id, player_id, damage):
         _log(event_id, player_id, "DAMAGE",
              f"{player['character_name']} dealt {applied} damage. {remaining} HP remains.",
              {"damage": applied, "remaining_hp": remaining})
+        if applied:
+            from crews import record_crew_score
+            record_crew_score(player_id, "WORLD_BOSS_DAMAGE", applied, event_id)
         defeated = remaining <= 0
     if defeated:
         close_event(event_id, "DEFEATED", player_id)
@@ -280,6 +283,26 @@ def close_event(event_id, reason="WEEK_ENDED", defeated_by=None):
                    VALUES(?,?,?,?)""", (event_id, place, row["player_id"],
                                          (now + timedelta(hours=hours * place)).isoformat())
             )
+        # Secondary crew prizes reward only human members who personally
+        # participated. NPC damage counts toward placement but NPCs receive no payout.
+        crew_ranked = execute(
+            """SELECT crew_id,SUM(points) damage FROM crew_score_events
+               WHERE event_type='WORLD_BOSS_DAMAGE' AND world_boss_event_id=?
+               GROUP BY crew_id ORDER BY damage DESC,crew_id LIMIT 2""", (event_id,)
+        )
+        for crew_place, crew_row in enumerate(crew_ranked, 1):
+            payout = 300 if crew_place == 1 else 150
+            recipients = execute(
+                """SELECT DISTINCT cm.player_id,p.character_name FROM crew_memberships cm
+                   JOIN players p ON p.id=cm.player_id
+                   JOIN world_boss_contributions wc ON wc.player_id=p.id AND wc.event_id=? AND wc.damage>0
+                   LEFT JOIN npc_profiles np ON np.player_id=p.id
+                   WHERE cm.crew_id=? AND np.player_id IS NULL""", (event_id,crew_row["crew_id"])
+            )
+            for recipient in recipients:
+                execute_write("UPDATE players SET credits=credits+? WHERE id=?",(payout,recipient["player_id"]))
+                execute_write("""INSERT INTO daily_feed(feed_scope,player_id,flavor_text,event_category)
+                  VALUES('PERSONAL',?,?, 'CREW')""",(recipient["player_id"],f"Crew world-boss placement #{crew_place}: +{payout} credits."))
         if not ranked:
             execute_write(
                 """UPDATE world_boss_events SET status='COMPLETED',rewards_completed_at=?

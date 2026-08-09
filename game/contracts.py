@@ -61,11 +61,15 @@ def record_progress(player_id: int, metric: str, amount: int = 1) -> dict | None
              assignment["id"]),
         )
         if completed:
+            from crews import contribute_earnings
+            net_xp, net_credits = contribute_earnings(
+                player_id, assignment["reward_xp"], assignment["reward_credits"], "DAILY_CONTRACT"
+            )
             cap = int(get_all_settings().get("AP_CARRYOVER_CAP", cfg.AP_CARRYOVER_CAP))
             execute_write(
                 """UPDATE players SET xp=xp+?,credits=credits+?,
                    current_ap=MIN(?,current_ap+?) WHERE id=?""",
-                (assignment["reward_xp"], assignment["reward_credits"], cap,
+                (net_xp, net_credits, cap,
                  assignment["reward_ap"], player_id),
             )
             message = (f"Daily contract complete: {assignment['name']}. "
@@ -76,6 +80,8 @@ def record_progress(player_id: int, metric: str, amount: int = 1) -> dict | None
                    VALUES('PERSONAL',?,?,'CONTRACT')""", (player_id, message)
             )
     if completed:
+        from crews import record_crew_score
+        record_crew_score(player_id, "CONTRACT_COMPLETE", 4)
         p = execute_one("SELECT xp,level FROM players WHERE id=?", (player_id,))
         engine.check_level_up(player_id, p["xp"], p["level"])
     return _assignment(player_id, _today())

@@ -55,6 +55,10 @@ def midnight_reset():
     _step7_midnight_encounters()         # step 7
     _step8_9_10_shop_rotation()          # steps 8-10
     _step11_pending_feed_entries()       # step 11
+    from crews import distribute_pools
+    distribute_pools()
+    from crews import reevaluate_npc_crews
+    reevaluate_npc_crews()
     from contracts import midnight_contract_turnover
     midnight_contract_turnover()
 
@@ -161,6 +165,7 @@ def _step4_5_award_daily_ap():
     }
 
     with exclusive_transaction():
+        execute_write("UPDATE npc_profiles SET actions_today=0")
         for p in players:
             equipped = get_player_equipped(p)
             effective_end = p["end_stat"] + sum(

@@ -324,6 +324,8 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
     sell_bonus = _get_special_sell_bonus(player)
     final_pct  = min(sell_pct + sell_bonus, 1.0)
     sell_price = max(0, int(detail["credit_cost"] * final_pct))
+    from crews import contribute_earnings
+    _unused_xp, net_sell_price = contribute_earnings(player_id, 0, sell_price, "SHOP_SALE")
 
     with exclusive_transaction():
         # Delete from inventory
@@ -331,7 +333,7 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
         # Credit player
         execute_write(
             "UPDATE players SET credits = credits + ? WHERE id = ?",
-            (sell_price, player_id)
+            (net_sell_price, player_id)
         )
         # Create shop listing
         listing_id = execute_write(

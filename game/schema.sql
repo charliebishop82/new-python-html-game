@@ -77,6 +77,73 @@ CREATE TABLE IF NOT EXISTS player_daily_contracts (
 CREATE INDEX IF NOT EXISTS idx_daily_contract_player
     ON player_daily_contracts(player_id, contract_date, status);
 
+-- Player-created social teams. NPCs may join but cannot found a crew.
+CREATE TABLE IF NOT EXISTS crews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    tag TEXT UNIQUE NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    motto TEXT NOT NULL DEFAULT '',
+    founder_player_id INTEGER NOT NULL REFERENCES players(id),
+    pooled_xp INTEGER NOT NULL DEFAULT 0,
+    pooled_credits INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    disbanded_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS crew_memberships (
+    player_id INTEGER PRIMARY KEY REFERENCES players(id),
+    crew_id INTEGER NOT NULL REFERENCES crews(id),
+    role TEXT NOT NULL DEFAULT 'MEMBER',
+    joined_at TEXT NOT NULL DEFAULT (datetime('now')),
+    former_crew_id INTEGER,
+    pvp_cooldown_until TEXT
+);
+
+CREATE TABLE IF NOT EXISTS crew_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    crew_id INTEGER NOT NULL REFERENCES crews(id),
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    request_type TEXT NOT NULL CHECK(request_type IN ('APPLICATION','INVITATION')),
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    created_by_player_id INTEGER REFERENCES players(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS crew_contributions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    crew_id INTEGER NOT NULL REFERENCES crews(id),
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    xp_amount INTEGER NOT NULL DEFAULT 0,
+    credit_amount INTEGER NOT NULL DEFAULT 0,
+    source TEXT NOT NULL,
+    contributed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS crew_score_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    crew_id INTEGER NOT NULL REFERENCES crews(id),
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    event_type TEXT NOT NULL,
+    points REAL NOT NULL DEFAULT 0,
+    world_boss_event_id INTEGER,
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS crew_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    crew_id INTEGER NOT NULL REFERENCES crews(id),
+    player_id INTEGER REFERENCES players(id),
+    event_type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_crew_members ON crew_memberships(crew_id);
+CREATE INDEX IF NOT EXISTS idx_crew_requests ON crew_requests(crew_id,status);
+CREATE INDEX IF NOT EXISTS idx_crew_scores ON crew_score_events(crew_id,event_type,occurred_at);
+
 -- Automated player characters. A profile row marks a normal player as an NPC.
 -- Automation motivations and scheduling state attached to otherwise normal player characters.
 CREATE TABLE IF NOT EXISTS npc_profiles (

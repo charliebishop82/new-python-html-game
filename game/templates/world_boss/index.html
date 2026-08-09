@@ -89,6 +89,10 @@
     <section><h3>Damage Standings</h3><ol id="wb-standings">{% for row in standings %}<li><strong>#{{ loop.index }} {{ row.character_name }}</strong><span>{{ row.damage }} damage &middot; {{ row.attempts }} attempts</span></li>{% else %}<li class="muted">No one has challenged this boss yet.</li>{% endfor %}</ol></section>
     <section><h3>Live Boss Log</h3><div id="wb-log">{% for row in logs %}<div data-log-id="{{ row.id }}">[{{ row.occurred_at[11:19] }}] {{ row.message }}</div>{% else %}<div class="muted">The event is quiet.</div>{% endfor %}</div></section>
   </div>
+  <section class="wb-rewards"><div class="sheet-kicker">CREW RAID STANDINGS</div>
+    <h3>Ensemble Damage</h3><ol>{% for crew in crew_standings %}<li><strong>#{{ loop.index }} {{ crew.name }} [{{ crew.tag }}]</strong> — {{ crew.damage|int }} damage from {{ crew.contributors }} contributor{{ '' if crew.contributors == 1 else 's' }}</li>{% else %}<li class="muted">No crew has dealt damage yet. Free Agents remain eligible for individual placement.</li>{% endfor %}</ol>
+    <p class="muted">The top two crews earn weekly credit bonuses for members who personally participated. NPCs contribute to placement but do not receive that separate bonus.</p>
+  </section>
 
   {% if event_loot %}<section class="wb-rewards"><div class="sheet-kicker">PLACEMENT REWARDS</div><h3>Weekly Prize Vault</h3>
     <p>First place chooses first, second chooses from the remaining two, and third receives the final item. All three also gain one full level.</p>
