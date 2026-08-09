@@ -23,6 +23,7 @@ AP_COST_PVP                            = 3
 AP_COST_TAVERN                         = 2
 AP_COST_BLACKSMITH                     = 2
 AP_COST_SHOP                           = 1
+AP_COST_AUCTION                        = 1
 AP_COST_ESCAPE                         = 1
 AP_COST_COMBAT_EXTENSION               = 1
 TRICKLE_AP_AMOUNT                      = 3
@@ -94,6 +95,7 @@ ENEMY_DAMAGE_SCALE                     = 0.85
 NPC_UPGRADE_MIN_UNEQUIPPED             = 2
 NPC_UPGRADE_MIN_IMPROVEMENT            = 0.15
 NPC_OBSERVE_MAX_ATTEMPTS               = 1
+NPC_RANDOM_WAKE_CHANCE                 = 0.003
 AP_COST_WORLD_BOSS                     = 4
 WORLD_BOSS_HP_MULTIPLIER               = 1.0
 WORLD_BOSS_ATTEMPT_XP                  = 10
@@ -124,7 +126,7 @@ XP_CURVE = {
 SETTING_TYPES = {
     "BASE_DAILY_AP": int, "AP_CARRYOVER_CAP": int, "AP_COST_BOSS": int,
     "AP_COST_PVP": int, "AP_COST_TAVERN": int, "AP_COST_BLACKSMITH": int,
-    "AP_COST_SHOP": int, "AP_COST_ESCAPE": int, "AP_COST_COMBAT_EXTENSION": int,
+    "AP_COST_SHOP": int, "AP_COST_AUCTION": int, "AP_COST_ESCAPE": int, "AP_COST_COMBAT_EXTENSION": int,
     "TRICKLE_AP_AMOUNT": int,
     "TRICKLE_AP_INTERVAL_HOURS": int, "COMBAT_EXTENSION_TIMEOUT": int,
     "MIDNIGHT_BLACKOUT_MINUTES": int, "STARTING_CREDITS": int,
@@ -164,6 +166,7 @@ SETTING_TYPES = {
     "ENEMY_DAMAGE_SCALE": float,
     "NPC_UPGRADE_MIN_UNEQUIPPED": int,
     "NPC_OBSERVE_MAX_ATTEMPTS": int,
+    "NPC_RANDOM_WAKE_CHANCE": float,
     "AP_COST_WORLD_BOSS": int, "WORLD_BOSS_HP_MULTIPLIER": float,
     "WORLD_BOSS_ATTEMPT_XP": int, "WORLD_BOSS_ATTEMPT_CREDITS": int,
     "WORLD_BOSS_REWARD_HOURS": int,

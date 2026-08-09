@@ -79,9 +79,11 @@ def _register_blueprints(app: Flask):
     from routes.scoreboards import bp as scoreboards_bp
     from routes.feeds       import bp as feeds_bp
     from routes.world_boss  import bp as world_boss_bp
+    from routes.auction     import bp as auction_bp
 
     for bp in [auth_bp, dashboard_bp, actions_bp, combat_bp, shop_bp,
-               blacksmith_bp, character_bp, scoreboards_bp, feeds_bp, world_boss_bp]:
+               blacksmith_bp, character_bp, scoreboards_bp, feeds_bp, world_boss_bp,
+               auction_bp]:
         app.register_blueprint(bp)
 
 
@@ -154,6 +156,7 @@ def _start_scheduler(app: Flask):
     from scheduler import midnight_reset, ap_trickle
     from npc import run_due_npc_turns
     from world_boss import process_expired_rewards
+    from routes.auction import settle_expired_auctions
 
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(
@@ -170,9 +173,15 @@ def _start_scheduler(app: Flask):
     )
     scheduler.add_job(
         func=lambda: _run_with_context(app, run_due_npc_turns),
-        trigger=CronTrigger(minute="*/5", timezone="UTC"),
+        trigger=CronTrigger(minute="*", timezone="UTC"),
         id="npc_turns", name="NPC Turns",
         replace_existing=True, misfire_grace_time=240,
+    )
+    scheduler.add_job(
+        func=lambda: _run_with_context(app, settle_expired_auctions),
+        trigger=CronTrigger(minute="*", timezone="UTC"),
+        id="auction_settlement", name="Auction Settlement",
+        replace_existing=True, misfire_grace_time=120,
     )
     scheduler.add_job(
         func=lambda: _run_with_context(app, process_expired_rewards),

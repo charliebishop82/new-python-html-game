@@ -8,6 +8,12 @@
     <div class="term-line term-amber combat-boundary">
         ══════════════════════ {{ 'COMBAT RESUMED' if resumed|default(false) else 'COMBAT BEGINS' }} ══════════════════════
     </div>
+    {% if encounter_type == 'MINION' %}
+    <div class="minion-interruption-banner">
+        ⚠ MINION INTERRUPTION
+        <small>This is not the activity you selected. Your original action is paused and will resume if you survive.</small>
+    </div>
+    {% endif %}
     <div class="term-line term-amber">
         {% if encounter_type == 'WORLD_BOSS' %}
         === WEEKLY WORLD BOSS: {{ opponent.name|upper }} ===

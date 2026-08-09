@@ -14,6 +14,7 @@ from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings,
                       get_player_bonus_profile, get_player_perks)
 from queue_handler import enqueue_and_process, register_handler
+from combat import engine
 import config_defaults as cfg
 
 bp = Blueprint("character", __name__)
@@ -134,7 +135,9 @@ def _get_full_inventory(player: dict) -> list[dict]:
     } - {None}
 
     rows = execute(
-        "SELECT * FROM inventory_items WHERE player_id = ? ORDER BY item_type, acquired_at",
+        """SELECT ii.*,EXISTS(SELECT 1 FROM auction_listings a
+                              WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE') AS is_on_auction
+           FROM inventory_items ii WHERE player_id = ? ORDER BY item_type, acquired_at""",
         (player["id"],)
     )
     result = []
@@ -226,6 +229,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         die_count, die_sides = 1, 4
     attack_stat = str_total if weapon_type == "Melee" else agi_total
     attack_modifier = math.floor(attack_stat / 2)
+    attack_roll_modifier = attack_modifier + engine.proficiency_bonus(player["level"])
     initiative_modifier = math.floor(agi_total / 2) + \
                           int(b.get("initiative_bonus", 0) or 0)
     dodge_modifier = math.floor(agi_total / 2) + math.floor(lck_total / 2)
@@ -285,7 +289,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         "daily_ap": daily_ap, "passive_regen": passive_regen,
         "weapon_name": weapon_name, "weapon_type": weapon_type,
         "damage_die": damage_die, "damage_type": damage_type,
-        "attack_modifier": attack_modifier,
+        "attack_modifier": attack_roll_modifier,
         "initiative_modifier": initiative_modifier, "dodge_modifier": dodge_modifier,
         "steal_modifier": steal_modifier, "steal_roll_bonus": steal_roll_bonus,
         "escape_modifier": escape_modifier, "observe_modifier": observe_modifier,
@@ -376,6 +380,11 @@ def handle_equip(player_id: int, payload: dict) -> dict:
     )
     if inv is None:
         raise ValueError("Item not found in your inventory.")
+    if execute_one(
+        "SELECT 1 FROM auction_listings WHERE inventory_item_id=? AND status='ACTIVE'",
+        (inv_id,)
+    ):
+        raise ValueError("That item is on auction hold and cannot be equipped.")
 
     # Determine correct slot column
     slot_col = {
@@ -460,6 +469,11 @@ def handle_drop_item(player_id: int, payload: dict) -> dict:
     )
     if inv is None:
         raise ValueError("Item not found.")
+    if execute_one(
+        "SELECT 1 FROM auction_listings WHERE inventory_item_id=? AND status='ACTIVE'",
+        (inv_id,)
+    ):
+        raise ValueError("That item is on auction hold and cannot be dropped.")
 
     # Cannot drop equipped items
     equipped = {player.get("equipped_weapon_id"),

@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS npc_profiles (
     repair_tendency    INTEGER NOT NULL DEFAULT 50 CHECK(repair_tendency BETWEEN 0 AND 100),
     actions_per_day    INTEGER NOT NULL DEFAULT 4 CHECK(actions_per_day BETWEEN 1 AND 24),
     actions_today      INTEGER NOT NULL DEFAULT 0,
+    wake_actions       INTEGER NOT NULL DEFAULT 0,
     last_action_at     TEXT,
     created_at         TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -257,6 +258,24 @@ CREATE TABLE IF NOT EXISTS shop_listings (
     price                 INTEGER NOT NULL,
     listed_at             TEXT    NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Player-run, timed sales. The inventory copy remains owned by the seller but
+-- is locked by this row until settlement or cancellation.
+CREATE TABLE IF NOT EXISTS auction_listings (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    seller_player_id  INTEGER NOT NULL REFERENCES players(id),
+    inventory_item_id INTEGER NOT NULL REFERENCES inventory_items(id),
+    minimum_bid       INTEGER NOT NULL CHECK(minimum_bid >= 1),
+    current_bid       INTEGER,
+    current_bidder_id INTEGER REFERENCES players(id),
+    status            TEXT NOT NULL DEFAULT 'ACTIVE',
+    listed_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    ends_at           TEXT NOT NULL,
+    settled_at        TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_auction_item_active
+    ON auction_listings(inventory_item_id) WHERE status='ACTIVE';
+CREATE INDEX IF NOT EXISTS idx_auction_active_end ON auction_listings(status, ends_at);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- FEEDS

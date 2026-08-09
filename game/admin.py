@@ -703,6 +703,8 @@ def admin_ban(pid: int):
         return redirect(url_for("admin_players"))
 
     with exclusive_transaction():
+        from routes.auction import release_player_auctions
+        release_player_auctions(pid)
         execute_write("UPDATE players SET is_banned = 1, credits = 0, in_combat = 0, "
                       "equipped_weapon_id = NULL, equipped_armor_id = NULL, "
                       "equipped_special_id = NULL WHERE id = ?", (pid,))
@@ -745,6 +747,8 @@ def admin_retire_player(pid: int):
         return redirect(url_for("admin_player_detail", pid=pid, error="Character is already retired."))
     now = datetime.utcnow().isoformat()
     with exclusive_transaction():
+        from routes.auction import release_player_auctions
+        release_player_auctions(pid)
         sessions = execute(
             """SELECT id,attacker_player_id,defender_player_id FROM combat_sessions
                WHERE status='ACTIVE' AND (attacker_player_id=? OR defender_player_id=?)""", (pid, pid)
@@ -1248,7 +1252,7 @@ def admin_full_reset():
     operational = [
         "world_boss_event_log", "world_boss_rewards", "world_boss_contributions",
         "world_boss_events",
-        "pending_interrupted_actions",
+        "pending_interrupted_actions", "auction_listings",
         "npc_action_log", "npc_profiles", "player_activity_log",
         "combat_buffs", "combat_logs", "combat_sessions",
         "boss_instances", "minion_instances", "boss_intel",

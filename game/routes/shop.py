@@ -135,7 +135,10 @@ def _get_sellable_items(player: dict) -> list[dict]:
     } - {None}
 
     items = execute(
-        "SELECT * FROM inventory_items WHERE player_id = ?", (player["id"],)
+        """SELECT * FROM inventory_items ii WHERE player_id = ?
+           AND NOT EXISTS(SELECT 1 FROM auction_listings a
+                          WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')""",
+        (player["id"],)
     )
     result = []
     for inv in items:
@@ -292,6 +295,11 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
     )
     if inv is None:
         raise ValueError("Item not found in your inventory.")
+    if execute_one(
+        "SELECT 1 FROM auction_listings WHERE inventory_item_id=? AND status='ACTIVE'",
+        (inv_id,)
+    ):
+        raise ValueError("That item is on auction hold and cannot be sold.")
 
     # Cannot sell equipped items
     equipped = {player.get("equipped_weapon_id"),

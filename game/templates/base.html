@@ -94,7 +94,8 @@
                 'world_boss': 'world_boss.fight',
                 'tavern': 'actions.action_tavern',
                 'blacksmith': 'blacksmith.index',
-                'shop': 'shop.enter'
+                'shop': 'shop.enter',
+                'auction': 'auction.enter'
             } %}
             {% for action, state in button_states.items() %}
                 {% if state.enabled %}
@@ -102,7 +103,7 @@
                     <a class="action-btn action-link" href="{{ url_for(action_endpoints[action]) }}">
                         {{ action|replace('_', ' ')|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
                     </a>
-                    {% elif action in ('shop', 'world_boss') %}
+                    {% elif action in ('shop', 'world_boss', 'auction') %}
                     <form class="terminal-action" action="{{ url_for(action_endpoints[action]) }}" method="POST">
                         <button type="submit" class="action-btn">
                             {{ action|replace('_', ' ')|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
@@ -125,6 +126,15 @@
         {% endif %}
     </div>
 
+    <div class="free-action-buttons" aria-label="Free character actions">
+        <a class="action-btn free-action-btn" href="{{ url_for('character.index') }}">
+            CHARACTER <span class="free-cost">FREE</span>
+        </a>
+        <a class="action-btn free-action-btn" href="{{ url_for('character.equipment') }}">
+            EQUIPMENT <span class="free-cost">FREE</span>
+        </a>
+    </div>
+
     <button id="active-players-toggle" class="active-players-toggle" type="button"
             data-url="{{ url_for('feeds.active_players') }}" aria-haspopup="dialog">
         ACTIVE PLAYERS <span id="active-player-count">{{ active_player_count }}</span>
@@ -132,8 +142,6 @@
 
     <nav id="left-nav">
         <span class="nav-heading">PLAYER</span>
-        <a href="{{ url_for('character.index') }}">Character</a>
-        <a href="{{ url_for('character.equipment') }}">Equipment</a>
         <a href="{{ url_for('scoreboards.index') }}">Scoreboards</a>
         <a href="{{ url_for('feeds.game_help') }}">How to Play</a>
         <a href="{{ url_for('dashboard.index') }}">Dashboard</a>

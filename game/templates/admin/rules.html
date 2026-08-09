@@ -14,7 +14,7 @@
 </table>
 
 <h2>Attack Resolution</h2>
-<ol style="line-height:1.7;margin-left:22px;"><li>Choose STR for melee or AGI for ranged.</li><li>Roll d20 + modifier against Armor Class.</li><li>If applicable, resolve the opposed dodge check.</li><li>Roll damage die + modifier; criticals double weapon damage.</li><li>Apply resistance, weakness, enemy damage scaling, HP, durability, and defeat checks.</li></ol>
+<ol style="line-height:1.7;margin-left:22px;"><li>Choose STR for melee or AGI for ranged.</li><li>Roll d20 + modifier + D&amp;D-style proficiency (+2, then +1 every four levels) against Armor Class.</li><li>If applicable, resolve the opposed dodge check.</li><li>Roll damage die + modifier; criticals double weapon damage.</li><li>Apply resistance, weakness, enemy damage scaling, HP, durability, and defeat checks.</li></ol>
 <table><tr><th>Rule</th><th>Active value</th><th>Meaning</th></tr>
 <tr><td>Minimum critical threshold</td><td>{{ settings.get('CRIT_MIN_THRESHOLD',15) }}</td><td>Luck and specials may lower the roll needed, but never below this.</td></tr>
 <tr><td>Stacked resistance floor</td><td>{{ settings.get('RESISTANCE_STACK_MIN_DAMAGE_PERCENT',0.25) }}</td><td>Minimum fraction of original damage after multiple resistance sources.</td></tr>

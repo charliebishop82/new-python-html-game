@@ -1,5 +1,9 @@
 <!-- ============================================================ -->
 <div class="fragment">
+    <div class="minion-interruption-banner">
+        ⚠ INTERRUPTION! YOUR REQUESTED ACTION IS PAUSED
+        <small>This roaming minion appeared before your chosen activity. Survive it to continue what you were doing.</small>
+    </div>
     <div class="term-line term-amber">
         ★ MINION SPOTTED — {{ minion.name }}
     </div>
@@ -17,7 +21,7 @@
             <input type="hidden" name="encounter_type" value="MINION">
             <input type="hidden" name="action"         value="fight">
             <button type="submit" class="action-btn" style="width:auto;padding:6px 16px;">
-                Engage
+                Deal With Interruption
             </button>
         </form>
         <form class="terminal-action"
@@ -26,7 +30,7 @@
             <input type="hidden" name="encounter_type" value="MINION">
             <input type="hidden" name="action"         value="avoid">
             <button type="submit" class="action-btn" style="width:auto;padding:6px 16px;">
-                Avoid (No AP cost)
+                Slip Past and Continue (No AP cost)
             </button>
         </form>
     </div>

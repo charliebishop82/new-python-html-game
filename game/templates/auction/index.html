@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Auction House{% endblock %}
+{% block content %}
+<div id="page-content">
+  <a href="{{ url_for('dashboard.index') }}" class="back-link">← Back to Dashboard</a>
+  <h2 class="page-title">AUCTION HOUSE</h2>
+  <p class="page-subtitle">Public bidding on special items. Bids reserve credits until you win or are outbid.</p>
+  {% if feedback %}<p class="term-good">{{ feedback }}</p>{% endif %}
+  {% if error %}<p class="term-error">⚠ {{ error }}</p>{% endif %}
+
+  <h3 class="section-title">Open Auctions</h3>
+  <div class="auction-grid">
+  {% for item in listings %}
+    <article class="sheet-card auction-card">
+      <h3>{{ item.name }}</h3><p>{{ item.description or 'A unique piece of movie history.' }}</p>
+      <p>Seller: <strong>{{ item.seller_name }}</strong> · Condition: {{ item.current_durability }}%</p>
+      <p>Current bid: <strong>{{ item.current_bid if item.current_bid is not none else 'No bids' }}</strong>
+        {% if item.bidder_name %} by {{ item.bidder_name }}{% endif %}</p>
+      <p>Minimum: {{ item.minimum_bid }} · Ends: {{ item.ends_at[:16] }} UTC</p>
+      {% if item.seller_player_id != player.id %}
+      <form method="POST" action="{{ url_for('auction.bid') }}" class="inline-form">
+        <input type="hidden" name="listing_id" value="{{ item.id }}">
+        <input type="number" name="amount" min="{{ [item.minimum_bid, (item.current_bid or 0) + 1]|max }}" required>
+        <button class="btn-small" type="submit">Place Public Bid</button>
+      </form>
+      {% else %}<p class="term-grey">Your listing</p>{% endif %}
+    </article>
+  {% else %}<p class="term-grey">No special items are currently being auctioned.</p>{% endfor %}
+  </div>
+
+  <h3 class="section-title">Post a Special ({{ active_seller_count }}/2 active)</h3>
+  {% if sellable and active_seller_count < 2 %}
+  <form method="POST" action="{{ url_for('auction.create_listing') }}" class="auction-create sheet-card">
+    <label>Special item<select name="inv_id" required>{% for item in sellable %}<option value="{{ item.inv_id }}">{{ item.name }} ({{ item.current_durability }}%)</option>{% endfor %}</select></label>
+    <label>Minimum bid<input name="minimum_bid" type="number" min="1" required></label>
+    <label>Duration<select name="duration_hours"><option value="24">24 hours</option><option value="48">48 hours</option></select></label>
+    <button class="btn-small" type="submit">Begin Auction</button>
+  </form>
+  {% elif active_seller_count >= 2 %}<p class="term-grey">You already have the maximum two active auctions.</p>
+  {% else %}<p class="term-grey">You have no unequipped special items available to auction.</p>{% endif %}
+</div>
+{% endblock %}

@@ -30,13 +30,14 @@ def _ensure_handlers_loaded():
 def run_due_npc_turns(now: datetime | None = None) -> dict:
     """Run staggered AP-driven NPC decisions.
 
-    There is one deterministic, daily-random wake time in each three-hour
-    window. During 23:00-23:55 UTC, NPCs receive repeated opportunities to use
-    remaining AP. AP is never erased; only real player actions spend it.
+    There is one staggered wake time in each three-hour window plus a small
+    genuine random chance each minute. PvP contact queues one or two additional
+    wake actions. During 23:00-23:55 UTC, NPCs receive repeated opportunities
+    to use remaining AP. AP is never erased; only real player actions spend it.
     """
     now = now or datetime.utcnow()
     profiles = execute(
-        """SELECT np.*,
+        """SELECT np.*,p.in_combat,
                   EXISTS(SELECT 1 FROM combat_sessions cs WHERE cs.status='ACTIVE'
                          AND cs.attacker_player_id=np.player_id) AS has_active_attack
            FROM npc_profiles np JOIN players p ON p.id=np.player_id
@@ -45,10 +46,14 @@ def run_due_npc_turns(now: datetime | None = None) -> dict:
     )
     results = []
     for profile in profiles:
-        if not profile["has_active_attack"] and not _npc_is_due(profile, now):
+        waking = int(profile.get("wake_actions", 0) or 0)
+        if waking and profile["in_combat"] and not profile["has_active_attack"]:
+            continue
+        if not profile["has_active_attack"] and not waking and not _npc_is_due(profile, now):
             continue
         try:
-            attempts = 12 if now.hour == 23 else 1
+            wake_mode = waking > 0
+            attempts = waking if waking else (12 if now.hour == 23 else 1)
             no_ap_progress = 0
             for _ in range(attempts):
                 player = get_player(profile["player_id"])
@@ -57,7 +62,13 @@ def run_due_npc_turns(now: datetime | None = None) -> dict:
                 ap_before = player["current_ap"]
                 result = run_npc_turn(profile["player_id"])
                 results.append(result)
-                if now.hour != 23 or result["decision"] in ("WAIT", "SKIP"):
+                if waking:
+                    execute_write(
+                        "UPDATE npc_profiles SET wake_actions=MAX(0,wake_actions-1) WHERE player_id=?",
+                        (profile["player_id"],)
+                    )
+                    waking -= 1
+                if (not wake_mode and now.hour != 23) or result["decision"] in ("WAIT", "SKIP"):
                     break
                 player_after = get_player(profile["player_id"])
                 if player_after and player_after["current_ap"] >= ap_before:
@@ -80,6 +91,12 @@ def _npc_is_due(profile: dict, now: datetime) -> bool:
             last = datetime.fromisoformat(profile["last_action_at"])
         except ValueError:
             pass
+    settings = get_all_settings()
+    random_chance = max(0.0, min(1.0, float(settings.get(
+        "NPC_RANDOM_WAKE_CHANCE", cfg.NPC_RANDOM_WAKE_CHANCE
+    ))))
+    if (last is None or now - last >= timedelta(minutes=15)) and random.random() < random_chance:
+        return True
     if now.hour == 23:
         # One catch-up attempt per five-minute scheduler slot.
         slot = now.replace(minute=(now.minute // 5) * 5, second=0, microsecond=0)
@@ -961,7 +978,10 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
     equipped_ids = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
                     player.get("equipped_special_id")} - {None}
     all_unequipped = execute(
-        "SELECT * FROM inventory_items WHERE player_id=?", (player_id,)
+        """SELECT * FROM inventory_items ii WHERE player_id=?
+           AND NOT EXISTS(SELECT 1 FROM auction_listings a
+                          WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')""",
+        (player_id,)
     )
     all_unequipped = [row for row in all_unequipped if row["id"] not in equipped_ids]
     if len(all_unequipped) < minimum_spares:
@@ -1206,7 +1226,12 @@ def _equip_best_items(player_id: int, profile: dict) -> list[str]:
 def _load_scored_inventory(player: dict, profile: dict) -> list[dict]:
     """Return the NPC's inventory with public item data and build-aware scores."""
     result = []
-    for inv in execute("SELECT * FROM inventory_items WHERE player_id=?", (player["id"],)):
+    for inv in execute(
+        """SELECT * FROM inventory_items ii WHERE player_id=?
+           AND NOT EXISTS(SELECT 1 FROM auction_listings a
+                          WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')""",
+        (player["id"],)
+    ):
         detail = _load_item_detail(inv["item_type"], inv["item_id"])
         if detail:
             result.append({**detail, "inv_id": inv["id"], "item_type": inv["item_type"],

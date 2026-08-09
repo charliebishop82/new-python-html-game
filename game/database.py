@@ -63,6 +63,10 @@ def init_db():
             conn.execute(
                 "ALTER TABLE npc_profiles ADD COLUMN world_boss_hunter INTEGER NOT NULL DEFAULT 0"
             )
+        if "wake_actions" not in npc_columns:
+            conn.execute(
+                "ALTER TABLE npc_profiles ADD COLUMN wake_actions INTEGER NOT NULL DEFAULT 0"
+            )
         player_columns = {row[1] for row in conn.execute("PRAGMA table_info(players)")}
         if "retired_at" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
@@ -123,7 +127,9 @@ def init_db():
             ("NPC_UPGRADE_MIN_UNEQUIPPED", "2", "Unequipped gear required before an NPC may liquidate items for an upgrade."),
             ("NPC_UPGRADE_MIN_IMPROVEMENT", "0.15", "Minimum fractional NPC equipment-score improvement required for a planned upgrade."),
             ("NPC_OBSERVE_MAX_ATTEMPTS", "1", "Maximum Observe attempts an NPC may make during one combat."),
+            ("NPC_RANDOM_WAKE_CHANCE", "0.003", "Chance per scheduler minute that an NPC takes an unscheduled action."),
             ("AP_COST_WORLD_BOSS", "4", "AP required to begin one world-boss attempt."),
+            ("AP_COST_AUCTION", "1", "AP required to enter the player auction house."),
             ("WORLD_BOSS_HP_MULTIPLIER", "1.0", "Multiplier applied to imported world-boss HP."),
             ("WORLD_BOSS_ATTEMPT_XP", "10", "XP granted after a completed world-boss attempt."),
             ("WORLD_BOSS_ATTEMPT_CREDITS", "5", "Credits granted after a completed world-boss attempt."),
@@ -163,6 +169,29 @@ def init_db():
         conn.execute(
             "UPDATE random_events SET is_active = 0 WHERE effect_type = 'XP_LOSS'"
         )
+        # Older builds counted only selected PvP outcomes on the shame board.
+        # Reconstruct historical 1-HP defeats once from combat starting HP and
+        # accumulated damage; future defeats increment at finalization time.
+        if not conn.execute(
+            "SELECT 1 FROM settings WHERE constant_name='SHAME_STATS_REBUILT_V2'"
+        ).fetchone():
+            conn.execute(
+                """UPDATE player_stats SET times_reduced_to_1hp=(
+                       SELECT COUNT(*) FROM combat_sessions cs
+                       WHERE cs.result='1HP_WIN' AND (
+                           (cs.attacker_player_id=player_stats.player_id
+                            AND cs.defender_total_damage_dealt>=cs.attacker_hp_start-1)
+                           OR
+                           (cs.defender_player_id=player_stats.player_id
+                            AND cs.attacker_total_damage_dealt>=cs.defender_hp_start-1)
+                       )
+                   )"""
+            )
+            conn.execute(
+                """INSERT INTO settings(constant_name,value,description)
+                   VALUES('SHAME_STATS_REBUILT_V2','TRUE',
+                          'Marker for the one-time all-encounter defeat-stat reconstruction.')"""
+            )
     logger.info("Database initialised at %s", cfg.DB_PATH)
 
 

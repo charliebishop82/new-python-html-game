@@ -14,7 +14,7 @@
     <section id="turns"><h2>Turns and Action Points</h2>
         <p>AP pays for major activities. The normal daily allowance is restored at midnight UTC, scheduled trickles add AP during the day, and AP never exceeds its configured cap.</p>
         <div class="formula">Maximum AP = base daily AP + floor(END ÷ 2), limited by the AP cap.</div>
-        <p>Entering Boss or PvP combat pays the listed AP cost. The Shop charges once when you enter; buying and selling during that visit is free. Combat actions normally use turns rather than additional AP, except actions that explicitly display an AP cost.</p>
+        <p>Entering Boss or PvP combat pays the listed AP cost. The Shop and Auction House charge when you enter; transactions during that visit are free. Combat actions normally use turns rather than additional AP, except actions that explicitly display an AP cost.</p>
     </section>
 
     <section id="stats"><h2>Character Stats</h2>
@@ -34,7 +34,7 @@
         <li>Combat ends at 1 HP, on a successful escape, or through an applicable round-limit resolution.</li></ol>
         <div class="formula">Initiative = d20 + floor(AGI ÷ 2) + equipment/status initiative bonuses.</div>
         <h3>Attack and damage</h3>
-        <div class="formula">Melee attack = d20 + floor(STR ÷ 2). Ranged attack = d20 + floor(AGI ÷ 2). The attack hits when its total equals or exceeds Armor Class.</div>
+        <div class="formula">Melee attack = d20 + floor(STR ÷ 2) + proficiency. Ranged attack = d20 + floor(AGI ÷ 2) + proficiency. Proficiency starts at +2 and rises by +1 every four levels. The attack hits when its total equals or exceeds Armor Class.</div>
         <p>A hit rolls the weapon’s damage die and adds the same relevant stat modifier. Critical hits double normal weapon damage. Resistance halves matching damage from one resistance source; stacked resistance reduces it to the configured floor. A matching boss weakness doubles damage.</p>
         <p>Some eligible attacks also receive an opposed dodge check. The defender must roll strictly higher; a tie favors the attacker.</p>
         <h3>PvP round-limit resolution</h3>
@@ -72,6 +72,7 @@
 
     <section id="economy"><h2>Shop, Tavern, Blacksmith, and Events</h2>
         <ul><li><b>Shop:</b> pay AP once to enter, then buy and sell freely during the visit.</li>
+        <li><b>Auction House:</b> pay AP to enter. You may hold up to two unequipped special items in public 24- or 48-hour auctions. Bids reserve credits; outbid credits are returned automatically. Auction-held items cannot be equipped, sold, dropped, stolen, or lose durability.</li>
         <li><b>Tavern:</b> spend AP and credits to restore health.</li><li><b>Blacksmith:</b> spend AP and credits to repair durability.</li>
         <li><b>Random events:</b> may change AP, credits, stats, gear, or temporary effects; the result text states the applied effect and duration. Equipment labeled “Random event chance” modifies these events, not roaming-minion interruptions.</li>
         <li><b>Special items:</b> are globally unique; only one live copy may exist at a time.</li></ul>

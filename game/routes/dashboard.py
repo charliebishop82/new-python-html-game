@@ -187,6 +187,7 @@ def _get_button_states(player: dict, settings: dict) -> dict:
     ap_tavern     = settings.get('AP_COST_TAVERN',     cfg.AP_COST_TAVERN)
     ap_blacksmith = settings.get('AP_COST_BLACKSMITH', cfg.AP_COST_BLACKSMITH)
     ap_shop       = settings.get('AP_COST_SHOP',       cfg.AP_COST_SHOP)
+    ap_auction    = settings.get('AP_COST_AUCTION',    cfg.AP_COST_AUCTION)
     tavern_cost   = settings.get('TAVERN_HEAL_COST',   cfg.TAVERN_HEAL_COST)
 
     from world_boss import get_active_event
@@ -247,6 +248,13 @@ def _get_button_states(player: dict, settings: dict) -> dict:
     else:
         shop_ok, shop_reason = True, None
 
+    if in_combat:
+        auction_ok, auction_reason = False, 'In combat'
+    elif current_ap < ap_auction:
+        auction_ok, auction_reason = False, f'Need {ap_auction} AP'
+    else:
+        auction_ok, auction_reason = True, None
+
     return {
         'boss':       {'enabled': boss_ok,   'reason': boss_reason,   'ap_cost': ap_boss},
         'pvp':        {'enabled': pvp_ok,    'reason': pvp_reason,    'ap_cost': ap_pvp},
@@ -254,4 +262,5 @@ def _get_button_states(player: dict, settings: dict) -> dict:
         'tavern':     {'enabled': tavern_ok, 'reason': tavern_reason, 'ap_cost': ap_tavern},
         'blacksmith': {'enabled': bs_ok,     'reason': bs_reason,     'ap_cost': ap_blacksmith},
         'shop':       {'enabled': shop_ok,   'reason': shop_reason,   'ap_cost': ap_shop},
+        'auction':    {'enabled': auction_ok,'reason': auction_reason,'ap_cost': ap_auction},
     }

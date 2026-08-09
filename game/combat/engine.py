@@ -46,6 +46,11 @@ def stat_mod(stat: int) -> int:
     return math.floor(stat / 2)
 
 
+def proficiency_bonus(level: int) -> int:
+    """D&D-style attack proficiency: +2 at level 1, +1 every four levels."""
+    return 2 + max(0, (int(level or 1) - 1) // 4)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DERIVED STAT CALCULATIONS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -121,6 +126,7 @@ def calc_attack_roll(attacker: dict, weapon: dict) -> tuple[int, int, bool]:
         modifier = stat_mod(attacker["str_stat"])
     else:
         modifier = stat_mod(attacker["agi_stat"])
+    modifier += proficiency_bonus(attacker.get("level", 1))
     total = raw_d20 + modifier
     return total, raw_d20, modifier
 

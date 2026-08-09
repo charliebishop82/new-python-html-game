@@ -925,6 +925,14 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
                VALUES(?, 'PVP', 'INCOMING_PVP', 'NOTICE', ?, ?, 'PVP_DEFENSE')""",
             (target_id, incoming_text, json.dumps(details))
         )
+        # PvP contact wakes automated characters. The minute scheduler consumes
+        # these queued reactions after the current fight has resolved.
+        if execute_one("SELECT 1 FROM npc_profiles WHERE player_id=? AND enabled=1 AND retired=0",
+                       (target_id,)):
+            execute_write(
+                "UPDATE npc_profiles SET wake_actions=MIN(2,wake_actions+?) WHERE player_id=?",
+                (random.randint(1, 2), target_id)
+            )
 
     return {"session_id": session_id, "new_ap": new_ap, "new_hp": new_hp}
 

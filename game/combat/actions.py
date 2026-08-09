@@ -506,7 +506,10 @@ def _pvp_steal_cascade(attacker_id: int, defender_id: int,
                  defender.get("equipped_armor_id"),
                  defender.get("equipped_special_id")} - {None}
     inv_items = execute(
-        "SELECT * FROM inventory_items WHERE player_id = ?", (defender_id,)
+        """SELECT * FROM inventory_items ii WHERE player_id = ?
+           AND NOT EXISTS(SELECT 1 FROM auction_listings a
+                          WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')""",
+        (defender_id,)
     )
     stealable = [i for i in inv_items if i["id"] not in equipped]
 
@@ -1374,6 +1377,11 @@ def _finalize_world_boss_attempt(session_id: int, state: dict,
     with exclusive_transaction():
         execute_write("UPDATE players SET xp=xp+?,credits=credits+?,in_combat=0 WHERE id=?",
                       (xp, credits, player["id"]))
+        if result_type == "1HP_WIN" and not boss_defeated:
+            execute_write(
+                "UPDATE player_stats SET times_reduced_to_1hp=times_reduced_to_1hp+1 WHERE player_id=?",
+                (player["id"],)
+            )
         execute_write(
             """UPDATE world_boss_contributions
                SET xp_earned=xp_earned+?,credits_earned=credits_earned+?
@@ -1459,6 +1467,21 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
     item_stolen    = None
     drops           = None
 
+    # Hall of Shame tracks every completed reduction of a character to 1 HP,
+    # not only PvP. Escapes and stalemates do not enter this finalizer as a loss.
+    defeated_player_id = None
+    if result_type == "1HP_WIN":
+        if session["combat_type"] == "PVP":
+            defeated_player_id = loser["id"]
+        elif not winner_is_attacker:
+            defeated_player_id = attacker["id"]
+    if defeated_player_id:
+        with exclusive_transaction():
+            execute_write(
+                "UPDATE player_stats SET times_reduced_to_1hp=times_reduced_to_1hp+1 WHERE player_id=?",
+                (defeated_player_id,)
+            )
+
     # Step 1: XP award
     if session["combat_type"] in ("BOSS", "MINION") and winner_is_attacker:
         opp = state.get("boss") or state.get("minion")
@@ -1524,10 +1547,6 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                               (xp_earned, attacker["id"]))
                 execute_write("UPDATE player_stats SET pvp_kills = pvp_kills + 1 WHERE player_id = ?",
                               (attacker["id"],))
-                execute_write(
-                    "UPDATE player_stats SET times_reduced_to_1hp = times_reduced_to_1hp + 1 WHERE player_id = ?",
-                    (state["defender"]["id"],)
-                )
         else:
             # The defending winner earns XP; the defeated initiator keeps all
             # previously earned XP because progression is permanent.
@@ -1543,10 +1562,6 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
             with exclusive_transaction():
                 execute_write("UPDATE player_stats SET pvp_kills = pvp_kills + 1 WHERE player_id = ?",
                               (state["defender"]["id"],))
-                execute_write(
-                    "UPDATE player_stats SET times_reduced_to_1hp = times_reduced_to_1hp + 1 WHERE player_id = ?",
-                    (attacker["id"],)
-                )
                 execute_write("UPDATE players SET xp = xp + ? WHERE id = ?",
                               (defender_xp, defender["id"]))
 
