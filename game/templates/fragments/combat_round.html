@@ -1,5 +1,5 @@
 <!-- ============================================================ -->
-<div class="fragment"
+<div class="fragment combat-round-card"
      data-hp="{{ player.current_hp }}"
      data-max-hp="{{ player.max_hp }}"
      data-ap="{{ player.current_ap }}"
@@ -15,7 +15,7 @@
     </div>
 
     {% for action_result in result.round_log %}
-    <div class="term-line
+    <div class="term-line combat-result-line
         {% if action_result.action in ('ATTACK', 'SPECIAL_ATTACK') %}
             {% if action_result.get('hit') %}term-white{% else %}term-grey{% endif %}
         {% elif action_result.action == 'BRACE' %}term-good
@@ -26,15 +26,25 @@
         {% elif action_result.action == 'OBSERVE' %}term-blue
         {% elif action_result.action == 'SPECIAL_BUFF' %}term-amber
         {% else %}term-grey{% endif %}">
-        {{ action_result.flavor }}
+        {% if action_result.action in ('ATTACK', 'SPECIAL_ATTACK') %}
+          {% if action_result.get('is_crit') %}<strong class="combat-outcome outcome-critical">CRITICAL HIT</strong>
+          {% elif action_result.get('hit') %}<strong class="combat-outcome outcome-hit">HIT</strong>
+          {% elif action_result.get('dodged') %}<strong class="combat-outcome outcome-dodged">DODGED</strong>
+          {% else %}<strong class="combat-outcome outcome-miss">MISS</strong>{% endif %}
+          {% if action_result.get('damage_total', 0) > 0 %}<strong class="combat-damage">{{ action_result.damage_total }} DAMAGE</strong>{% endif %}
+        {% elif action_result.action == 'BRACE' %}<strong class="combat-outcome outcome-utility">BRACE</strong>
+        {% elif action_result.action == 'ESCAPE' %}<strong class="combat-outcome {{ 'outcome-hit' if action_result.success else 'outcome-miss' }}">{{ 'ESCAPED' if action_result.success else 'ESCAPE FAILED' }}</strong>
+        {% elif action_result.action == 'STEAL' %}<strong class="combat-outcome {{ 'outcome-hit' if action_result.success else 'outcome-miss' }}">{{ 'STOLEN' if action_result.success else 'STEAL FAILED' }}</strong>
+        {% elif action_result.action == 'OBSERVE' %}<strong class="combat-outcome {{ 'outcome-hit' if action_result.success else 'outcome-miss' }}">{{ 'INTEL GAINED' if action_result.success else 'OBSERVE FAILED' }}</strong>
+        {% endif %}
+        <span class="combat-flavor">{{ action_result.flavor }}</span>
     </div>
-    <div class="term-line term-grey" style="font-size:11px;margin-left:12px;">
-        {{ action_result.roll_detail if action_result.get('roll_detail') else '' }}
-    </div>
-    {% if action_result.get('outcome_detail') %}
-    <div class="term-line term-system" style="font-size:11px;margin-left:12px;">
-        Damage: {{ action_result.outcome_detail }}
-    </div>
+    {% if action_result.get('roll_detail') or action_result.get('outcome_detail') %}
+    <details class="combat-math">
+      <summary>Show roll details</summary>
+      {% if action_result.get('roll_detail') %}<div>{{ action_result.roll_detail }}</div>{% endif %}
+      {% if action_result.get('outcome_detail') %}<div>Damage calculation: {{ action_result.outcome_detail }}</div>{% endif %}
+    </details>
     {% endif %}
     {% if action_result.boss_phase is defined and action_result.phase_changed %}
     <div class="term-line term-amber">Boss phase changed: Phase {{ action_result.boss_phase }}.</div>
@@ -45,15 +55,17 @@
     {% endfor %}
 
     <!-- Show updated HP -->
-    <div class="term-line term-system">
-        Your HP: {{ player.current_hp }}/{{ player.max_hp }}
-    </div>
-    <div class="term-line term-amber">
-        Opponent: {{ result.opponent_health.meter }} {{ result.opponent_health.label }}
+    <div class="combat-vitals" aria-label="Current combat condition">
+      <div class="combat-vital"><span><small>YOUR HP</small><strong>{{ player.current_hp }}/{{ player.max_hp }}</strong></span>
+        <div class="vital-track"><div class="vital-fill player-health" style="width:{{ ([100, (player.current_hp * 100 / player.max_hp)]|min)|round }}%"></div></div>
+      </div>
+      <div class="combat-vital"><span><small>OPPONENT</small><strong>{{ result.opponent_health.meter }} {{ result.opponent_health.label }}</strong></span>
+        <div class="vital-track"><div class="vital-fill opponent-health health-{{ result.opponent_health.label|lower|replace(' ','-') }}"></div></div>
+      </div>
     </div>
 
     <!-- Combat action buttons (repeat for next round) -->
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">
+    <div class="combat-action-bar">
         <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST">
             <input type="hidden" name="action_type" value="attack">
             <button type="submit" class="action-btn" style="width:auto;padding:5px 12px;">⚔ Attack</button>

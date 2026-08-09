@@ -195,6 +195,7 @@ function bindTerminalForms() {
             const sourceFragment = form.closest('.fragment');
             if (sourceFragment) {
                 sourceFragment.querySelectorAll('button').forEach(button => { button.disabled = true; });
+                sourceFragment.classList.add('combat-history');
             }
             appendToTerminal(html);
             // Rebind any new terminal-action forms inside the fragment
@@ -292,21 +293,63 @@ function appendFeedEntry(entry) {
     if (!terminal) return;
     const div = document.createElement('div');
     const category = (entry.event_category || 'system').toLowerCase();
+    const scope = (entry.feed_scope || 'personal').toLowerCase();
     div.className = `term-line feed-entry term-${category}`;
+    div.dataset.feedCategory = category;
+    div.dataset.feedScope = scope;
     const ts = entry.occurred_at ? entry.occurred_at.substring(11, 16) : '';
-    const categoryLabel = category === 'pvp_defense' ? 'AGAINST YOU' :
+    const categoryLabel = scope === 'global' ? 'WORLD' :
+        category === 'pvp_defense' ? 'AGAINST YOU' :
         category === 'system' ? 'SYSTEM' :
         category === 'random_event' ? 'YOU · EVENT' :
         category === 'combat' ? 'YOU · COMBAT' : 'YOU';
-    const scopeClass = category === 'pvp_defense' ? 'feed-against-you' :
+    const scopeClass = scope === 'global' ? 'feed-world' :
+        category === 'pvp_defense' ? 'feed-against-you' :
         category === 'system' ? 'feed-system' : 'feed-you';
     div.innerHTML = `<span class="term-ts">[${ts}]</span>` +
         `<span class="feed-entry-scope"><span class="feed-scope ${scopeClass}">${categoryLabel}</span></span>` +
         `<span class="feed-message"></span>`;
     div.querySelector('.feed-message').textContent = entry.flavor_text;
     terminal.appendChild(div);
+    applyFeedFilter();
     terminal.scrollTop = terminal.scrollHeight;
 }
+
+let activeFeedFilter = 'all';
+function feedEntryMatches(entry, filter) {
+    const category = entry.dataset.feedCategory || '';
+    const scope = entry.dataset.feedScope || '';
+    if (filter === 'all') return true;
+    if (filter === 'against') return category === 'pvp_defense';
+    if (filter === 'system') return category === 'system' || scope === 'system';
+    if (filter === 'combat') {
+        return ['combat', 'combat_turn', 'pvp_defense', 'world_boss'].includes(category);
+    }
+    if (filter === 'rewards') {
+        return ['level_up', 'contract', 'reward', 'world_boss_reward', 'item'].includes(category);
+    }
+    return true;
+}
+
+function applyFeedFilter() {
+    document.querySelectorAll('#terminal .feed-entry').forEach(entry => {
+        entry.hidden = !feedEntryMatches(entry, activeFeedFilter);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.feed-filter').forEach(button => {
+        button.addEventListener('click', () => {
+            activeFeedFilter = button.dataset.feedFilter || 'all';
+            document.querySelectorAll('.feed-filter').forEach(candidate => {
+                const selected = candidate === button;
+                candidate.classList.toggle('active', selected);
+                candidate.setAttribute('aria-pressed', String(selected));
+            });
+            applyFeedFilter();
+        });
+    });
+});
 
 function appendToTicker(text) {
     const ticker = document.getElementById('ticker-content');

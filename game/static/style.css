@@ -49,6 +49,10 @@ html, body {
 
 a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible {
+    outline: 2px solid var(--blue);
+    outline-offset: 2px;
+}
 
 #theme-toggle {
     position: fixed;
@@ -372,6 +376,12 @@ body.auth-page #main {
 .feed-world { color:var(--blue); }
 .feed-system { color:var(--amber); }
 .ticker-scope { margin-left:6px; }
+.feed-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:0 10px 8px;color:var(--grey);font-size:10px}
+.feed-toolbar>span{margin-right:3px;color:var(--amber);font-weight:bold;letter-spacing:.08em}
+.feed-filter{padding:5px 9px;border:1px solid var(--border);background:var(--bg-panel);color:var(--grey);font:10px var(--font);cursor:pointer}
+.feed-filter:hover,.feed-filter:focus-visible{border-color:var(--blue);color:var(--white)}
+.feed-filter.active{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 13%,var(--bg-panel));color:var(--blue);font-weight:bold}
+.feed-entry[hidden]{display:none!important}
 
 /* Terminal output panel on full pages (shop, blacksmith, etc.) */
 #terminal-output {
@@ -815,3 +825,51 @@ tr:nth-child(even) td { background: #0d0d0d; }
 .contract-progress { height:14px; border:1px solid var(--border, #555); margin:1rem 0 .35rem; }
 .contract-progress div { height:100%; background:linear-gradient(90deg,#00b875,var(--accent,#ffb000)); }
 .reward-line { color:var(--accent, #ffb000); font-weight:bold; }
+/* Combat hierarchy: outcomes and damage should be readable before the math. */
+.combat-round-card{border-top:1px solid var(--border);padding:12px 4px 16px;margin-top:8px}
+.combat-result-line{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:5px;line-height:1.55}
+.combat-outcome,.combat-damage{display:inline-block;padding:2px 7px;border:1px solid currentColor;font-size:11px;letter-spacing:.06em;font-weight:800;white-space:nowrap}
+.outcome-hit{color:var(--green)}.outcome-critical{color:var(--amber);box-shadow:0 0 8px color-mix(in srgb,var(--amber) 35%,transparent)}
+.outcome-miss{color:var(--red)}.outcome-dodged{color:var(--blue)}.outcome-utility{color:var(--green)}
+.combat-damage{color:#fff;background:color-mix(in srgb,var(--red) 32%,transparent);font-size:12px}
+.combat-flavor{font-weight:600}
+.combat-vitals{display:grid;grid-template-columns:repeat(2,minmax(190px,1fr));gap:8px;margin:10px 0}
+.combat-vital{padding:8px 10px;border:1px solid var(--border);background:var(--bg-panel)}
+.combat-vital>span{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:7px}
+.combat-vitals small{color:var(--grey);letter-spacing:.08em}.combat-vitals strong{color:var(--amber);font-size:13px}.combat-vitals em{color:var(--grey);font-style:normal;font-size:11px}
+.vital-track{height:8px;border:1px solid var(--border);background:color-mix(in srgb,var(--bg) 75%,#000)}
+.vital-fill{height:100%;min-width:2px;transition:width .25s ease;background:var(--green)}
+.player-health{background:linear-gradient(90deg,var(--red),var(--amber),var(--green));background-size:300% 100%;background-position:right}
+.health-healthy{width:100%;background:var(--green)}.health-wounded{width:72%;background:#b7b51f}.health-hurt{width:46%;background:var(--amber)}.health-critical{width:20%;background:var(--red)}
+.combat-math{margin:3px 0 6px 12px;color:var(--grey);font-size:11px;max-width:760px}
+.combat-math summary{cursor:pointer;color:var(--blue);width:max-content;padding:2px 0}.combat-math summary:hover{color:var(--amber)}
+.combat-math>div{margin:3px 0 0 13px;line-height:1.45}
+.combat-action-bar{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.combat-history .combat-action-bar,.combat-history #combat-actions,.combat-history .combat-gear-swap{display:none!important}
+.combat-round-card:not(.combat-history){border-left:2px solid var(--amber);padding-left:10px}
+@media(max-width:620px){.combat-vitals{grid-template-columns:1fr}.combat-result-line{gap:5px}.combat-outcome,.combat-damage{font-size:10px}}
+@media(max-width:760px){
+  :root{--ticker-h:58px}
+  html,body{overflow:auto}
+  body.authenticated{display:flex;flex-direction:column;min-height:100vh}
+  #left-col{position:relative;width:100%;height:auto;max-height:none;padding:9px;overflow:visible;border-right:0;border-bottom:1px solid var(--border)}
+  #status-block{display:grid;grid-template-columns:repeat(3,minmax(90px,1fr));gap:4px 10px}
+  #status-block .status-name,#status-block .status-effects,#status-block .status-warning,#status-block .status-combat{grid-column:1/-1}
+  #action-buttons,.free-action-buttons{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #left-nav{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
+  #left-nav .nav-heading{width:100%}
+  #main{margin-left:0;height:auto;min-height:55vh;overflow:visible;padding-bottom:var(--ticker-h)}
+  #theme-toggle,#interface-toggle{position:static;min-width:0;margin:5px 8px 0 auto}
+  .feed-entry{grid-template-columns:54px 88px minmax(0,1fr)}
+  .feed-legend{font-size:9px}
+}
+@media(max-width:430px){
+  #status-block{grid-template-columns:repeat(2,minmax(90px,1fr))}
+  #action-buttons,.free-action-buttons{grid-template-columns:1fr}
+  .feed-entry{grid-template-columns:48px minmax(0,1fr)}
+  .feed-entry-scope{grid-column:2}.feed-message{grid-column:2}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  #ticker-content{animation:none!important;transform:none!important}
+}

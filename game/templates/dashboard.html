@@ -10,6 +10,14 @@
     <span><b class="feed-scope feed-system">SYSTEM</b> Rules, tutorial, and service notices</span>
     <span>Bottom bar: live <b class="feed-scope feed-world">WORLD</b> ticker</span>
 </div>
+<div class="feed-toolbar" role="toolbar" aria-label="Filter today's activity">
+    <span>SHOW</span>
+    <button type="button" class="feed-filter active" data-feed-filter="all" aria-pressed="true">All</button>
+    <button type="button" class="feed-filter" data-feed-filter="combat" aria-pressed="false">Combat</button>
+    <button type="button" class="feed-filter" data-feed-filter="rewards" aria-pressed="false">Rewards</button>
+    <button type="button" class="feed-filter" data-feed-filter="against" aria-pressed="false">Against You</button>
+    <button type="button" class="feed-filter" data-feed-filter="system" aria-pressed="false">System</button>
+</div>
 {% if unread_defense_events %}
 <section class="defense-alerts" aria-labelledby="defense-alert-title">
     <h2 id="defense-alert-title">Actions Taken Against You</h2>
@@ -24,7 +32,9 @@
 <div id="terminal" role="log" aria-live="polite">
     {# Pre-populate with last N personal feed entries on every load #}
     {% for entry in terminal_history %}
-        <div class="term-line feed-entry term-{{ entry.event_category|lower }}">
+        <div class="term-line feed-entry term-{{ entry.event_category|lower }}"
+             data-feed-category="{{ entry.event_category|lower }}"
+             data-feed-scope="{{ entry.feed_scope|lower }}">
             <span class="term-ts">[{{ entry.occurred_at[11:16] }}]</span>
             <span class="feed-entry-scope">
             {% if entry.feed_scope == 'GLOBAL' %}

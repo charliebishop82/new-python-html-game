@@ -46,8 +46,14 @@
     {% if not player.equipped_armor_id %}<div class="term-line term-amber">No armor equipped - unprotected.</div>{% endif %}
     {% if player.is_overencumbered %}<div class="term-line term-amber">Over encumbered - AP costs doubled, combat penalties active.</div>{% endif %}
 
-    <div class="term-line term-system">Your HP: {{ player.current_hp }}/{{ player.max_hp }} &nbsp;|&nbsp; AP: {{ player.current_ap }}</div>
-    <div class="term-line term-amber">Opponent: {{ opponent_health.meter }} {{ opponent_health.label }}</div>
+    <div class="combat-vitals combat-opening-vitals" aria-label="Opening combat condition">
+      <div class="combat-vital"><span><small>YOUR HP</small><strong>{{ player.current_hp }}/{{ player.max_hp }}</strong><em>{{ player.current_ap }} AP</em></span>
+        <div class="vital-track"><div class="vital-fill player-health" style="width:{{ ([100, (player.current_hp * 100 / player.max_hp)]|min)|round }}%"></div></div>
+      </div>
+      <div class="combat-vital"><span><small>OPPONENT</small><strong>{{ opponent_health.meter }} {{ opponent_health.label }}</strong></span>
+        <div class="vital-track"><div class="vital-fill opponent-health health-{{ opponent_health.label|lower|replace(' ','-') }}"></div></div>
+      </div>
+    </div>
     {% if encounter_type == 'WORLD_BOSS' %}
     <div id="world-boss-combat-live" class="term-line term-blue"
          data-event-id="{{ opponent.event_id }}">Shared HP: {{ opponent.current_hp }} / {{ opponent.max_hp }} · live updates every 4 seconds</div>
@@ -58,11 +64,11 @@
     </div>
 
     <div id="combat-actions" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
-        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="attack"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Attack</button></form>
-        <form class="terminal-action" action="{{ url_for('combat.steal') }}" method="POST"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Steal</button></form>
-        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="brace"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Brace</button></form>
-        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="escape"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Escape</button></form>
-        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="observe"><button type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Observe</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="attack"><button title="Make a normal attack" type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Attack</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.steal') }}" method="POST"><button title="Attempt to steal instead of attacking" type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Steal</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="brace"><button title="Recover some missing HP and improve defense" type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Brace</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="escape"><button title="Spend the listed AP to attempt escape" type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Escape</button></form>
+        <form class="terminal-action" action="{{ url_for('combat.action') }}" method="POST"><input type="hidden" name="action_type" value="observe"><button title="Try to permanently learn enemy combat information" type="submit" class="action-btn" style="width:auto;padding:6px 14px;">Observe</button></form>
     </div>
     {% if combat_inventory is defined and combat_inventory %}
     <details class="combat-gear-swap" style="margin-top:10px">
