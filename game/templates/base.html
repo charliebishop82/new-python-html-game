@@ -132,6 +132,9 @@
     </div>
 
     <div class="free-action-buttons" aria-label="Free character actions">
+        <a class="action-btn free-action-btn" href="{{ url_for('dashboard.index') }}">
+            MAIN MENU <span class="free-cost">FREE</span>
+        </a>
         <a class="action-btn free-action-btn" href="{{ url_for('character.index') }}">
             CHARACTER <span class="free-cost">FREE</span>
         </a>
@@ -142,22 +145,19 @@
         <a class="action-btn free-action-btn" href="{{ url_for('community.contracts') }}">DAILY CONTRACT <span class="free-cost">FREE</span></a>
         <a class="action-btn free-action-btn" href="{{ url_for('community.war_room') }}">WAR ROOM <span class="free-cost">FREE</span></a>
         <a class="action-btn free-action-btn" href="{{ url_for('crews.index') }}">CREWS <span class="free-cost">FREE</span></a>
+        <a class="action-btn free-action-btn" href="{{ url_for('scoreboards.index') }}">SCOREBOARDS <span class="free-cost">FREE</span></a>
+        <a class="action-btn free-action-btn" href="{{ url_for('feeds.game_help') }}">HOW TO PLAY <span class="free-cost">FREE</span></a>
+        <form action="{{ url_for('auth.logout') }}" method="POST" class="free-action-form">
+            <button type="submit" class="action-btn free-action-btn free-action-logout">
+                LOGOUT <span class="free-cost">EXIT</span>
+            </button>
+        </form>
     </div>
 
     <button id="active-players-toggle" class="active-players-toggle" type="button"
             data-url="{{ url_for('feeds.active_players') }}" aria-haspopup="dialog">
         ACTIVE PLAYERS <span id="active-player-count">{{ active_player_count }}</span>
     </button>
-
-    <nav id="left-nav">
-        <span class="nav-heading">PLAYER</span>
-        <a href="{{ url_for('scoreboards.index') }}">Scoreboards</a>
-        <a href="{{ url_for('feeds.game_help') }}">How to Play</a>
-        <a href="{{ url_for('dashboard.index') }}">Dashboard</a>
-        <form action="{{ url_for('auth.logout') }}" method="POST" style="margin:0">
-            <button type="submit" class="nav-link-btn">Logout</button>
-        </form>
-    </nav>
 
 </div><!-- /left-col -->
 
