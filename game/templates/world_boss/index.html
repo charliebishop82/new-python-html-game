@@ -2,52 +2,109 @@
 {% block title %}Weekly World Boss{% endblock %}
 {% block content %}
 <div id="page-content" class="cinematic-page world-boss-page">
-  <a href="{{ url_for('dashboard.index') }}" class="back-link">← Back to Dashboard</a>
+  <a href="{{ url_for('dashboard.index') }}" class="back-link">&larr; Back to Dashboard</a>
   {% if request.args.get('feedback') %}<div class="success-message">{{ request.args.get('feedback') }}</div>{% endif %}
+
   {% if reward_event %}
   <section class="wb-reward-panel">
     <div class="sheet-kicker">PLACEMENT REWARD #{{ reward_event.place }}</div>
     <h2>Choose your prize from {{ reward_event.name }}</h2>
     <p>Your choice also grants one full level. Choose before {{ reward_event.selection_deadline[:16] }} UTC; afterward the highest-value remaining prize is selected automatically.</p>
-    {% if reward_blocked %}<p class="term-amber">The player ahead of you is still choosing. Your available choices will update after their award is locked.</p>{% endif %}
+    {% if reward_blocked %}<p class="term-amber">The player ahead of you is still choosing. Your choices update after that award is locked.</p>{% endif %}
     <div class="wb-prize-grid">
       {% for item in prize_options %}
       <form method="post" action="{{ url_for('world_boss.claim') }}" class="wb-prize-card">
         <input type="hidden" name="event_id" value="{{ reward_event.id }}">
         <input type="hidden" name="item_type" value="{{ item.item_type }}">
         <input type="hidden" name="item_id" value="{{ item.id }}">
-        <strong>{{ item.name }}</strong><span>{{ item.item_type }} · {{ item.credit_cost }} credits</span>
+        <strong>{{ item.name }}</strong><span>{{ item.item_type }} &middot; {{ item.credit_cost }} credits</span>
         <p>{{ item.description }}</p><button type="submit" {% if reward_blocked %}disabled{% endif %}>Choose {{ item.name }}</button>
       </form>
       {% endfor %}
     </div>
   </section>
   {% endif %}
+
   {% if event %}
-  <div class="sheet-kicker">{{ 'WEEKLY MULTIVERSE EVENT' if is_active else 'FINAL EVENT RESULTS' }}</div>
+  <div class="sheet-kicker">{{ 'WEEKLY MULTIPLAYER RAID' if is_active else 'FINAL MULTIPLAYER RAID RESULTS' }}</div>
   <h2 class="page-title" id="wb-name">{{ event.name }}</h2>
-  <p>{{ event.flavor_text }}</p>
-  <div class="wb-health"><div id="wb-health-fill" style="width:{{ (event.current_hp / event.starting_hp * 100)|round(1) }}%"></div></div>
-  <p><strong id="wb-hp">{{ event.current_hp }} / {{ event.starting_hp }}</strong> shared HP · Ends {{ event.scheduled_end_at[:16] }} UTC</p>
-  {% if request.args.get('error') %}<div class="error-message">{{ request.args.get('error') }}</div>{% endif %}
-  {% if is_active %}<form method="post" action="{{ url_for('world_boss.fight') }}">
-    <button type="submit" {% if not can_fight %}disabled{% endif %}>Attack World Boss ({{ entry_cost }} AP)</button>
-    {% if player.in_combat %}<span class="muted">Finish your current combat first.</span>
-    {% elif player.current_ap < entry_cost %}<span class="muted">You need {{ entry_cost }} AP.</span>{% endif %}
-  </form>{% else %}<p>The standings below are locked. The next unused boss appears at midnight after all earned prizes have been awarded.</p>{% endif %}
-  <div class="wb-grid">
-    <section><h3>Damage Standings</h3><ol id="wb-standings">{% for row in standings %}<li>{{ row.character_name }} — {{ row.damage }} damage</li>{% endfor %}</ol></section>
-    <section><h3>Live Boss Log</h3><div id="wb-log">{% for row in logs %}<div data-log-id="{{ row.id }}">[{{ row.occurred_at[11:19] }}] {{ row.message }}</div>{% endfor %}</div></section>
+  <div class="wb-multiplayer-banner">
+    <strong>MULTIPLAYER SHARED EVENT</strong>
+    <span>Every player and NPC attacks the same health pool. Your damage combines with the entire world's damage, while the leaderboard determines the three placement rewards.</span>
   </div>
-  {% else %}<h2>No world boss is active.</h2><p>The next unused boss will appear after the prior rewards are complete.</p>{% endif %}
+  <p class="wb-description">{{ event.description }}</p>
+  <p class="wb-flavor">{{ event.flavor_text }}</p>
+
+  <div class="wb-shared-health-label"><span>SHARED WORLD HEALTH POOL</span><span>All players contribute</span></div>
+  <div class="wb-health"><div id="wb-health-fill" style="width:{{ (event.current_hp / event.starting_hp * 100)|round(1) }}%"></div></div>
+  <div class="wb-health-meta">
+    <strong id="wb-hp">{{ event.current_hp }} / {{ event.starting_hp }}</strong>
+    <span><strong id="wb-percent">{{ (event.current_hp / event.starting_hp * 100)|round(1) }}%</strong> remaining</span>
+    <span>Phase {{ current_phase }}</span>
+    <span>Ends <time datetime="{{ event.scheduled_end_at }}">{{ event.scheduled_end_at[:16] }} UTC</time></span>
+  </div>
+
+  <div class="wb-stat-grid" aria-label="World boss statistics">
+    {% for label, value in [('Level',event.level),('STR',event.str_stat),('END',event.end_stat),('AGI',event.agi_stat),('LCK',event.lck_stat),('PER',event.per_stat)] %}
+    <div><span>{{ label }}</span><strong>{{ value }}</strong></div>
+    {% endfor %}
+  </div>
+
+  <div class="wb-intel-grid">
+    <section><h3>Combat Profile</h3>
+      <p><strong>Resists:</strong> {{ resistances|join(', ') if resistances else 'None' }}</p>
+      <p><strong>Weak to:</strong> {{ weaknesses|join(', ') if weaknesses else 'None' }}</p>
+      <p><strong>Phase changes:</strong> {{ event.phase2_hp_percent }}% and {{ event.phase3_hp_percent }}% HP</p>
+    </section>
+    <section><h3>Signature Attack</h3><strong>{{ event.special_attack_name }}</strong>
+      <p>{{ event.special_attack_die }} {{ event.special_attack_damage_type }} &middot; {{ event.special_attack_flavor }}</p>
+    </section>
+    <section><h3>Signature Effect</h3><strong>{{ event.special_buff_name }}</strong><p>{{ event.special_buff_flavor }}</p></section>
+  </div>
+
+  {# Resolve the viewer from the authoritative standings as well as the route
+     value. This keeps the panel correct during Flask's partial dev reloads. #}
+  {% set viewer = namespace(row=(personal if personal is defined else none), rank=none) %}
+  {% for standing in standings %}
+    {% if standing.player_id|int == player.id|int %}
+      {% set viewer.row = standing %}
+      {% set viewer.rank = loop.index %}
+    {% endif %}
+  {% endfor %}
+  {% if viewer.row %}
+  <section class="wb-personal"><div class="sheet-kicker">YOUR CAMPAIGN</div>
+    <strong>Rank #{{ viewer.rank or viewer.row.rank }}</strong><span>{{ viewer.row.damage }} damage</span>
+    <span>{{ viewer.row.attempts }} attempt{{ '' if viewer.row.attempts == 1 else 's' }}</span>
+    <span>{{ viewer.row.xp_earned }} XP &middot; {{ viewer.row.credits_earned }} credits earned</span>
+  </section>
+  {% else %}<section class="wb-personal wb-unranked"><strong>You have not attacked this boss yet.</strong><span>Your first attempt places you on the damage leaderboard.</span></section>{% endif %}
+
+  {% if request.args.get('error') %}<div class="error-message">{{ request.args.get('error') }}</div>{% endif %}
+  {% if is_active %}<form method="post" action="{{ url_for('world_boss.fight') }}" class="wb-attack-form">
+    <button type="submit" {% if not can_fight %}disabled{% endif %}>Join Raid Against {{ event.name }} ({{ entry_cost }} AP)</button>
+    {% if player.in_combat %}<span class="muted">Finish your current combat first.</span>{% elif player.current_ap < entry_cost %}<span class="muted">You need {{ entry_cost }} AP.</span>{% endif %}
+  </form>{% else %}<p>The standings are locked. The next unused boss appears at midnight after all prizes have been awarded.</p>{% endif %}
+
+  <div class="wb-grid">
+    <section><h3>Damage Standings</h3><ol id="wb-standings">{% for row in standings %}<li><strong>#{{ loop.index }} {{ row.character_name }}</strong><span>{{ row.damage }} damage &middot; {{ row.attempts }} attempts</span></li>{% else %}<li class="muted">No one has challenged this boss yet.</li>{% endfor %}</ol></section>
+    <section><h3>Live Boss Log</h3><div id="wb-log">{% for row in logs %}<div data-log-id="{{ row.id }}">[{{ row.occurred_at[11:19] }}] {{ row.message }}</div>{% else %}<div class="muted">The event is quiet.</div>{% endfor %}</div></section>
+  </div>
+
+  {% if event_loot %}<section class="wb-rewards"><div class="sheet-kicker">PLACEMENT REWARDS</div><h3>Weekly Prize Vault</h3>
+    <p>First place chooses first, second chooses from the remaining two, and third receives the final item. All three also gain one full level.</p>
+    <div class="wb-prize-grid">{% for item in event_loot %}<article class="wb-prize-card"><span>{{ item.item_type }}</span><strong>{{ item.name }}</strong><p>{{ item.description }}</p><small>{{ item.credit_cost }} credit value</small></article>{% endfor %}</div>
+  </section>{% endif %}
+  {% else %}<h2>No world boss is active.</h2><p>The next unused boss appears after the prior rewards are complete.</p>{% endif %}
 </div>
+
 {% if event and is_active %}<script>
 let wbLast={{ (logs[-1].id if logs else 0)|tojson }};
 async function pollWorldBoss(){
   try{const r=await fetch(`{{ url_for('world_boss.status') }}?after=${wbLast}`);const d=await r.json();if(!d.active){location.reload();return;}
     document.querySelector('#wb-hp').textContent=`${d.current_hp} / ${d.starting_hp}`;
+    document.querySelector('#wb-percent').textContent=`${d.hp_percent}%`;
     document.querySelector('#wb-health-fill').style.width=`${d.hp_percent}%`;
-    document.querySelector('#wb-standings').innerHTML=d.standings.map((x,i)=>`<li>${x.character_name} — ${x.damage} damage</li>`).join('');
+    document.querySelector('#wb-standings').innerHTML=d.standings.length?d.standings.map((x,i)=>`<li><strong>#${i+1} ${x.character_name}</strong><span>${x.damage} damage &middot; ${x.attempts} attempts</span></li>`).join(''):'<li class="muted">No one has challenged this boss yet.</li>';
     const log=document.querySelector('#wb-log');for(const x of d.logs){const line=document.createElement('div');line.textContent=`[${x.occurred_at.slice(11,19)}] ${x.message}`;log.appendChild(line);wbLast=x.id;}
   }catch(e){} setTimeout(pollWorldBoss,4000);
 } setTimeout(pollWorldBoss,4000);

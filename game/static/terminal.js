@@ -236,18 +236,19 @@ function appendToTerminal(html) {
 // Timestamps injected by dashboard.html into initialTimestamp.
 // ─────────────────────────────────────────────────────────────────────────────
 
-let lastPersonalTs = (typeof initialTimestamp !== 'undefined') ? initialTimestamp : new Date(0).toISOString();
+let lastPersonalTs = (typeof initialTimestamp !== 'undefined') ? initialTimestamp : new Date().toISOString();
 let lastGlobalTs   = new Date(0).toISOString();
 const POLL_INTERVAL = 5000;
 
 function pollFeeds() {
     // Personal feed → terminal
-    if (document.getElementById('terminal') && window.personalFeedUrl) {
+    if (window.personalFeedUrl) {
         fetch(`${window.personalFeedUrl}?since=${encodeURIComponent(lastPersonalTs)}`)
             .then(r => r.json())
             .then(entries => {
                 entries.forEach(entry => {
-                    appendFeedEntry(entry);
+                    if (document.getElementById('terminal')) appendFeedEntry(entry);
+                    showLivePlayerAlert(entry);
                     lastPersonalTs = entry.occurred_at;
                 });
             })
@@ -272,6 +273,20 @@ function pollFeeds() {
     }
 }
 
+let livePlayerAlertTimer = null;
+function showLivePlayerAlert(entry) {
+    const alert = document.getElementById('live-player-alert');
+    if (!alert) return;
+    const againstYou = (entry.event_category || '').toUpperCase() === 'PVP_DEFENSE';
+    document.getElementById('live-player-alert-label').textContent =
+        againstYou ? 'ACTION AGAINST YOU' : 'LIVE CHARACTER UPDATE';
+    document.getElementById('live-player-alert-message').textContent = entry.flavor_text;
+    alert.classList.toggle('live-alert-danger', againstYou);
+    alert.hidden = false;
+    clearTimeout(livePlayerAlertTimer);
+    livePlayerAlertTimer = setTimeout(() => { alert.hidden = true; }, 15000);
+}
+
 function appendFeedEntry(entry) {
     const terminal = document.getElementById('terminal');
     if (!terminal) return;
@@ -279,10 +294,12 @@ function appendFeedEntry(entry) {
     const category = (entry.event_category || 'system').toLowerCase();
     div.className = `term-line feed-entry term-${category}`;
     const ts = entry.occurred_at ? entry.occurred_at.substring(11, 16) : '';
-    const categoryLabel = category === 'system' ? 'SYSTEM' :
+    const categoryLabel = category === 'pvp_defense' ? 'AGAINST YOU' :
+        category === 'system' ? 'SYSTEM' :
         category === 'random_event' ? 'YOU · EVENT' :
         category === 'combat' ? 'YOU · COMBAT' : 'YOU';
-    const scopeClass = category === 'system' ? 'feed-system' : 'feed-you';
+    const scopeClass = category === 'pvp_defense' ? 'feed-against-you' :
+        category === 'system' ? 'feed-system' : 'feed-you';
     div.innerHTML = `<span class="term-ts">[${ts}]</span>` +
         `<span class="feed-entry-scope"><span class="feed-scope ${scopeClass}">${categoryLabel}</span></span>` +
         `<span class="feed-message"></span>`;
@@ -305,6 +322,35 @@ function appendToTicker(text) {
 if (document.getElementById('terminal') || document.getElementById('ticker-content')) {
     pollFeeds();
     setInterval(pollFeeds, POLL_INTERVAL);
+}
+
+async function pollPlayerStatus() {
+    if (!window.playerStatusUrl) return;
+    try {
+        const response = await fetch(window.playerStatusUrl, {cache: 'no-store'});
+        if (!response.ok) return;
+        const state = await response.json();
+        setEl('status-hp', state.hp); setEl('status-maxhp', state.max_hp);
+        setEl('status-ap', state.ap); setEl('status-maxap', state.max_ap);
+        setEl('status-level', state.level); setEl('status-xp', state.xp);
+        setEl('status-xp-threshold', state.xp_threshold == null ? '' : `/${state.xp_threshold}`);
+        setEl('status-xp-next', state.xp_next == null ? 'MAX' :
+            state.xp_next <= 0 ? 'LEVEL UP' : `${state.xp_next} XP`);
+        setEl('status-credits', state.credits);
+        const block = document.getElementById('status-block');
+        if (!block) return;
+        let combat = block.querySelector('.status-combat');
+        if (state.in_combat && !combat) {
+            combat = document.createElement('div');
+            combat.className = 'status-combat'; combat.textContent = '⚔ IN COMBAT';
+            block.appendChild(combat);
+        } else if (!state.in_combat && combat) combat.remove();
+    } catch (error) {}
+}
+
+if (window.playerStatusUrl) {
+    pollPlayerStatus();
+    setInterval(pollPlayerStatus, POLL_INTERVAL);
 }
 
 

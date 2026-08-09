@@ -5,7 +5,7 @@
 # These are the only two JSON-returning routes in the main app.
 
 from flask import Blueprint, jsonify, render_template, request, session
-from database import execute
+from database import execute, get_player
 import config_defaults as cfg
 
 bp = Blueprint("feeds", __name__)
@@ -62,6 +62,24 @@ def global_latest():
         (since,)
     )
     return jsonify(rows)
+
+
+@bp.route("/feed/player-status")
+def player_status():
+    """Return compact live state without reloading or disturbing the page."""
+    player = get_player(session.get("player_id"))
+    if not player:
+        return jsonify({"authenticated": False}), 401
+    return jsonify({
+        "authenticated": True, "level": player["level"], "xp": player["xp"],
+        "xp_threshold": player.get("next_level_xp"),
+        "xp_next": player.get("xp_to_next_level"),
+        "hp": player["current_hp"], "max_hp": player["max_hp"],
+        "ap": player["current_ap"], "max_ap": player["max_ap"],
+        "credits": player["credits"], "in_combat": bool(player["in_combat"]),
+        "is_overencumbered": bool(player.get("is_overencumbered")),
+        "is_cursed": bool(player.get("is_cursed")),
+    })
 
 
 @bp.route("/players/active")

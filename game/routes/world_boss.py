@@ -15,13 +15,22 @@ bp = Blueprint("world_boss", __name__)
 
 @bp.route("/world-boss")
 def index():
-    """Display the active event, standings, live log, and pending prizes."""
+    """Display the free event dossier, live standings/log, and pending prizes."""
     # New encounters are activated only by midnight maintenance (or an
     # explicit admin action), never merely because somebody opened this page.
     active_event = get_active_event()
     event = active_event or execute_one(
-        """SELECT e.*,w.name,w.flavor_text,w.description FROM world_boss_events e
-           JOIN world_bosses w ON w.id=e.world_boss_id ORDER BY e.id DESC LIMIT 1"""
+        """SELECT e.*,w.name,w.level,w.str_stat,w.end_stat,w.agi_stat,w.lck_stat,
+                  w.per_stat,w.phase2_hp_percent,w.phase3_hp_percent,w.flavor_text,
+                  w.description,w.special_attack_name,w.special_attack_die,
+                  w.special_attack_damage_type,w.special_attack_flavor,
+                  w.special_buff_name,w.special_buff_type,w.special_buff_value,
+                  w.special_buff_damage_type,w.special_buff_flavor,
+                  w.res_blade,w.res_blunt,w.res_ballistic,w.res_energy,w.res_arcane,
+                  w.res_explosive,w.res_venom,w.weak_blade,w.weak_blunt,
+                  w.weak_ballistic,w.weak_energy,w.weak_arcane,w.weak_explosive,w.weak_venom
+           FROM world_boss_events e JOIN world_bosses w ON w.id=e.world_boss_id
+           ORDER BY e.id DESC LIMIT 1"""
     )
     reward_event = pending_event_for_player(g.player["id"])
     logs = _logs(event["id"], 0) if event else []
@@ -31,14 +40,47 @@ def index():
         """SELECT 1 FROM world_boss_rewards WHERE event_id=? AND place<?
            AND status!='AWARDED' LIMIT 1""", (reward_event["id"], reward_event["place"])
     ))
+    ranking = standings(event["id"]) if event else []
+    personal = next((dict(row, rank=index + 1) for index, row in enumerate(ranking)
+                     if row["player_id"] == g.player["id"]), None)
+    damage_types = ("blade", "blunt", "ballistic", "energy", "arcane",
+                    "explosive", "venom")
+    resistances = [kind.title() for kind in damage_types
+                   if event and event.get(f"res_{kind}")]
+    weaknesses = [kind.title() for kind in damage_types
+                  if event and event.get(f"weak_{kind}")]
+    hp_percent = ((event["current_hp"] / event["starting_hp"] * 100)
+                  if event and event["starting_hp"] else 0)
+    phase = (3 if event and hp_percent <= event.get("phase3_hp_percent", 0)
+             else 2 if event and hp_percent <= event.get("phase2_hp_percent", 0)
+             else 1)
     return render_template("world_boss/index.html", event=event,
-                           standings=standings(event["id"]) if event else [], logs=logs,
+                           standings=ranking, personal=personal, logs=logs,
+                           resistances=resistances, weaknesses=weaknesses,
+                           event_loot=_event_loot(event["world_boss_id"]) if event else [],
+                           current_phase=phase,
                            entry_cost=cost, is_active=bool(active_event),
                            can_fight=bool(active_event and not g.player["in_combat"]
                            and g.player["current_ap"] >= cost), reward_event=reward_event,
                            reward_blocked=reward_blocked,
                            prize_options=(prize_options(reward_event["id"], reward_event["place"])
                                           if reward_event else []))
+
+
+def _event_loot(world_boss_id):
+    """Return all three public weekly placement prizes with display details."""
+    loot = execute_one("SELECT * FROM world_boss_loot WHERE world_boss_id=?",
+                       (world_boss_id,))
+    if not loot:
+        return []
+    result = []
+    for item_type, key, table in (("Weapon", "weapon_id", "weapons"),
+                                  ("Outfit", "armor_id", "armor"),
+                                  ("Special", "special_item_id", "special_items")):
+        item = execute_one(f"SELECT * FROM {table} WHERE id=?", (loot[key],))
+        if item:
+            result.append({**item, "item_type": item_type})
+    return result
 
 
 @bp.route("/world-boss/claim", methods=["POST"])
