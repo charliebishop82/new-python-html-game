@@ -12,7 +12,7 @@ from datetime import datetime
 
 from database import (execute, execute_one, execute_write, get_player,
                       exclusive_transaction, get_all_settings,
-                      get_player_bonus_profile)
+                      get_player_bonus_profile, get_player_perk_bonuses)
 from combat import engine
 from combat import flavour
 import config_defaults as cfg
@@ -126,6 +126,7 @@ def _load_equipped(player: dict) -> dict:
                 if item:
                     result[slot] = {**item, "inv_id": inv_id,
                                     "current_durability": inv["current_durability"]}
+    result["perk_bonuses"] = get_player_perk_bonuses(player["id"])
     result["bonuses"] = get_player_bonus_profile(player["id"], result["special"])
     return result
 
@@ -153,8 +154,9 @@ def apply_equipped_stat_bonuses(player: dict, equipped: dict | None = None) -> d
     ):
         effective[column] = player[column] + sum(
             int((item or {}).get(bonus_key, 0) or 0)
-            for key, item in equipped.items() if key != "bonuses"
-        )
+            for key, item in equipped.items()
+            if key in ("weapon", "armor", "special")
+        ) + int((equipped.get("perk_bonuses") or {}).get(bonus_key, 0) or 0)
     effective["max_hp"] = engine.calc_max_hp(effective)
     effective["special_ac_bonus"] = int(
         (equipped.get("bonuses") or {}).get("ac_bonus", 0) or 0
@@ -262,7 +264,7 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
 
     # Extra attack (special item)
     extra_attack_result = None
-    if special and special.get("extra_attack") and result["hit"]:
+    if special and special.get("extra_attack"):
         extra_attack_result = engine.resolve_full_attack(
             attacker=attacker,
             defender=opponent,
@@ -270,7 +272,7 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
             attacker_special=special,
             defender_armor=armor,
             defender_special=def_special,
-            boss=boss,
+            boss=creature_defender,
             brace_dodge_bonus=0,
             active_buffs=def_buffs,
             is_player_attacker=is_attacker,
@@ -380,6 +382,9 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
         "is_crit":        result["is_crit"],
         "new_target_hp":  new_hp,
         "roll_detail":    result["roll_detail"],
+        "outcome_detail": (result["outcome_detail"] +
+                           (f" | Extra attack: {extra_attack_result['outcome_detail']}"
+                            if extra_attack_result else "")),
         "flavor":         flavor,
         "extra_attack":   extra_attack_result is not None,
     }
@@ -432,7 +437,7 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
                                     steal_bonus, settings)
         steal_xp = settings.get("SUCCESSFUL_STEAL_XP", getattr(cfg, "SUCCESSFUL_STEAL_XP", 10))
         result["xp_bonus"] = result.get("xp_bonus", 0) + steal_xp
-        _award_action_xp(player_id, result["xp_bonus"])
+        result["xp_bonus"] = _award_action_xp(player_id, result["xp_bonus"])
         _write_combat_log(session_id, session["current_round"], actor_side,
                           "STEAL", roll_result["detail"], str(result))
         return {"action": "STEAL", "success": True,
@@ -468,7 +473,7 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
                                     session["combat_type"])
         steal_xp = settings.get("SUCCESSFUL_STEAL_XP", getattr(cfg, "SUCCESSFUL_STEAL_XP", 10))
         result["xp_bonus"] = steal_xp
-        _award_action_xp(player_id, steal_xp)
+        result["xp_bonus"] = _award_action_xp(player_id, steal_xp)
         _write_combat_log(session_id, session["current_round"], "ATTACKER",
                           "STEAL", roll_result["detail"], str(result))
         return {"action": "STEAL", "success": True,
@@ -481,17 +486,20 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
                     is_vs_boss=True)}
 
 
-def _award_action_xp(player_id: int, amount: int) -> None:
-    """Award action XP immediately and trigger the normal level-up check."""
+def _award_action_xp(player_id: int, amount: int) -> int:
+    """Award action XP with all equipped-special/perk XP modifiers."""
     if amount <= 0:
-        return
+        return 0
     player = execute_one("SELECT xp, level FROM players WHERE id=?", (player_id,))
     if not player:
-        return
+        return 0
+    multiplier = float(get_player_bonus_profile(player_id).get("xp_multiplier", 0) or 0)
+    amount = max(0, int(amount * (1 + multiplier)))
     new_xp = player["xp"] + amount
     with exclusive_transaction():
         execute_write("UPDATE players SET xp=? WHERE id=?", (new_xp, player_id))
     engine.check_level_up(player_id, new_xp, player["level"])
+    return amount
 
 
 def _pvp_steal_cascade(attacker_id: int, defender_id: int,
@@ -599,7 +607,7 @@ def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
 
     base_chance   = settings.get("STEAL_SPECIAL_BASE_CHANCE", cfg.STEAL_SPECIAL_BASE_CHANCE)
     cr_multiplier = settings.get("STEAL_BOSS_CREDIT_MULTIPLIER", cfg.STEAL_BOSS_CREDIT_MULTIPLIER)
-    player        = execute_one("SELECT lck_stat FROM players WHERE id = ?", (player_id,))
+    player        = apply_equipped_stat_bonuses(get_player(player_id))
     lck_bonus     = math.floor(player["lck_stat"] / 2) / 100
 
     # Try special item first
@@ -668,7 +676,11 @@ def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
                 return {"item_name": master["weapon_name"]}
 
     # Credits fallback
-    credits_stolen = int(opponent["level"] * (cr_multiplier + steal_bonus * cr_multiplier))
+    credit_bonus = float(get_player_bonus_profile(player_id).get("credit_multiplier", 0) or 0)
+    credits_stolen = int(
+        opponent["level"] * (cr_multiplier + steal_bonus * cr_multiplier) *
+        (1 + credit_bonus)
+    )
     with exclusive_transaction():
         execute_write("UPDATE players SET credits = credits + ? WHERE id = ?",
                       (credits_stolen, player_id))
@@ -1069,6 +1081,7 @@ def _minion_action(session_id: int, state: dict) -> dict:
         "dodged": result["dodged"],
         "damage_total": result["damage_total"],
         "roll_detail": result["roll_detail"],
+        "outcome_detail": result["outcome_detail"],
         "flavor": flavor_text,
     }
 
@@ -1354,10 +1367,13 @@ def _finalize_world_boss_attempt(session_id: int, state: dict,
     player = state["attacker"]
     boss = state["boss"]
     settings = get_all_settings()
+    bonuses = state["attacker_equipped"].get("bonuses") or {}
     xp = max(0, int(settings.get("WORLD_BOSS_ATTEMPT_XP",
-                                 cfg.WORLD_BOSS_ATTEMPT_XP)))
+                                 cfg.WORLD_BOSS_ATTEMPT_XP) *
+                    (1 + float(bonuses.get("xp_multiplier", 0) or 0))))
     credits = max(0, int(settings.get("WORLD_BOSS_ATTEMPT_CREDITS",
-                                      cfg.WORLD_BOSS_ATTEMPT_CREDITS)))
+                                      cfg.WORLD_BOSS_ATTEMPT_CREDITS) *
+                         (1 + float(bonuses.get("credit_multiplier", 0) or 0))))
     damage = execute_one(
         "SELECT attacker_total_damage_dealt AS damage FROM combat_sessions WHERE id=?",
         (session_id,)
@@ -1662,11 +1678,11 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
             loser_player_id = attacker["id"]
         if loser_player_id:
             defeat_xp = settings.get("COMBAT_DEFEAT_XP", getattr(cfg, "COMBAT_DEFEAT_XP", 10))
-            _award_action_xp(loser_player_id, defeat_xp)
-            loser_defeat_xp = defeat_xp
+            awarded_defeat_xp = _award_action_xp(loser_player_id, defeat_xp)
+            loser_defeat_xp = awarded_defeat_xp
             if loser_player_id == attacker["id"]:
-                defeat_xp_earned = defeat_xp
-                xp_earned += defeat_xp
+                defeat_xp_earned = awarded_defeat_xp
+                xp_earned += awarded_defeat_xp
 
     # Finalize session
     with exclusive_transaction():
@@ -2108,5 +2124,6 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
         "dodged": result["dodged"],
         "damage_total": result["damage_total"],
         "roll_detail": result["roll_detail"],
+        "outcome_detail": result["outcome_detail"],
         "flavor": flv,
     }

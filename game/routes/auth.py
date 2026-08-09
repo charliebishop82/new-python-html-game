@@ -14,7 +14,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_player, get_all_settings,
-                      scale_perk_effects)
+                      scale_perk_effects, get_player_equipped,
+                      get_player_perk_bonuses)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -357,7 +358,15 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
 
     # Recalculate max HP with the assigned stat and any immediately queued level.
     new_end = new_stat_val if stat == "end" else player["end_stat"]
-    new_max_hp = 10 + new_end + (5 * target_level)
+    equipped = get_player_equipped(player)
+    gear_end = sum(
+        int((equipped.get(slot) or {}).get("end_bonus", 0) or 0)
+        for slot in ("weapon", "armor", "special")
+    )
+    perk_end = int(get_player_perk_bonuses(player_id).get("end_bonus", 0) or 0)
+    if perk:
+        perk_end += int(scale_perk_effects(perk).get("end_bonus", 0) or 0)
+    new_max_hp = 10 + new_end + gear_end + perk_end + (5 * target_level)
 
     with exclusive_transaction():
         execute_write(f"UPDATE players SET {col} = ? WHERE id = ?", (new_stat_val, player_id))

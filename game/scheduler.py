@@ -9,7 +9,8 @@ import os
 from datetime import datetime
 
 from database import (execute, execute_one, execute_write, exclusive_transaction,
-                      get_all_settings, get_player_equipped)
+                      get_all_settings, get_player_equipped,
+                      get_player_bonus_profile, get_player_perk_bonuses)
 from queue_handler import purge_old_done_rows
 import config_defaults as cfg
 
@@ -161,11 +162,12 @@ def _step4_5_award_daily_ap():
         for p in players:
             equipped = get_player_equipped(p)
             effective_end = p["end_stat"] + sum(
-                int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values()
-            )
-            special = equipped.get("special") or {}
+                int((equipped.get(slot) or {}).get("end_bonus", 0) or 0)
+                for slot in ("weapon", "armor", "special")
+            ) + int(get_player_perk_bonuses(p["id"]).get("end_bonus", 0) or 0)
+            bonuses = get_player_bonus_profile(p["id"], equipped.get("special"))
             daily_ap = (base_ap + math.floor(effective_end / 2) +
-                        int(special.get("bonus_ap", 0) or 0))
+                        int(bonuses.get("bonus_ap", 0) or 0))
             if p["id"] in cursed_ids:
                 daily_ap = int(daily_ap * (1 - curse_red))
             # Carryover cap first, then add daily AP, then cap again
@@ -190,8 +192,9 @@ def _step6_restore_midnight_hp():
         for p in players:
             equipped = get_player_equipped(p)
             effective_end = p["end_stat"] + sum(
-                int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values()
-            )
+                int((equipped.get(slot) or {}).get("end_bonus", 0) or 0)
+                for slot in ("weapon", "armor", "special")
+            ) + int(get_player_perk_bonuses(p["id"]).get("end_bonus", 0) or 0)
             max_hp = 10 + effective_end + (5 * p["level"])
             missing = max_hp - p["current_hp"]
             if missing > 0:
@@ -219,12 +222,13 @@ def _step7_midnight_encounters():
     for p in players:
         equipped = get_player_equipped(p)
         effective_end = p["end_stat"] + sum(
-            int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values()
-        )
-        special = equipped.get("special") or {}
+            int((equipped.get(slot) or {}).get("end_bonus", 0) or 0)
+            for slot in ("weapon", "armor", "special")
+        ) + int(get_player_perk_bonuses(p["id"]).get("end_bonus", 0) or 0)
+        bonuses = get_player_bonus_profile(p["id"], equipped.get("special"))
         p["max_hp"] = 10 + effective_end + (5 * p["level"])
         p["max_ap"] = (settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP) +
-                       math.floor(effective_end / 2) + int(special.get("bonus_ap", 0) or 0))
+                       math.floor(effective_end / 2) + int(bonuses.get("bonus_ap", 0) or 0))
         event = check_random_event(p, settings)
         if event:
             triggered += 1

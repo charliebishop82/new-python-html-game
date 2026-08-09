@@ -491,6 +491,7 @@ def action_boss_confirm():
 def _minion_per_check(player: dict, minion: dict) -> dict:
     """Provide the internal minion per check operation used by this module."""
     from combat.engine import resolve_opposed_roll
+    player = combat_actions.apply_equipped_stat_bonuses(player)
     result = resolve_opposed_roll(
         actor_agi=player["agi_stat"], actor_lck=player["lck_stat"],
         defender_agi=minion["agi_stat"], defender_lck=minion["lck_stat"],
@@ -798,7 +799,10 @@ def _get_eligible_opponents(player: dict, settings: dict) -> list[dict]:
             continue  # Can't attack more than 2 levels below
         if p["level"] < player["level"] - 2:
             continue
-        max_hp = 10 + p["end_stat"] + (5 * p["level"])
+        # Health tiers must use the same equipment/perk-adjusted HP cap as
+        # combat; otherwise END perks make the opponent list misleading.
+        effective = combat_actions.apply_equipped_stat_bonuses(get_player(p["id"]))
+        max_hp = effective["max_hp"]
         hp_pct = p["current_hp"] / max_hp * 100 if max_hp else 0
         if hp_pct >= 76:   hp_tier = "Healthy"
         elif hp_pct >= 51: hp_tier = "Wounded"
@@ -895,7 +899,7 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
         new_ap, new_hp = _deduct_ap_and_regen(player_id, player, cost_ap, settings)
         execute_write("UPDATE players SET in_combat = 1 WHERE id = ?", (player_id,))
         execute_write("UPDATE players SET in_combat = 1 WHERE id = ?", (target_id,))
-        target_max_hp = 10 + target["end_stat"] + (5 * target["level"])
+        target_max_hp = target["max_hp"]
         session_id = execute_write(
             """INSERT INTO combat_sessions
                (combat_type, attacker_player_id, defender_player_id, status,

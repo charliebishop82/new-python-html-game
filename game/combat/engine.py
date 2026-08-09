@@ -351,7 +351,7 @@ def resolve_full_attack(attacker: dict, defender: dict,
 
     damage_breakdown = [{
         "type": attacker_weapon["damage_type"],
-        "raw": weapon_dmg,
+        "damage": weapon_dmg,
         "note": " ".join(filter(None, [res_note, weak_note]))
     }]
 
@@ -375,7 +375,7 @@ def resolve_full_attack(attacker: dict, defender: dict,
             bonus_dmg += final_bonus
             damage_breakdown.append({
                 "type": bonus_type,
-                "raw": final_bonus,
+                "damage": final_bonus,
                 "note": " ".join(filter(None, [bonus_res_note, bonus_weak_note]))
             })
 
@@ -384,6 +384,11 @@ def resolve_full_attack(attacker: dict, defender: dict,
         mult = attacker_special["crit_dmg_multiplier"]
         weapon_dmg  = int(weapon_dmg  * (1 + mult))
         bonus_dmg   = int(bonus_dmg   * (1 + mult))
+        for component in damage_breakdown:
+            component["damage"] = int(component["damage"] * (1 + mult))
+            component["note"] = " ".join(filter(None, [
+                component["note"], f"critical bonus +{int(mult * 100)}%"
+            ]))
 
     damage_total = weapon_dmg + bonus_dmg
 
@@ -400,6 +405,17 @@ def resolve_full_attack(attacker: dict, defender: dict,
 
     outcome = (f"{weapon_detail} → {damage_total} damage"
                f"{' (' + damage_breakdown[0]['note'] + ')' if damage_breakdown[0]['note'] else ''}")
+
+    # The total already included typed perk/special damage, but the previous
+    # message showed only the weapon roll. Spell out every component so the
+    # player can verify effects such as "+5 Venom damage" in each attack.
+    parts = []
+    for component in damage_breakdown:
+        label = f"{component['damage']} {component['type']}"
+        if component["note"]:
+            label += f" ({component['note']})"
+        parts.append(label)
+    outcome = f"{weapon_detail} -> {' + '.join(parts)} = {damage_total} total damage"
 
     return {
         "hit":                   True,
@@ -502,13 +518,13 @@ def _calc_durability_loss(base_loss: int, special: dict | None) -> int:
 
 
 def calc_special_item_round_loss(special: dict | None) -> int:
-    """SPECIAL_ITEM_DURABILITY_LOSS_PER_ROUND % of 100 per round, both sides."""
+    """Calculate round wear, including the combined durability protection."""
     if not special:
         return 0
     settings = get_all_settings()
     pct = settings.get("SPECIAL_ITEM_DURABILITY_LOSS_PER_ROUND",
                        cfg.SPECIAL_ITEM_DURABILITY_LOSS_PER_ROUND)
-    return max(1, int(100 * pct))
+    return _calc_durability_loss(max(1, int(100 * pct)), special)
 
 
 def apply_pvp_loss_durability_hits(player_id: int, equipped: dict):
@@ -529,7 +545,8 @@ def apply_pvp_loss_durability_hits(player_id: int, equipped: dict):
                 player_id, slot,
             )
             continue
-        new_dur = max(0, item.get("current_durability", 0) - 10)  # flat -10 on PvP loss
+        loss = _calc_durability_loss(10, equipped.get("bonuses"))
+        new_dur = max(0, item.get("current_durability", 0) - loss)
         with exclusive_transaction():
             execute_write(
                 "UPDATE inventory_items SET current_durability = ? WHERE id = ?",

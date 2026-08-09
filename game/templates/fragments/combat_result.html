@@ -42,6 +42,11 @@
         {{ action_result.roll_detail }}
     </div>
     {% endif %}
+    {% if action_result.get('outcome_detail') %}
+    <div class="term-line term-system" style="font-size:11px;margin-left:12px;">
+        Damage: {{ action_result.outcome_detail }}
+    </div>
+    {% endif %}
     {% endfor %}
     {% endif %}
 

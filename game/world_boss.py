@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
-                      get_all_settings)
+                      get_all_settings, get_player)
 
 
 def _utcnow():
@@ -170,7 +170,6 @@ def claim_prize(player_id, event_id, item_type, item_id, automatic=False):
         raise ValueError("That prize is no longer available.")
     current = execute_one("SELECT * FROM players WHERE id=?", (player_id,))
     new_level = current["level"] + 1
-    max_hp = 10 + current["end_stat"] + (5 * new_level)
     with exclusive_transaction():
         inv_id = execute_write(
             """INSERT INTO inventory_items
@@ -184,10 +183,15 @@ def claim_prize(player_id, event_id, item_type, item_id, automatic=False):
                WHERE id=?""", (item_type.upper(), int(item_id), _utcnow().isoformat(), reward["id"])
         )
         execute_write(
-            """UPDATE players SET level=?,current_hp=?,pending_levelup=pending_levelup+1,
+            """UPDATE players SET level=?,pending_levelup=pending_levelup+1,
                pending_perk=pending_perk+? WHERE id=?""",
-            (new_level, max_hp, 1 if new_level % 3 == 0 else 0, player_id)
+            (new_level, 1 if new_level % 3 == 0 else 0, player_id)
         )
+        # Full-heal rewards use the same equipment/perk-adjusted HP cap as
+        # combat and the character sheet.
+        refreshed = get_player(player_id)
+        execute_write("UPDATE players SET current_hp=? WHERE id=?",
+                      (refreshed["max_hp"], player_id))
         message = (f"World Boss #{reward['place']} reward: {chosen['name']}, plus a free "
                    f"level to Level {new_level}{' (auto-selected)' if automatic else ''}.")
         execute_write(

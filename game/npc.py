@@ -10,7 +10,8 @@ from datetime import datetime, timedelta
 
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
-                      get_all_settings, get_player, reconcile_combat_state)
+                      get_all_settings, get_player, get_player_equipped,
+                      get_player_bonus_profile, reconcile_combat_state)
 from queue_handler import enqueue_and_process, register_handler
 
 logger = logging.getLogger(__name__)
@@ -1300,14 +1301,14 @@ def _score_item(item_type: str, item: dict, player: dict, profile: dict,
 def _discounted_shop_price(player: dict, listed_price: int) -> int:
     """Mirror the Shop's PER and equipped-special discount calculation."""
     settings = get_all_settings()
-    discount = math.floor(player["per_stat"] / 2) / 100
-    if player.get("equipped_special_id"):
-        row = execute_one(
-            """SELECT si.shop_discount FROM inventory_items ii JOIN special_items si ON si.id=ii.item_id
-               WHERE ii.id=? AND ii.player_id=?""",
-            (player["equipped_special_id"], player["id"])
-        )
-        discount += row["shop_discount"] if row else 0
+    equipped = get_player_equipped(player)
+    profile = get_player_bonus_profile(player["id"], equipped.get("special"))
+    effective_per = (player["per_stat"] +
+                     int((equipped.get("weapon") or {}).get("per_bonus", 0) or 0) +
+                     int((equipped.get("armor") or {}).get("per_bonus", 0) or 0) +
+                     int(profile.get("per_bonus", 0) or 0))
+    discount = (math.floor(effective_per / 2) / 100 +
+                float(profile.get("shop_discount", 0) or 0))
     discount = min(discount, settings.get("SHOP_DISCOUNT_MAX", cfg.SHOP_DISCOUNT_MAX))
     return max(0, int(listed_price * (1 - discount)))
 

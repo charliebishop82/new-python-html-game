@@ -9,8 +9,9 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, g
 from database import (execute, execute_one, execute_write,
-                      exclusive_transaction, get_all_settings)
+                      exclusive_transaction, get_all_settings, get_player)
 from queue_handler import enqueue_and_process, register_handler
+from combat import actions as combat_actions
 import config_defaults as cfg
 import random
 
@@ -167,7 +168,8 @@ def handle_blacksmith_repair(player_id: int, payload: dict) -> dict:
     if player["credits"] < total_cost:
         raise ValueError(f"Not enough credits. Need {total_cost}, have {player['credits']}.")
 
-    lck = player["lck_stat"]
+    effective_player = combat_actions.apply_equipped_stat_bonuses(get_player(player_id))
+    lck = effective_player["lck_stat"]
     lck_roll_chance = math.floor(lck / 2) * 0.05  # 5% per floor(LCK/2)
     results = []
 

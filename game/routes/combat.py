@@ -316,7 +316,9 @@ def _record_round_history_impl(result: dict) -> None:
     for action in round_log:
         flavor_text = action.get("flavor") or action.get("message") or action.get("action", "Action")
         roll = action.get("roll_detail")
-        actions.append(f"{flavor_text}{' [' + roll + ']' if roll else ''}")
+        damage = action.get("outcome_detail")
+        details = " | ".join(part for part in (roll, damage) if part)
+        actions.append(f"{flavor_text}{' [' + details + ']' if details else ''}")
     transcript = f"Round {result.get('round_number', '?')} — {initiative}. " + " ".join(actions)
     recipients = [combat["attacker_player_id"]]
     if combat["combat_type"] == "PVP" and combat.get("defender_player_id"):
@@ -358,14 +360,13 @@ def _apply_end_of_round(session_id: int, state: dict, settings: dict):
     """Apply end-of-round effects:
     - Special item durability loss (both sides)
     - Expire END_OF_ROUND combat buffs"""
-    loss_pct = settings.get("SPECIAL_ITEM_DURABILITY_LOSS_PER_ROUND",
-                             cfg.SPECIAL_ITEM_DURABILITY_LOSS_PER_ROUND)
-    loss_pts = max(1, int(100 * loss_pct))
-
     with exclusive_transaction():
         # Attacker special item
         att_special = state["attacker_equipped"].get("special")
         if att_special:
+            loss_pts = engine.calc_special_item_round_loss(
+                state["attacker_equipped"].get("bonuses")
+            )
             new_dur = max(0, att_special["current_durability"] - loss_pts)
             execute_write(
                 "UPDATE inventory_items SET current_durability = ? WHERE id = ?",
@@ -384,6 +385,9 @@ def _apply_end_of_round(session_id: int, state: dict, settings: dict):
         if state["session"]["combat_type"] == "PVP" and state.get("defender_equipped"):
             def_special = state["defender_equipped"].get("special")
             if def_special:
+                loss_pts = engine.calc_special_item_round_loss(
+                    state["defender_equipped"].get("bonuses")
+                )
                 new_dur = max(0, def_special["current_durability"] - loss_pts)
                 execute_write(
                     "UPDATE inventory_items SET current_durability = ? WHERE id = ?",

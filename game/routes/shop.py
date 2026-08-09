@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings,
-                      get_player_bonus_profile, get_player)
+                      get_player_bonus_profile, get_player_equipped, get_player)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -72,8 +72,7 @@ def index():
     settings = get_all_settings()
 
     # Calculate player's effective discount
-    perk_per = int(get_player_bonus_profile(player["id"]).get("per_bonus", 0) or 0)
-    per_discount = math.floor((player["per_stat"] + perk_per) / 2) / 100
+    per_discount = math.floor(_effective_per(player) / 2) / 100
     special_discount = _get_special_shop_discount(player)
     max_discount = settings.get("SHOP_DISCOUNT_MAX", cfg.SHOP_DISCOUNT_MAX)
     discount = min(per_discount + special_discount, max_discount)
@@ -173,6 +172,16 @@ def _get_special_sell_bonus(player: dict) -> float:
     return float(get_player_bonus_profile(player["id"]).get("sell_bonus", 0) or 0)
 
 
+def _effective_per(player: dict) -> int:
+    """Return PER with weapon, outfit, equipped special, and perks applied."""
+    equipped = get_player_equipped(player)
+    profile = get_player_bonus_profile(player["id"], equipped.get("special"))
+    return (int(player.get("per_stat", 0) or 0) +
+            int((equipped.get("weapon") or {}).get("per_bonus", 0) or 0) +
+            int((equipped.get("armor") or {}).get("per_bonus", 0) or 0) +
+            int(profile.get("per_bonus", 0) or 0))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /shop/buy
 # ─────────────────────────────────────────────────────────────────────────────
@@ -207,8 +216,7 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
         raise ValueError("This item has been retired from the active catalog.")
 
     # Calculate discounted price
-    perk_per = int(get_player_bonus_profile(player["id"]).get("per_bonus", 0) or 0)
-    per_discount     = math.floor((player["per_stat"] + perk_per) / 2) / 100
+    per_discount     = math.floor(_effective_per(player) / 2) / 100
     special_discount = _get_special_shop_discount(player)
     max_discount     = settings.get("SHOP_DISCOUNT_MAX", cfg.SHOP_DISCOUNT_MAX)
     discount         = min(per_discount + special_discount, max_discount)
