@@ -128,6 +128,7 @@ def init_db():
             ("NPC_UPGRADE_MIN_IMPROVEMENT", "0.15", "Minimum fractional NPC equipment-score improvement required for a planned upgrade."),
             ("NPC_OBSERVE_MAX_ATTEMPTS", "1", "Maximum Observe attempts an NPC may make during one combat."),
             ("NPC_RANDOM_WAKE_CHANCE", "0.003", "Chance per scheduler minute that an NPC takes an unscheduled action."),
+            ("PERK_EFFECT_SCALE", "0.65", "Global multiplier applied to scalable perk bonuses; 0.65 reduces imported values by 35%."),
             ("AP_COST_WORLD_BOSS", "4", "AP required to begin one world-boss attempt."),
             ("AP_COST_AUCTION", "1", "AP required to enter the player auction house."),
             ("WORLD_BOSS_HP_MULTIPLIER", "1.0", "Multiplier applied to imported world-boss HP."),
@@ -442,11 +443,61 @@ BONUS_FIELDS = (
 
 def get_player_perks(player_id: int) -> list[dict]:
     """Return a character's permanent perks in acquisition order."""
-    return execute(
+    return [scale_perk_effects(perk) for perk in execute(
         """SELECT p.*,pp.level_chosen,pp.acquired_at
            FROM player_perks pp JOIN perks p ON p.id=pp.perk_id
            WHERE pp.player_id=? ORDER BY pp.level_chosen,p.id""", (player_id,)
-    )
+    )]
+
+
+def scale_perk_effects(perk: dict) -> dict:
+    """Scale perk magnitudes consistently while preserving binary abilities."""
+    result = dict(perk)
+    scale = max(0.0, float(get_all_settings().get(
+        "PERK_EFFECT_SCALE", cfg.PERK_EFFECT_SCALE
+    )))
+    integer_fields = {
+        "str_bonus", "end_bonus", "agi_bonus", "lck_bonus", "per_bonus",
+        "initiative_bonus", "ac_bonus", "bonus_damage_amount", "bonus_ap",
+        "hp_regen_bonus",
+    }
+    fractional_fields = {
+        "crit_chance_bonus", "crit_dmg_multiplier", "xp_multiplier",
+        "credit_multiplier", "steal_bonus", "durability_reduction",
+        "shop_discount", "sell_bonus", "encounter_bonus",
+    }
+    for field in integer_fields:
+        result[field] = int(round(float(result.get(field, 0) or 0) * scale))
+    # Permanent core-stat perks should be meaningful without overwhelming
+    # level-up choices, equipment, Armor Class, attack rolls, or derived HP/AP.
+    for field in ("str_bonus", "end_bonus", "agi_bonus", "lck_bonus", "per_bonus"):
+        result[field] = max(-5, min(5, result[field]))
+    for field in fractional_fields:
+        result[field] = round(float(result.get(field, 0) or 0) * scale, 6)
+
+    # Per-effect balance ceilings. These are deliberately applied after the
+    # global scale so future content imports cannot accidentally restore the
+    # original oversized combat and economy bonuses.
+    integer_caps = {
+        "initiative_bonus": 5,
+        "ac_bonus": 4,
+        "bonus_damage_amount": 5,
+        "bonus_ap": 3,
+        "hp_regen_bonus": 2,
+    }
+    fractional_caps = {
+        "crit_chance_bonus": 0.10,
+        "xp_multiplier": 0.25,
+        "credit_multiplier": 0.25,
+        "steal_bonus": 0.15,
+        "shop_discount": 0.20,
+        "sell_bonus": 0.20,
+    }
+    for field, ceiling in integer_caps.items():
+        result[field] = max(-ceiling, min(ceiling, result[field]))
+    for field, ceiling in fractional_caps.items():
+        result[field] = max(-ceiling, min(ceiling, result[field]))
+    return result
 
 
 def get_player_perk_bonuses(player_id: int) -> dict:

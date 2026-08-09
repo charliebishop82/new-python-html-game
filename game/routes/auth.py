@@ -13,7 +13,8 @@ from flask import (Blueprint, render_template, request, session,
 from werkzeug.security import generate_password_hash, check_password_hash
 
 from database import (execute, execute_one, execute_write,
-                      exclusive_transaction, get_player, get_all_settings)
+                      exclusive_transaction, get_player, get_all_settings,
+                      scale_perk_effects)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -410,12 +411,12 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
 
 def _eligible_perks(player: dict) -> list[dict]:
     """List unowned active perks at or below character level plus two."""
-    return execute(
+    return [scale_perk_effects(perk) for perk in execute(
         """SELECT p.* FROM perks p WHERE p.is_active=1 AND p.level <= ?
            AND NOT EXISTS(SELECT 1 FROM player_perks pp
                           WHERE pp.player_id=? AND pp.perk_id=p.id)
            ORDER BY p.level,p.name""", (player["level"] + 2, player["id"])
-    )
+    )]
 
 
 ################################################################################
