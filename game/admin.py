@@ -64,6 +64,18 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/world-boss/activate",    "admin_world_boss_activate", admin_world_boss_activate, methods=["POST"])
     app.add_url_rule("/admin/world-boss/close",       "admin_world_boss_close", admin_world_boss_close, methods=["POST"])
     app.add_url_rule("/admin/world-boss/rescale",     "admin_world_boss_rescale", admin_world_boss_rescale, methods=["POST"])
+    app.add_url_rule("/admin/world-boss/process-rewards", "admin_world_boss_process_rewards", admin_world_boss_process_rewards, methods=["POST"])
+    app.add_url_rule("/admin/auctions",               "admin_auctions", admin_auctions)
+    app.add_url_rule("/admin/auctions/<int:listing_id>/cancel", "admin_auction_cancel", admin_auction_cancel, methods=["POST"])
+    app.add_url_rule("/admin/auctions/settle",        "admin_auction_settle", admin_auction_settle, methods=["POST"])
+    app.add_url_rule("/admin/contracts",              "admin_contracts", admin_contracts)
+    app.add_url_rule("/admin/contracts/<int:assignment_id>/complete", "admin_contract_complete", admin_contract_complete, methods=["POST"])
+    app.add_url_rule("/admin/perks",                  "admin_perks", admin_perks)
+    app.add_url_rule("/admin/reputation",             "admin_reputation", admin_reputation)
+    app.add_url_rule("/admin/operations",             "admin_operations", admin_operations)
+    app.add_url_rule("/admin/queue/<int:queue_id>/acknowledge", "admin_queue_acknowledge", admin_queue_acknowledge, methods=["POST"])
+    app.add_url_rule("/admin/combat/<int:session_id>", "admin_combat_detail", admin_combat_detail)
+    app.add_url_rule("/admin/players/<int:pid>/repair-state", "admin_repair_player_state", admin_repair_player_state, methods=["POST"])
     app.add_url_rule("/admin/import",                 "admin_import",       admin_import,        methods=["GET","POST"])
     app.add_url_rule("/admin/players",                "admin_players",      admin_players)
     app.add_url_rule("/admin/players/<int:pid>",      "admin_player_detail",admin_player_detail)
@@ -125,6 +137,170 @@ def admin_crew_remove(pid):
     return redirect(url_for("admin_crews",feedback="Crew member returned to Free Agent status."))
 
 
+def admin_auctions():
+    """Inspect live and recently completed player auctions and escrowed bids."""
+    rows = execute(
+        """SELECT a.*,seller.character_name seller_name,bidder.character_name bidder_name,
+                  si.name item_name,ii.current_durability
+           FROM auction_listings a
+           JOIN players seller ON seller.id=a.seller_player_id
+           LEFT JOIN players bidder ON bidder.id=a.current_bidder_id
+           LEFT JOIN inventory_items ii ON ii.id=a.inventory_item_id
+           LEFT JOIN special_items si ON si.id=ii.item_id
+           ORDER BY CASE a.status WHEN 'ACTIVE' THEN 0 ELSE 1 END,datetime(a.ends_at),a.id DESC
+           LIMIT 250"""
+    )
+    escrow = sum(int(row.get("current_bid") or 0) for row in rows if row["status"] == "ACTIVE")
+    return render_template("admin/auctions.html", listings=rows, escrow=escrow)
+
+
+def admin_auction_cancel(listing_id: int):
+    """Cancel one auction, refund its high bidder, and release the held item."""
+    listing = execute_one("SELECT * FROM auction_listings WHERE id=? AND status='ACTIVE'", (listing_id,))
+    if not listing:
+        return redirect(url_for("admin_auctions", error="Active auction not found."))
+    with exclusive_transaction():
+        if listing.get("current_bidder_id") and listing.get("current_bid"):
+            execute_write("UPDATE players SET credits=credits+? WHERE id=?",
+                          (listing["current_bid"], listing["current_bidder_id"]))
+        execute_write("UPDATE auction_listings SET status='CANCELLED',settled_at=datetime('now') WHERE id=?",
+                      (listing_id,))
+        execute_write("UPDATE special_item_registry SET status='IN_INVENTORY',updated_at=datetime('now') WHERE inventory_item_id=?",
+                      (listing["inventory_item_id"],))
+        _audit("CANCEL_AUCTION", "AUCTION", listing_id, "Administrator cancelled listing",
+               {"refunded_bid": listing.get("current_bid"), "bidder_id": listing.get("current_bidder_id")})
+    return redirect(url_for("admin_auctions", feedback="Auction cancelled; held bid refunded and item released."))
+
+
+def admin_auction_settle():
+    """Run the ordinary auction settlement path for every listing whose timer elapsed."""
+    from routes.auction import settle_expired_auctions
+    result = settle_expired_auctions()
+    return redirect(url_for("admin_auctions", feedback=f"Settled {result['settled']} expired auction(s)."))
+
+
+def admin_contracts():
+    """Inspect imported objectives and current or recent player assignments."""
+    definitions = execute("SELECT * FROM contracts ORDER BY is_active DESC,min_level,name")
+    assignments = execute(
+        """SELECT pdc.*,p.character_name,c.name,c.metric,c.target,c.reward_xp,c.reward_credits,c.reward_ap
+           FROM player_daily_contracts pdc JOIN players p ON p.id=pdc.player_id
+           JOIN contracts c ON c.id=pdc.contract_id
+           ORDER BY pdc.contract_date DESC,p.character_name LIMIT 300"""
+    )
+    return render_template("admin/contracts.html", definitions=definitions, assignments=assignments)
+
+
+def admin_contract_complete(assignment_id: int):
+    """Complete an assignment through the normal reward function for controlled testing."""
+    row = execute_one(
+        """SELECT pdc.*,c.metric,c.target FROM player_daily_contracts pdc
+           JOIN contracts c ON c.id=pdc.contract_id WHERE pdc.id=?""", (assignment_id,)
+    )
+    if (not row or row["status"] != "ACTIVE" or
+            row["contract_date"] != datetime.utcnow().date().isoformat()):
+        return redirect(url_for("admin_contracts", error="Active contract assignment not found."))
+    from contracts import record_progress
+    record_progress(row["player_id"], row["metric"], max(0, row["target"] - row["progress"]))
+    with exclusive_transaction():
+        _audit("COMPLETE_CONTRACT", "CONTRACT_ASSIGNMENT", assignment_id, "Administrator test completion")
+    return redirect(url_for("admin_contracts", feedback="Contract completed through the normal reward path."))
+
+
+def admin_perks():
+    """Inspect imported perk definitions, effective scaling, ownership, and pending choices."""
+    from database import scale_perk_effects
+    perks = execute("SELECT * FROM perks ORDER BY level,name")
+    for perk in perks:
+        perk["effective"] = scale_perk_effects(perk)
+        perk["owners"] = execute_one("SELECT COUNT(*) cnt FROM player_perks WHERE perk_id=?", (perk["id"],))["cnt"]
+    pending = execute("SELECT id,character_name,level,pending_perk FROM players WHERE pending_perk>0 ORDER BY pending_perk DESC")
+    return render_template("admin/perks.html", perks=perks, pending=pending,
+                           scale=get_all_settings().get("PERK_EFFECT_SCALE", cfg.PERK_EFFECT_SCALE))
+
+
+def admin_reputation():
+    """Display behavior-derived titles and the counters behind every character's reputation."""
+    from reputations import reputation_profile
+    players = execute(
+        """SELECT p.id,p.character_name,p.level,CASE WHEN np.player_id IS NULL THEN 0 ELSE 1 END is_npc
+           FROM players p LEFT JOIN npc_profiles np ON np.player_id=p.id
+           WHERE p.is_banned=0 AND p.retired_at IS NULL ORDER BY p.level DESC,p.character_name"""
+    )
+    for player in players:
+        player["reputation"] = reputation_profile(player["id"])
+    return render_template("admin/reputation.html", players=players)
+
+
+def admin_operations():
+    """Central operational view of combat, queue failures, interruptions, and scheduling."""
+    combats = execute(
+        """SELECT cs.*,a.character_name attacker,d.character_name defender,
+          CASE cs.combat_type WHEN 'BOSS' THEN b.name WHEN 'MINION' THEN m.name
+               WHEN 'WORLD_BOSS' THEN wb.name ELSE d.character_name END opponent
+          FROM combat_sessions cs JOIN players a ON a.id=cs.attacker_player_id
+          LEFT JOIN players d ON d.id=cs.defender_player_id
+          LEFT JOIN boss_instances bi ON bi.id=cs.boss_instance_id LEFT JOIN bosses b ON b.id=bi.boss_id
+          LEFT JOIN minion_instances mi ON mi.id=cs.minion_instance_id LEFT JOIN minions m ON m.id=mi.minion_id
+          LEFT JOIN world_boss_events we ON we.id=cs.world_boss_event_id LEFT JOIN world_bosses wb ON wb.id=we.world_boss_id
+          ORDER BY CASE cs.status WHEN 'ACTIVE' THEN 0 ELSE 1 END,cs.id DESC LIMIT 150"""
+    )
+    failures = execute(
+        """SELECT q.*,p.character_name FROM action_queue q JOIN players p ON p.id=q.player_id
+           WHERE q.status='FAILED' ORDER BY q.id DESC LIMIT 100"""
+    )
+    interruptions = execute(
+        """SELECT pia.*,p.character_name FROM pending_interrupted_actions pia
+           JOIN players p ON p.id=pia.player_id ORDER BY pia.created_at"""
+    )
+    npcs = execute(
+        """SELECT np.*,p.character_name,p.current_ap,p.in_combat FROM npc_profiles np
+           JOIN players p ON p.id=np.player_id WHERE np.retired=0 ORDER BY np.last_action_at"""
+    )
+    scheduler = execute("SELECT * FROM scheduler_run_log ORDER BY id DESC LIMIT 40")
+    return render_template("admin/operations.html", combats=combats, failures=failures,
+                           interruptions=interruptions, npcs=npcs, scheduler=scheduler)
+
+
+def admin_queue_acknowledge(queue_id: int):
+    """Mark a historical failure reviewed without deleting its audit evidence."""
+    note = request.form.get("note", "").strip()[:500]
+    with exclusive_transaction():
+        execute_write(
+            """UPDATE action_queue SET admin_acknowledged_at=datetime('now'),admin_note=?
+               WHERE id=? AND status='FAILED'""", (note, queue_id)
+        )
+        _audit("ACKNOWLEDGE_QUEUE_FAILURE", "ACTION_QUEUE", queue_id, note or "Reviewed")
+    return redirect(url_for("admin_operations", feedback=f"Queue failure #{queue_id} marked reviewed."))
+
+
+def admin_combat_detail(session_id: int):
+    """Render the authoritative session plus its round-by-round calculation ledger."""
+    combat = execute_one(
+        """SELECT cs.*,a.character_name attacker,d.character_name defender
+           FROM combat_sessions cs JOIN players a ON a.id=cs.attacker_player_id
+           LEFT JOIN players d ON d.id=cs.defender_player_id WHERE cs.id=?""", (session_id,)
+    )
+    if not combat:
+        return redirect(url_for("admin_operations", error="Combat session not found."))
+    logs = execute("SELECT * FROM combat_logs WHERE combat_session_id=? ORDER BY id", (session_id,))
+    buffs = execute("SELECT * FROM combat_buffs WHERE combat_session_id=? ORDER BY id", (session_id,))
+    activity = execute(
+        """SELECT * FROM player_activity_log WHERE json_valid(details_json)=1 AND
+           (json_extract(details_json,'$.session_id')=? OR json_extract(details_json,'$.combat_id')=?)
+           ORDER BY id""", (session_id, session_id)
+    )
+    return render_template("admin/combat_detail.html", combat=combat, logs=logs, buffs=buffs, activity=activity)
+
+
+def admin_repair_player_state(pid: int):
+    """Run conservative state reconciliation for one character and audit the result."""
+    result = reconcile_combat_state(pid)
+    with exclusive_transaction():
+        _audit("REPAIR_PLAYER_STATE", "PLAYER", pid, "Conservative combat-state reconciliation", result)
+    return redirect(url_for("admin_player_detail", pid=pid, feedback=f"State checked: {result}."))
+
+
 def admin_world_boss():
     """Inspect the weekly encounter, ranking ledger, rewards, and live audit log."""
     from world_boss import get_active_event, standings
@@ -137,9 +313,20 @@ def admin_world_boss():
         "admin/world_boss.html", event=latest,
         standings=standings(latest["id"]) if latest else [],
         rewards=(execute(
-            """SELECT r.*,p.character_name FROM world_boss_rewards r
-               JOIN players p ON p.id=r.player_id WHERE r.event_id=? ORDER BY r.place""",
+            """SELECT r.*,p.character_name,
+               CASE r.item_type WHEN 'WEAPON' THEN w.name WHEN 'ARMOR' THEN a.name
+                    WHEN 'SPECIAL' THEN s.name END item_name
+               FROM world_boss_rewards r JOIN players p ON p.id=r.player_id
+               LEFT JOIN weapons w ON r.item_type='WEAPON' AND w.id=r.item_id
+               LEFT JOIN armor a ON r.item_type='ARMOR' AND a.id=r.item_id
+               LEFT JOIN special_items s ON r.item_type='SPECIAL' AND s.id=r.item_id
+               WHERE r.event_id=? ORDER BY r.place""",
             (latest["id"],)) if latest else []),
+        crew_standings=(execute(
+            """SELECT c.name,c.tag,SUM(wbc.damage) damage,COUNT(DISTINCT wbc.player_id) participants
+               FROM world_boss_contributions wbc JOIN crew_memberships cm ON cm.player_id=wbc.player_id
+               JOIN crews c ON c.id=cm.crew_id WHERE wbc.event_id=?
+               GROUP BY c.id ORDER BY damage DESC""", (latest["id"],)) if latest else []),
         logs=(execute(
             """SELECT * FROM world_boss_event_log WHERE event_id=? ORDER BY id DESC LIMIT 100""",
             (latest["id"],)) if latest else []),
@@ -185,6 +372,16 @@ def admin_world_boss_rescale():
         return redirect(url_for("admin_world_boss", error=str(exc)))
 
 
+def admin_world_boss_process_rewards():
+    """Run deadline-based automatic reward selection without altering unexpired choices."""
+    from world_boss import process_expired_rewards
+    awarded = process_expired_rewards()
+    with exclusive_transaction():
+        _audit("PROCESS_WORLD_BOSS_REWARDS", "WORLD_BOSS", reason="Admin deadline check",
+               details={"reward_ids": awarded})
+    return redirect(url_for("admin_world_boss", feedback=f"Processed {len(awarded)} expired reward choice(s)."))
+
+
 def admin_rules():
     """Render the creator-facing map of gameplay formulas and control settings."""
     return render_template(
@@ -202,11 +399,15 @@ def admin_index():
     player_count  = execute_one("SELECT COUNT(*) as cnt FROM players WHERE is_banned = 0")["cnt"]
     active_combat = execute_one("SELECT COUNT(*) as cnt FROM combat_sessions WHERE status='ACTIVE'")["cnt"]
     pending_import = os.path.exists(cfg.PENDING_IMPORT_PATH)
-    queue_failed   = execute_one("SELECT COUNT(*) as cnt FROM action_queue WHERE status='FAILED'")["cnt"]
+    queue_failed   = execute_one("SELECT COUNT(*) as cnt FROM action_queue WHERE status='FAILED' AND admin_acknowledged_at IS NULL")["cnt"]
     boss_count     = execute_one("SELECT COUNT(*) as cnt FROM bosses WHERE is_active=1")["cnt"]
     special_pool   = execute_one(
         "SELECT COUNT(*) as cnt FROM special_item_registry WHERE status='IN_POOL'"
     )["cnt"]
+    active_auctions = execute_one("SELECT COUNT(*) cnt FROM auction_listings WHERE status='ACTIVE'")["cnt"]
+    pending_rewards = execute_one("SELECT COUNT(*) cnt FROM world_boss_rewards WHERE status='PENDING'")["cnt"]
+    pending_choices = execute_one("SELECT COALESCE(SUM(pending_levelup+pending_perk),0) cnt FROM players WHERE is_banned=0")["cnt"]
+    interruptions = execute_one("SELECT COUNT(*) cnt FROM pending_interrupted_actions")["cnt"]
 
     recent_errors = []
     if os.path.exists(cfg.IMPORT_ERROR_LOG):
@@ -220,6 +421,8 @@ def admin_index():
         queue_failed=queue_failed,
         boss_count=boss_count,
         special_pool=special_pool,
+        active_auctions=active_auctions, pending_rewards=pending_rewards,
+        pending_choices=pending_choices, interruptions=interruptions,
         recent_errors=recent_errors,
         now=datetime.utcnow().isoformat()
     )
@@ -484,7 +687,8 @@ def admin_player_activity(pid: int):
 def admin_health():
     """Render or process the health administrative workflow."""
     stats = {
-        "failed_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='FAILED'")["cnt"],
+        "unreviewed_failed_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='FAILED' AND admin_acknowledged_at IS NULL")["cnt"],
+        "reviewed_failed_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='FAILED' AND admin_acknowledged_at IS NOT NULL")["cnt"],
         "processing_actions": execute_one("SELECT COUNT(*) cnt FROM action_queue WHERE status='PROCESSING'")["cnt"],
         "active_combats": execute_one("SELECT COUNT(*) cnt FROM combat_sessions WHERE status='ACTIVE'")["cnt"],
         "stuck_flags": execute_one("""SELECT COUNT(*) cnt FROM players p WHERE p.in_combat=1 AND NOT EXISTS
@@ -675,9 +879,31 @@ def admin_analytics():
     npc_decisions = execute("SELECT decision,COUNT(*) cnt FROM npc_action_log GROUP BY decision ORDER BY cnt DESC")
     random_events = execute("""SELECT flavor_text,COUNT(*) cnt FROM daily_feed WHERE event_category='RANDOM_EVENT'
                                GROUP BY flavor_text ORDER BY cnt DESC LIMIT 20""")
+    combat_metrics = execute_one(
+        """SELECT COUNT(*) total,COALESCE(AVG(current_round),0) avg_rounds,
+           SUM(CASE WHEN result LIKE '%ATTACKER%' OR result LIKE '%VICTORY%' THEN 1 ELSE 0 END) attacker_wins,
+           SUM(CASE WHEN result LIKE '%DEFENDER%' OR result LIKE '%DEFEAT%' THEN 1 ELSE 0 END) defender_wins
+           FROM combat_sessions WHERE status='RESOLVED'"""
+    )
+    roll_metrics = execute_one(
+        """SELECT COUNT(*) actions,
+           SUM(CASE WHEN upper(outcome_detail) LIKE '%MISS%' THEN 1 ELSE 0 END) misses,
+           SUM(CASE WHEN upper(outcome_detail) LIKE '%DODG%' THEN 1 ELSE 0 END) dodges,
+           SUM(CASE WHEN upper(outcome_detail) LIKE '%DAMAGE%' OR upper(outcome_detail) LIKE '%HIT%' THEN 1 ELSE 0 END) hits
+           FROM combat_logs"""
+    )
+    contracts = execute("SELECT status,COUNT(*) cnt FROM player_daily_contracts GROUP BY status ORDER BY cnt DESC")
+    auctions = execute("SELECT status,COUNT(*) cnt FROM auction_listings GROUP BY status ORDER BY cnt DESC")
+    perks = execute("""SELECT p.name action,'' status,COUNT(pp.id) cnt FROM perks p
+                       LEFT JOIN player_perks pp ON pp.perk_id=p.id GROUP BY p.id ORDER BY cnt DESC,p.name""")
+    crews = execute("""SELECT c.name action,'' status,COUNT(cm.player_id) cnt FROM crews c
+                       LEFT JOIN crew_memberships cm ON cm.crew_id=c.id WHERE c.disbanded_at IS NULL
+                       GROUP BY c.id ORDER BY cnt DESC""")
     return render_template("admin/analytics.html", action_counts=action_counts, economy=economy,
                            combats=combats, item_events=item_events,
-                           npc_decisions=npc_decisions, random_events=random_events)
+                           npc_decisions=npc_decisions, random_events=random_events,
+                           combat_metrics=combat_metrics, roll_metrics=roll_metrics,
+                           contracts=contracts, auctions=auctions, perks=perks, crews=crews)
 def admin_player_detail(pid: int):
     """Render or process the player detail administrative workflow."""
     player    = execute_one("SELECT * FROM players WHERE id = ?", (pid,))
@@ -701,10 +927,39 @@ def admin_player_detail(pid: int):
            FROM boss_instances bi JOIN bosses b ON b.id = bi.boss_id
            WHERE bi.player_id = ? ORDER BY bi.kill_count DESC""", (pid,)
     )
+    from database import get_player_bonus_profile, get_player_perks
+    from reputations import reputation_profile
+    perks = get_player_perks(pid)
+    bonuses = get_player_bonus_profile(pid)
+    contract = execute_one(
+        """SELECT pdc.*,c.name,c.description,c.metric,c.target,c.reward_xp,c.reward_credits,c.reward_ap
+           FROM player_daily_contracts pdc JOIN contracts c ON c.id=pdc.contract_id
+           WHERE pdc.player_id=? ORDER BY pdc.contract_date DESC LIMIT 1""", (pid,)
+    )
+    crew = execute_one(
+        """SELECT cm.*,c.name,c.tag FROM crew_memberships cm JOIN crews c ON c.id=cm.crew_id
+           WHERE cm.player_id=?""", (pid,)
+    )
+    world_boss = execute(
+        """SELECT wbc.*,wb.name,we.status FROM world_boss_contributions wbc
+           JOIN world_boss_events we ON we.id=wbc.event_id JOIN world_bosses wb ON wb.id=we.world_boss_id
+           WHERE wbc.player_id=? ORDER BY wbc.event_id DESC LIMIT 20""", (pid,)
+    )
+    level_history = execute("SELECT * FROM level_up_history WHERE player_id=? ORDER BY level_reached DESC", (pid,))
+    effects = execute("SELECT * FROM status_effects WHERE player_id=? ORDER BY id", (pid,))
+    active_combat = execute_one(
+        """SELECT * FROM combat_sessions WHERE status='ACTIVE'
+           AND (attacker_player_id=? OR defender_player_id=?) ORDER BY id DESC LIMIT 1""", (pid, pid)
+    )
+    interrupted = execute_one("SELECT * FROM pending_interrupted_actions WHERE player_id=?", (pid,))
+    auctions = execute("SELECT * FROM auction_listings WHERE seller_player_id=? OR current_bidder_id=? ORDER BY id DESC LIMIT 20", (pid, pid))
     return render_template("admin/player_detail.html",
                            player=player, stats=stats,
                            inventory=inventory, history=history,
-                           boss_kills=boss_kills,
+                           boss_kills=boss_kills, perks=perks, bonuses=bonuses,
+                           reputation=reputation_profile(pid), contract=contract, crew=crew,
+                           world_boss=world_boss, level_history=level_history, effects=effects,
+                           active_combat=active_combat, interrupted=interrupted, auctions=auctions,
                            feedback=request.args.get("feedback"),
                            error=request.args.get("error"))
 
@@ -843,7 +1098,11 @@ def admin_npcs():
 
     npcs = execute(
         """SELECT p.*,np.*,c.name class_name,
-                  (SELECT COUNT(*) FROM inventory_items ii WHERE ii.player_id=p.id AND ii.item_type='SPECIAL') special_count
+                  (SELECT COUNT(*) FROM inventory_items ii WHERE ii.player_id=p.id AND ii.item_type='SPECIAL') special_count,
+                  (SELECT COUNT(*) FROM player_perks pp WHERE pp.player_id=p.id) perk_count,
+                  (SELECT cr.name FROM crew_memberships cm JOIN crews cr ON cr.id=cm.crew_id WHERE cm.player_id=p.id) crew_name,
+                  (SELECT ct.name FROM player_daily_contracts dc JOIN contracts ct ON ct.id=dc.contract_id
+                   WHERE dc.player_id=p.id ORDER BY dc.contract_date DESC LIMIT 1) contract_name
            FROM npc_profiles np JOIN players p ON p.id=np.player_id
            LEFT JOIN classes c ON c.id=p.class_id ORDER BY np.retired,p.level DESC,p.character_name"""
     )

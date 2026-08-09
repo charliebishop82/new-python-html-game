@@ -92,6 +92,11 @@ def init_db():
         activity_columns = {row[1] for row in conn.execute("PRAGMA table_info(player_activity_log)")}
         if "seen_at" not in activity_columns:
             conn.execute("ALTER TABLE player_activity_log ADD COLUMN seen_at TEXT")
+        queue_columns = {row[1] for row in conn.execute("PRAGMA table_info(action_queue)")}
+        if "admin_acknowledged_at" not in queue_columns:
+            conn.execute("ALTER TABLE action_queue ADD COLUMN admin_acknowledged_at TEXT")
+        if "admin_note" not in queue_columns:
+            conn.execute("ALTER TABLE action_queue ADD COLUMN admin_note TEXT")
         for table in ("bosses", "minions", "weapons", "armor", "special_items"):
             columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
             if "description" not in columns:

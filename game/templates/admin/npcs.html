@@ -33,7 +33,7 @@
         <label><input type="checkbox" name="enabled" {% if npc.enabled %}checked{% endif %}> Enabled</label>
         <button class="btn">Save</button>
     </form>
-    <p style="color:#666;margin:8px 0">AP: {{ npc.current_ap }} · Specials: {{ npc.special_count }} · Last action: {{ npc.last_action_at or 'Never' }}</p>
+    <p style="color:#888;margin:8px 0;line-height:1.6">AP: {{ npc.current_ap }} · Specials: {{ npc.special_count }} · Perks: {{ npc.perk_count }}{% if npc.pending_perk %} <strong style="color:#ffaa00">({{ npc.pending_perk }} pending)</strong>{% endif %} · Crew: {{ npc.crew_name or 'Free Agent' }} · Contract: {{ npc.contract_name or 'None' }} · Wake actions: {{ npc.wake_actions }} · Today: {{ npc.actions_today }}/{{ npc.actions_per_day }} · Last action: {{ npc.last_action_at or 'Never' }}</p>
     <div style="display:flex;gap:8px;margin-bottom:10px">
         <form method="POST" action="/admin/npcs/{{ npc.player_id }}/run"><button class="btn" {% if npc.retired %}disabled{% endif %}>Run One Turn</button></form>
         <form method="POST" action="/admin/npcs/{{ npc.player_id }}/spend-ap" onsubmit="return confirm('Let {{ npc.character_name }} act repeatedly to spend available AP?');"><button class="btn" {% if npc.retired or not npc.enabled %}disabled{% endif %}>Spend AP Now</button></form>

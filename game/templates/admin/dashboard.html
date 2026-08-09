@@ -32,6 +32,13 @@
     </div>
 </div>
 
+<div class="metric-row">
+    <a class="metric" href="{{ url_for('admin_auctions') }}"><b>{{ active_auctions }}</b><span>Active auctions</span></a>
+    <a class="metric" href="{{ url_for('admin_world_boss') }}"><b>{{ pending_rewards }}</b><span>Pending raid rewards</span></a>
+    <a class="metric" href="{{ url_for('admin_players') }}"><b>{{ pending_choices }}</b><span>Pending level/perk choices</span></a>
+    <a class="metric" href="{{ url_for('admin_operations') }}"><b>{{ interruptions }}</b><span>Interrupted actions</span></a>
+</div>
+
 <form method="POST" action="{{ url_for('admin_replenish_all_ap') }}"
       onsubmit="return confirm('Restore every active player and NPC to their calculated maximum AP?');"
       style="margin-bottom:24px;">

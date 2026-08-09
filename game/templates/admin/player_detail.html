@@ -27,6 +27,7 @@
     </table>
 
     <h2>Edit Fields</h2>
+    <div class="admin-notice warning" style="font-size:11px">Direct level or XP edits are exceptional support tools. They do not simulate earned level-ups and may leave stat or perk choices pending. Inspect the Progression card after saving.</div>
     <form method="POST" action="/admin/players/{{ player.id }}/edit">
         {% for field in ['credits','current_hp','current_ap','level','xp',
                          'str_stat','end_stat','agi_stat','lck_stat','per_stat'] %}
@@ -43,6 +44,8 @@
 <div>
     <h2>Actions</h2>
     <a class="btn" href="/admin/players/{{ player.id }}/activity" style="margin-bottom:8px">Activity Log</a>
+    {% if active_combat %}<a class="btn" href="{{ url_for('admin_combat_detail',session_id=active_combat.id) }}" style="margin-bottom:8px">Inspect Active Combat #{{ active_combat.id }}</a>{% endif %}
+    <form method="post" action="{{ url_for('admin_repair_player_state',pid=player.id) }}" style="margin-bottom:8px" onsubmit="return confirm('Run conservative state reconciliation for this character? Valid combat will not be cancelled.')"><button class="btn">Check / Repair State</button></form>
     <form method="POST" action="/admin/players/{{ player.id }}/replenish-ap" style="margin-bottom:8px"
           onsubmit="return confirm('Restore {{ player.character_name or player.username }} to their normal maximum AP for testing?');">
         <button type="submit" class="btn" title="Restore this character to their calculated maximum AP without running the midnight reset."
@@ -87,14 +90,26 @@
 </div>
 </div>
 
+<h2>Operational Dossier</h2>
+<div class="card-grid">
+<section class="admin-card"><div class="card-title"><strong>Progression</strong><span>{{ perks|length }} perks</span></div><dl class="compact-facts"><dt>Pending levels</dt><dd>{{ player.pending_levelup }}</dd><dt>Pending perks</dt><dd>{{ player.pending_perk }}</dd><dt>Reputation</dt><dd>{{ reputation.primary }}</dd><dt>Crew</dt><dd>{% if crew %}{{ crew.name }} [{{ crew.tag }}] · {{ crew.role }}{% else %}Free Agent{% endif %}</dd></dl>{% for p in perks %}<p><strong>{{ p.name }}</strong> · selected at level {{ p.level_chosen }}<br>{{ p.description }}</p>{% else %}<p>No perks selected.</p>{% endfor %}</section>
+<section class="admin-card"><div class="card-title"><strong>Daily Contract</strong><span>{{ contract.status if contract else 'NONE' }}</span></div>{% if contract %}<p>{{ contract.name }} — {{ contract.description }}</p><dl class="compact-facts"><dt>Progress</dt><dd>{{ contract.progress }}/{{ contract.target }}</dd><dt>Metric</dt><dd>{{ contract.metric }}</dd><dt>Reward</dt><dd>{{ contract.reward_xp }} XP · {{ contract.reward_credits }} CR · {{ contract.reward_ap }} AP</dd></dl>{% else %}<p>No assignment recorded.</p>{% endif %}</section>
+<section class="admin-card"><div class="card-title"><strong>Combined Bonuses</strong><span>gear special + perks</span></div><div class="bonus-grid">{% for key,value in bonuses.items() if value and key != 'bonus_damage_components' %}<span><b>{{ key|replace('_',' ') }}</b>{{ value }}</span>{% endfor %}</div>{% if bonuses.bonus_damage_components %}<p>Typed bonus damage: {{ bonuses.bonus_damage_components }}</p>{% endif %}</section>
+<section class="admin-card"><div class="card-title"><strong>State</strong><span>{{ 'ATTENTION' if active_combat or interrupted else 'CLEAR' }}</span></div><dl class="compact-facts"><dt>Active combat</dt><dd>{% if active_combat %}<a href="{{ url_for('admin_combat_detail',session_id=active_combat.id) }}">#{{ active_combat.id }} {{ active_combat.combat_type }}</a>{% else %}None{% endif %}</dd><dt>Interrupted action</dt><dd>{{ interrupted.action_type if interrupted else 'None' }}</dd><dt>Current effects</dt><dd>{{ effects|length }}</dd><dt>Auction records</dt><dd>{{ auctions|length }}</dd></dl>{% for e in effects %}<p>{{ e.effect_type }} {{ e.value }}</p>{% endfor %}</section>
+</div>
+
+{% if world_boss %}<h2>World Boss Participation</h2><div class="table-wrap"><table><tr><th>Boss</th><th>Status</th><th>Damage</th><th>Attempts</th><th>XP</th><th>Credits</th></tr>{% for w in world_boss %}<tr><td>{{ w.name }}</td><td>{{ w.status }}</td><td>{{ w.damage }}</td><td>{{ w.attempts }}</td><td>{{ w.xp_earned }}</td><td>{{ w.credits_earned }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if level_history %}<h2>Level-Up History</h2><div class="table-wrap"><table><tr><th>Level</th><th>Stat</th><th>Time</th></tr>{% for l in level_history %}<tr><td>{{ l.level_reached }}</td><td>{{ l.stat_increased }}</td><td>{{ l.timestamp }}</td></tr>{% endfor %}</table></div>{% endif %}
+
 <h2>Inventory ({{ inventory|length }} items)</h2>
 {% if inventory %}
 <table>
-    <tr><th>Item</th><th>Type</th><th>Durability</th><th>Acquired</th></tr>
+    <tr><th>Item</th><th>Type</th><th>Loadout</th><th>Durability</th><th>Acquired</th></tr>
     {% for item in inventory %}
     <tr>
         <td>{{ item.item_name or 'Unknown' }}</td>
         <td>{{ item.item_type }}</td>
+        <td>{% set equipped=(item.id==player.equipped_weapon_id or item.id==player.equipped_armor_id or item.id==player.equipped_special_id) %}<span class="status-pill {{ 'status-active' if equipped }}">{{ 'EQUIPPED' if equipped else 'STORED' }}</span></td>
         <td>{{ item.current_durability }}%</td>
         <td style="font-size:11px;color:#666">{{ item.acquired_method }}</td>
     </tr>

@@ -402,7 +402,9 @@ CREATE TABLE IF NOT EXISTS action_queue (
     payload      TEXT    NOT NULL,
     status       TEXT    NOT NULL DEFAULT "PROCESSING",
     created_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-    processed_at TEXT
+    processed_at TEXT,
+    admin_acknowledged_at TEXT,
+    admin_note TEXT
 );
 
 -- One activity temporarily displaced by a roaming-minion encounter.

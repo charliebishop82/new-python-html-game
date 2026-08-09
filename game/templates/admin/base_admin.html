@@ -15,14 +15,14 @@
         body { font-family: 'Courier New', monospace; background: #0a0a0a;
                color: #dddddd; font-size: 13px; }
         #admin-wrap { display: flex; min-height: 100vh; }
-        #admin-nav  { width: 180px; background: #111; border-right: 1px solid #222;
+        #admin-nav  { width: 210px; background: #111; border-right: 1px solid #222;
                       padding: 16px 12px; flex-shrink: 0; }
         #admin-nav h2 { color: #ffaa00; font-size: 13px; margin-bottom: 16px;
                         text-transform: uppercase; letter-spacing: 1px; }
         #admin-nav a  { display: block; color: #666; text-decoration: none;
                         padding: 5px 0; font-size: 12px; }
         #admin-nav a:hover { color: #fff; }
-        #admin-main { flex: 1; padding: 24px; overflow-y: auto; }
+        #admin-main { flex: 1; min-width:0; padding: 28px; overflow-y: auto; }
         h1 { color: #ffaa00; font-size: 16px; margin-bottom: 16px; }
         h2 { color: #4499ff; font-size: 14px; margin: 20px 0 10px; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
@@ -78,6 +78,21 @@
         :root[data-theme="light"] [style*="background:#0d0d0d"] { background:#eee8dc !important; border-color:#cfc5b4 !important; }
         #admin-theme-toggle { width:100%; margin:0 0 12px; color:#ffaa00; }
         :root[data-theme="light"] #admin-theme-toggle { color:#9a5700; }
+        .nav-group{display:block;color:#4499ff;font-size:9px;font-weight:bold;letter-spacing:1.2px;margin:15px 0 4px;padding-bottom:4px;border-bottom:1px solid #222}
+        .admin-page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px;margin-bottom:20px}.admin-page-head h1{margin-bottom:5px}.admin-page-head p,.muted{color:#777;line-height:1.45}
+        .metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:9px;margin:0 0 22px}.metric{display:grid;gap:5px;padding:12px;border:1px solid #292929;background:#111}.metric b{color:#ffaa00;font-size:17px}.metric span{color:#777;font-size:10px;text-transform:uppercase}
+        .admin-card{border:1px solid #292929;background:#111;padding:14px;min-width:0}.admin-card p{color:#999;line-height:1.5;margin:10px 0}.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:11px}.card-title,.admin-card summary{display:flex;justify-content:space-between;align-items:center;gap:12px;color:#4499ff;cursor:pointer}.admin-card summary span{color:#777;font-size:10px}
+        .compact-facts{display:grid;grid-template-columns:max-content 1fr;gap:5px 12px}.compact-facts dt{color:#777}.compact-facts dd{color:#ddd}.bonus-grid{display:flex;flex-wrap:wrap;gap:6px}.bonus-grid span{display:grid;gap:2px;border:1px solid #333;padding:6px;color:#00cc66}.bonus-grid b{color:#777;font-size:9px;font-weight:normal}
+        .table-wrap{width:100%;overflow-x:auto}.table-wrap table{min-width:760px}.table-wrap small,td small{display:block;color:#777;margin-top:3px}.table-wrap progress{display:block;width:110px;height:5px;margin-top:4px}
+        .status-pill{display:inline-block;border:1px solid #555;padding:2px 6px;font-size:9px;font-weight:bold;letter-spacing:.5px}.status-active,.status-completed,.status-resolved,.status-success,.status-sold{color:#00cc66;border-color:#00cc66}.status-failed,.status-cancelled,.status-defeat,.status-abandoned{color:#cc4444;border-color:#cc4444}.status-processing,.status-pending,.status-expired{color:#ffaa00;border-color:#ffaa00}.attention-row td{background:#161306!important}.admin-notice{padding:11px;border:1px solid #4499ff;margin-bottom:15px}.admin-notice.warning{border-color:#ffaa00}.admin-notice a{margin-left:8px}code,pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
+        .analytics-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:0 18px}
+        button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #4499ff;outline-offset:2px}
+        :root[data-theme="light"] .admin-card,:root[data-theme="light"] .metric{background:#fff;border-color:#cfc5b4}:root[data-theme="light"] .compact-facts dd{color:#28241f}:root[data-theme="light"] .nav-group{border-color:#d9d0c2}
+        @media(max-width:850px){
+          #admin-wrap{display:block} #admin-nav{width:100%;padding:10px 14px;display:flex;align-items:center;flex-wrap:wrap;gap:4px 13px;border-right:0;border-bottom:1px solid #333}
+          #admin-nav h2{width:100%;margin:0 0 5px} #admin-theme-toggle{width:auto;margin:0 0 5px auto;order:-1}.nav-group{width:100%;margin:7px 0 0}
+          #admin-nav a{padding:4px 0} #admin-nav br{display:none} #admin-nav form[action*="midnight"]{width:100%} #admin-main{padding:18px}.admin-page-head{flex-direction:column}.stat-grid{grid-template-columns:repeat(2,1fr)!important}
+        }
     </style>
 </head>
 <body>
@@ -85,17 +100,26 @@
     <nav id="admin-nav">
         <button type="button" class="btn" id="admin-theme-toggle" aria-pressed="false">LIGHT MODE</button>
         <h2>⚙ Admin</h2>
+        <span class="nav-group">OVERVIEW</span>
         <a href="/admin">Dashboard</a>
-        <a href="/admin/import">Import Excel</a>
+        <a href="/admin/operations">Operations</a>
+        <a href="/admin/analytics">Analytics</a>
+        <a href="/admin/health">Health & Audit</a>
+        <span class="nav-group">CHARACTERS</span>
         <a href="/admin/players">Players</a>
         <a href="/admin/npcs">NPCs</a>
         <a href="/admin/crews">Crews</a>
+        <a href="/admin/reputation">Reputation</a>
         <a href="/admin/npcs/audit">NPC Audit</a>
+        <span class="nav-group">GAME SYSTEMS</span>
         <a href="/admin/world-boss">World Boss</a>
+        <a href="/admin/contracts">Contracts</a>
+        <a href="/admin/perks">Perks</a>
         <a href="/admin/items">Items</a>
         <a href="/admin/shop">Shop</a>
-        <a href="/admin/analytics">Analytics</a>
-        <a href="/admin/health">Health & Audit</a>
+        <a href="/admin/auctions">Auctions</a>
+        <span class="nav-group">MAINTENANCE</span>
+        <a href="/admin/import">Import Excel</a>
         <a href="/admin/config">Config</a>
         <a href="/admin/logs">Logs</a>
         <a href="/admin/rules">Rules Reference</a>

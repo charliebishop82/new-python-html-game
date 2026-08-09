@@ -13,9 +13,13 @@
 <h2>Damage standings</h2>
 <table><tr><th>Place</th><th>Character</th><th>Damage</th><th>Attempts</th></tr>
 {% for row in standings %}<tr><td>{{ loop.index }}</td><td>{{ row.character_name }}{% if row.is_npc %} [NPC]{% endif %}</td><td>{{ row.damage }}</td><td>{{ row.attempts }}</td></tr>{% else %}<tr><td colspan="4">No participants yet.</td></tr>{% endfor %}</table>
+<h2>Crew damage standings</h2>
+<table><tr><th>Place</th><th>Crew</th><th>Damage</th><th>Participants</th></tr>
+{% for row in crew_standings %}<tr><td>{{ loop.index }}</td><td>{{ row.name }} [{{ row.tag }}]</td><td>{{ row.damage }}</td><td>{{ row.participants }}</td></tr>{% else %}<tr><td colspan="4">No crew damage recorded.</td></tr>{% endfor %}</table>
 <h2>Rewards</h2>
+<form method="post" action="{{ url_for('admin_world_boss_process_rewards') }}" style="margin-bottom:9px"><button class="btn">Process Expired Reward Choices</button></form>
 <table><tr><th>Place</th><th>Character</th><th>Status</th><th>Deadline</th><th>Item</th></tr>
-{% for row in rewards %}<tr><td>{{ row.place }}</td><td>{{ row.character_name }}</td><td>{{ row.status }}</td><td>{{ row.selection_deadline }}</td><td>{{ row.item_type or '—' }} {{ row.item_id or '' }}</td></tr>{% else %}<tr><td colspan="5">Rewards are not locked yet.</td></tr>{% endfor %}</table>
+{% for row in rewards %}<tr><td>{{ row.place }}</td><td>{{ row.character_name }}</td><td>{{ row.status }}</td><td>{{ row.selection_deadline }}</td><td>{{ row.item_name or 'Not selected' }}{% if row.item_type %}<small>{{ row.item_type }} #{{ row.item_id }}</small>{% endif %}</td></tr>{% else %}<tr><td colspan="5">Rewards are not locked yet.</td></tr>{% endfor %}</table>
 <h2>Event audit log</h2>
 <table><tr><th>Time</th><th>Category</th><th>Message</th><th>Technical details</th></tr>
 {% for row in logs %}<tr><td>{{ row.occurred_at }}</td><td>{{ row.category }}</td><td>{{ row.message }}</td><td><details><summary>View</summary><pre>{{ row.details_json or '—' }}</pre></details></td></tr>{% endfor %}</table>
