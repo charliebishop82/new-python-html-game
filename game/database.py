@@ -59,13 +59,29 @@ def init_db():
         npc_columns = {row[1] for row in conn.execute("PRAGMA table_info(npc_profiles)")}
         if "thief" not in npc_columns:
             conn.execute("ALTER TABLE npc_profiles ADD COLUMN thief INTEGER NOT NULL DEFAULT 0")
+        if "world_boss_hunter" not in npc_columns:
+            conn.execute(
+                "ALTER TABLE npc_profiles ADD COLUMN world_boss_hunter INTEGER NOT NULL DEFAULT 0"
+            )
         player_columns = {row[1] for row in conn.execute("PRAGMA table_info(players)")}
         if "retired_at" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
+        if "pending_perk" not in player_columns:
+            conn.execute("ALTER TABLE players ADD COLUMN pending_perk INTEGER NOT NULL DEFAULT 0")
         for table in ("boss_instances", "minion_instances"):
             columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
             if "encounter_max_hp" not in columns:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN encounter_max_hp INTEGER")
+        combat_columns = {row[1] for row in conn.execute("PRAGMA table_info(combat_sessions)")}
+        if "world_boss_event_id" not in combat_columns:
+            conn.execute("ALTER TABLE combat_sessions ADD COLUMN world_boss_event_id INTEGER")
+        for column, declaration in (
+            ("special_attack_used", "INTEGER NOT NULL DEFAULT 0"),
+            ("special_buff_used", "INTEGER NOT NULL DEFAULT 0"),
+            ("current_phase", "INTEGER NOT NULL DEFAULT 1"),
+        ):
+            if column not in combat_columns:
+                conn.execute(f"ALTER TABLE combat_sessions ADD COLUMN {column} {declaration}")
         npc_log_columns = {row[1] for row in conn.execute("PRAGMA table_info(npc_action_log)")}
         if "details_json" not in npc_log_columns:
             conn.execute("ALTER TABLE npc_action_log ADD COLUMN details_json TEXT")
@@ -107,6 +123,11 @@ def init_db():
             ("NPC_UPGRADE_MIN_UNEQUIPPED", "2", "Unequipped gear required before an NPC may liquidate items for an upgrade."),
             ("NPC_UPGRADE_MIN_IMPROVEMENT", "0.15", "Minimum fractional NPC equipment-score improvement required for a planned upgrade."),
             ("NPC_OBSERVE_MAX_ATTEMPTS", "1", "Maximum Observe attempts an NPC may make during one combat."),
+            ("AP_COST_WORLD_BOSS", "4", "AP required to begin one world-boss attempt."),
+            ("WORLD_BOSS_HP_MULTIPLIER", "1.0", "Multiplier applied to imported world-boss HP."),
+            ("WORLD_BOSS_ATTEMPT_XP", "10", "XP granted after a completed world-boss attempt."),
+            ("WORLD_BOSS_ATTEMPT_CREDITS", "5", "Credits granted after a completed world-boss attempt."),
+            ("WORLD_BOSS_REWARD_HOURS", "12", "Hours each placed player has to choose a prize."),
         ):
             conn.execute(
                 "INSERT OR IGNORE INTO settings(constant_name,value,description) VALUES(?,?,?)",
@@ -206,12 +227,14 @@ def reconcile_combat_state(player_id: int | None = None) -> dict:
     active = execute(
         f"""SELECT cs.*,att.id AS attacker_exists,att.is_banned AS attacker_banned,
                    def.id AS defender_exists,def.is_banned AS defender_banned,
-                   bi.id AS boss_instance_exists,mi.id AS minion_instance_exists
+                   bi.id AS boss_instance_exists,mi.id AS minion_instance_exists,
+                   wbe.id AS world_boss_event_exists,wbe.status AS world_boss_event_status
             FROM combat_sessions cs
             LEFT JOIN players att ON att.id=cs.attacker_player_id
             LEFT JOIN players def ON def.id=cs.defender_player_id
             LEFT JOIN boss_instances bi ON bi.id=cs.boss_instance_id
             LEFT JOIN minion_instances mi ON mi.id=cs.minion_instance_id
+            LEFT JOIN world_boss_events wbe ON wbe.id=cs.world_boss_event_id
             WHERE cs.status='ACTIVE' {scope_sql}
             ORDER BY cs.id DESC""", params
     )
@@ -227,6 +250,10 @@ def reconcile_combat_state(player_id: int | None = None) -> dict:
                    (not combat.get("defender_exists") or combat.get("defender_banned"))) or
                   (combat["combat_type"] == "BOSS" and not combat.get("boss_instance_exists")) or
                   (combat["combat_type"] == "MINION" and not combat.get("minion_instance_exists")))
+        if combat["combat_type"] == "WORLD_BOSS" and (
+                not combat.get("world_boss_event_exists") or
+                combat.get("world_boss_event_status") != "ACTIVE"):
+            broken = True
         duplicate = any(pid in claimed_players for pid in participants)
         if broken or duplicate:
             abandoned.append((combat, "BROKEN_REFERENCE" if broken else "DUPLICATE_ACTIVE_COMBAT"))
@@ -319,9 +346,10 @@ def get_player(player_id: int) -> dict | None:
     equipped = get_player_equipped(player)
     gear_str = sum(int((item or {}).get("str_bonus", 0) or 0) for item in equipped.values())
     gear_end = sum(int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values())
-    special = equipped.get("special") or {}
-    end   = player["end_stat"] + gear_end
-    effective_str = player["str_stat"] + gear_str
+    special = get_player_bonus_profile(player_id, equipped.get("special"))
+    perk_bonuses = get_player_perk_bonuses(player_id)
+    end   = player["end_stat"] + gear_end + int(perk_bonuses.get("end_bonus", 0))
+    effective_str = player["str_stat"] + gear_str + int(perk_bonuses.get("str_bonus", 0))
     level = player["level"]
 
     max_hp     = 10 + end + (5 * level)
@@ -370,6 +398,72 @@ def get_player(player_id: int) -> dict | None:
         "xp_to_next_level":  xp_to_next_level,
     })
     return player
+
+
+BONUS_FIELDS = (
+    "str_bonus", "end_bonus", "agi_bonus", "lck_bonus", "per_bonus",
+    "initiative_bonus", "extra_attack", "crit_chance_bonus",
+    "crit_dmg_multiplier", "ac_bonus", "res_blade", "res_blunt",
+    "res_ballistic", "res_energy", "res_arcane", "res_explosive",
+    "res_venom", "bonus_damage_amount", "xp_multiplier",
+    "credit_multiplier", "steal_bonus", "bonus_ap", "hp_regen_bonus",
+    "durability_reduction", "shop_discount", "sell_bonus", "encounter_bonus",
+)
+
+
+def get_player_perks(player_id: int) -> list[dict]:
+    """Return a character's permanent perks in acquisition order."""
+    return execute(
+        """SELECT p.*,pp.level_chosen,pp.acquired_at
+           FROM player_perks pp JOIN perks p ON p.id=pp.perk_id
+           WHERE pp.player_id=? ORDER BY pp.level_chosen,p.id""", (player_id,)
+    )
+
+
+def get_player_perk_bonuses(player_id: int) -> dict:
+    """Aggregate all permanent perk effects, retaining typed damage components."""
+    perks = get_player_perks(player_id)
+    result = {field: 0 for field in BONUS_FIELDS}
+    components = []
+    for perk in perks:
+        for field in BONUS_FIELDS:
+            result[field] += float(perk.get(field, 0) or 0)
+        if perk.get("bonus_damage_amount") and perk.get("bonus_damage_type"):
+            components.append({"type": perk["bonus_damage_type"],
+                               "amount": int(perk["bonus_damage_amount"])})
+    for field in ("str_bonus", "end_bonus", "agi_bonus", "lck_bonus", "per_bonus",
+                  "initiative_bonus", "extra_attack", "ac_bonus", "bonus_damage_amount",
+                  "bonus_ap", "hp_regen_bonus", "res_blade", "res_blunt",
+                  "res_ballistic", "res_energy", "res_arcane", "res_explosive", "res_venom"):
+        result[field] = int(result[field])
+    result["bonus_damage_components"] = components
+    return result
+
+
+_LOAD_EQUIPPED_SPECIAL = object()
+
+
+def get_player_bonus_profile(player_id: int, special=_LOAD_EQUIPPED_SPECIAL) -> dict:
+    """Combine an equipped special with permanent perks for gameplay formulas."""
+    if special is _LOAD_EQUIPPED_SPECIAL:
+        row = execute_one(
+            """SELECT s.* FROM players p
+               JOIN inventory_items ii ON ii.id=p.equipped_special_id
+               JOIN special_items s ON s.id=ii.item_id WHERE p.id=?""", (player_id,)
+        )
+        special = row
+    result = dict(special or {})
+    perk = get_player_perk_bonuses(player_id)
+    for field in BONUS_FIELDS:
+        result[field] = (float(result.get(field, 0) or 0) +
+                         float(perk.get(field, 0) or 0))
+    components = []
+    if special and special.get("bonus_damage_amount") and special.get("bonus_damage_type"):
+        components.append({"type": special["bonus_damage_type"],
+                           "amount": int(special["bonus_damage_amount"])})
+    components.extend(perk.get("bonus_damage_components", []))
+    result["bonus_damage_components"] = components
+    return result
 
 
 def get_player_equipped(player: dict) -> dict:

@@ -61,6 +61,10 @@ def _register_routes(app: Flask):
     app.add_url_rule("/", "admin_root", lambda: redirect(url_for("admin_index")))
     app.add_url_rule("/admin",                        "admin_index",        admin_index)
     app.add_url_rule("/admin/rules",                  "admin_rules",        admin_rules)
+    app.add_url_rule("/admin/world-boss",             "admin_world_boss",   admin_world_boss)
+    app.add_url_rule("/admin/world-boss/activate",    "admin_world_boss_activate", admin_world_boss_activate, methods=["POST"])
+    app.add_url_rule("/admin/world-boss/close",       "admin_world_boss_close", admin_world_boss_close, methods=["POST"])
+    app.add_url_rule("/admin/world-boss/rescale",     "admin_world_boss_rescale", admin_world_boss_rescale, methods=["POST"])
     app.add_url_rule("/admin/import",                 "admin_import",       admin_import,        methods=["GET","POST"])
     app.add_url_rule("/admin/players",                "admin_players",      admin_players)
     app.add_url_rule("/admin/players/<int:pid>",      "admin_player_detail",admin_player_detail)
@@ -93,6 +97,66 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/npcs/<int:pid>/retire",  "admin_npc_retire",   admin_npc_retire,    methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/inventory/grant", "admin_npc_grant", admin_npc_grant, methods=["POST"])
     app.add_url_rule("/admin/npcs/<int:pid>/inventory/<int:inv_id>/remove", "admin_npc_remove", admin_npc_remove, methods=["POST"])
+
+
+def admin_world_boss():
+    """Inspect the weekly encounter, ranking ledger, rewards, and live audit log."""
+    from world_boss import get_active_event, standings
+    active = get_active_event()
+    latest = active or execute_one(
+        """SELECT e.*,w.name,w.flavor_text FROM world_boss_events e
+           JOIN world_bosses w ON w.id=e.world_boss_id ORDER BY e.id DESC LIMIT 1"""
+    )
+    return render_template(
+        "admin/world_boss.html", event=latest,
+        standings=standings(latest["id"]) if latest else [],
+        rewards=(execute(
+            """SELECT r.*,p.character_name FROM world_boss_rewards r
+               JOIN players p ON p.id=r.player_id WHERE r.event_id=? ORDER BY r.place""",
+            (latest["id"],)) if latest else []),
+        logs=(execute(
+            """SELECT * FROM world_boss_event_log WHERE event_id=? ORDER BY id DESC LIMIT 100""",
+            (latest["id"],)) if latest else []),
+        bosses=execute(
+            """SELECT w.*,EXISTS(SELECT 1 FROM world_boss_events e WHERE e.world_boss_id=w.id) used
+               FROM world_bosses w ORDER BY w.name"""
+        ),
+    )
+
+
+def admin_world_boss_activate():
+    """Force activation of one unused imported boss when no workflow blocks it."""
+    from world_boss import activate_next_event
+    boss_id = request.form.get("boss_id", type=int)
+    event = activate_next_event(forced_boss_id=boss_id)
+    if not event:
+        return redirect(url_for("admin_world_boss", error="An active event or pending reward workflow blocks activation."))
+    return redirect(url_for("admin_world_boss", feedback=f"Activated {event['name']}."))
+
+
+def admin_world_boss_close():
+    """Close the active event and lock its current damage standings."""
+    from world_boss import get_active_event, close_event
+    event = get_active_event()
+    if not event:
+        return redirect(url_for("admin_world_boss", error="No active world boss."))
+    close_event(event["id"], "ADMIN_CLOSED")
+    return redirect(url_for("admin_world_boss", feedback="Event closed and rewards locked."))
+
+
+def admin_world_boss_rescale():
+    """Apply the safety multiplier to the live pool without erasing damage."""
+    from world_boss import rescale_active_event
+    try:
+        multiplier = request.form.get("multiplier", type=float)
+        event = rescale_active_event(multiplier)
+        with exclusive_transaction():
+            execute_write("UPDATE settings SET value=? WHERE constant_name='WORLD_BOSS_HP_MULTIPLIER'",
+                          (str(event["hp_multiplier"]),))
+        return redirect(url_for("admin_world_boss",
+                                feedback=f"Active HP scale updated; {event['current_hp']} HP remains."))
+    except (ValueError, TypeError) as exc:
+        return redirect(url_for("admin_world_boss", error=str(exc)))
 
 
 def admin_rules():
@@ -802,6 +866,7 @@ def admin_npc_audit():
     summaries = {}
     for profile in selected_profiles:
         motivations = {"Hunter": profile["player_hunter"], "Boss Killer": profile["boss_killer"],
+                       "World Boss Hunter": profile["world_boss_hunter"],
                        "Hoarder": profile["hoarder"], "Thief": profile["thief"]}
         leaders = [name for name, score in motivations.items() if score == max(motivations.values())]
         summaries[profile["id"]] = {
@@ -871,13 +936,13 @@ def admin_npc_audit():
 def admin_npc_edit(pid: int):
     """Render or process the npc edit administrative workflow."""
     fields = {}
-    for name in ("player_hunter", "boss_killer", "hoarder", "thief", "aggression",
+    for name in ("player_hunter", "boss_killer", "world_boss_hunter", "hoarder", "thief", "aggression",
                  "self_preservation", "repair_tendency"):
         fields[name] = max(0, min(100, request.form.get(name, type=int, default=0)))
     fields["enabled"] = 1 if request.form.get("enabled") else 0
     with exclusive_transaction():
         execute_write(
-            """UPDATE npc_profiles SET player_hunter=?,boss_killer=?,hoarder=?,thief=?,aggression=?,
+            """UPDATE npc_profiles SET player_hunter=?,boss_killer=?,world_boss_hunter=?,hoarder=?,thief=?,aggression=?,
                self_preservation=?,repair_tendency=?,enabled=? WHERE player_id=?""",
             (*fields.values(), pid)
         )
@@ -1036,8 +1101,8 @@ def _create_npc(form) -> int:
         )
         execute_write("INSERT INTO player_stats(player_id) VALUES(?)", (pid,))
         execute_write(
-            """INSERT INTO npc_profiles(player_id,player_hunter,boss_killer,hoarder,thief,aggression,
-               self_preservation,repair_tendency) VALUES(?,?,?,?,?,?,?,?)""",
+            """INSERT INTO npc_profiles(player_id,player_hunter,boss_killer,world_boss_hunter,hoarder,thief,
+               aggression,self_preservation,repair_tendency) VALUES(?,?,?,?,?,?,?,?,?)""",
             (pid, *scores)
         )
     from routes.auth import _award_starter_gear
@@ -1054,7 +1119,7 @@ def _npc_scores_from_form(form):
     """Provide the internal npc scores from form operation used by this module."""
     return tuple(max(0, min(100, form.get(key, type=int, default=default)))
                  for key, default in (
-                     ("player_hunter", 100), ("boss_killer", 0),
+                     ("player_hunter", 100), ("boss_killer", 0), ("world_boss_hunter", 0),
                      ("hoarder", 0), ("thief", 0), ("aggression", 85),
                      ("self_preservation", 35), ("repair_tendency", 55)))
 
@@ -1181,12 +1246,14 @@ def admin_full_reset():
 
     # Drop all operational tables (content tables survive)
     operational = [
+        "world_boss_event_log", "world_boss_rewards", "world_boss_contributions",
+        "world_boss_events",
         "npc_action_log", "npc_profiles", "player_activity_log",
         "combat_buffs", "combat_logs", "combat_sessions",
         "boss_instances", "minion_instances", "boss_intel",
         "inventory_items", "item_history", "special_item_registry",
         "shop_listings", "daily_feed", "action_queue",
-        "player_stats", "level_up_history", "status_effects", "players",
+        "player_stats", "player_perks", "level_up_history", "status_effects", "players",
     ]
     conn = sqlite3.connect(cfg.DB_PATH)
     conn.execute("PRAGMA foreign_keys = OFF")
@@ -1216,7 +1283,9 @@ def admin_full_reset():
     # Build the unique-special pool only after the revised catalog is active.
     with exclusive_transaction():
         execute_write("DELETE FROM special_item_registry")
-        specials = execute("SELECT id FROM special_items WHERE is_active = 1")
+        specials = execute(
+            "SELECT id FROM special_items WHERE is_active=1 AND association_type<>'WorldBoss'"
+        )
         for s in specials:
             execute_write(
                 "INSERT INTO special_item_registry (special_item_id, status) VALUES (?, 'IN_POOL')",

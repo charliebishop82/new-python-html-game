@@ -294,7 +294,8 @@ def levelup():
     """Show stat point assignment page.
     Enforced by before_request — only reachable when pending_levelup = True."""
     player = g.player
-    return render_template("auth/levelup.html", player=player)
+    perks = _eligible_perks(player) if player.get("pending_perk") else []
+    return render_template("auth/levelup.html", player=player, perks=perks)
 
 
 @bp.route("/levelup", methods=["POST"])
@@ -303,10 +304,17 @@ def levelup_post():
     stat = request.form.get("stat", "").strip().upper()
     if stat not in ("STR", "END", "AGI", "LCK", "PER"):
         return render_template("auth/levelup.html", player=g.player,
+                               perks=_eligible_perks(g.player) if g.player.get("pending_perk") else [],
                                error="Please choose a valid stat.")
 
+    perk_id = request.form.get("perk_id", type=int)
+    if g.player.get("pending_perk") and not perk_id:
+        return render_template("auth/levelup.html", player=g.player,
+                               perks=_eligible_perks(g.player),
+                               error="This level also grants a perk. Please choose one.")
+
     result = enqueue_and_process(
-        session["player_id"], "assign_levelup", {"stat": stat}
+        session["player_id"], "assign_levelup", {"stat": stat, "perk_id": perk_id}
     )
     return redirect(url_for("dashboard.index"))
 
@@ -321,12 +329,30 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
     if not player or not player["pending_levelup"]:
         raise ValueError("No pending level-up for this player.")
 
+    perk = None
+    if player.get("pending_perk"):
+        perk_id = payload.get("perk_id")
+        perk = execute_one(
+            """SELECT p.* FROM perks p WHERE p.id=? AND p.is_active=1
+               AND p.level <= ? AND NOT EXISTS(
+                   SELECT 1 FROM player_perks pp WHERE pp.player_id=? AND pp.perk_id=p.id)""",
+            (perk_id or -1, player["level"] + 2, player_id)
+        )
+        if not perk:
+            raise ValueError("Choose an eligible perk you do not already own.")
+
     new_stat_val = player[col] + 1
     new_level    = player["level"]
 
+    pending_before = max(1, int(player.get("pending_levelup", 1)))
+    perk_pending_before = max(0, int(player.get("pending_perk", 0)))
     next_threshold = cfg.XP_CURVE.get(new_level + 1)
     has_another_level = next_threshold is not None and player["xp"] >= next_threshold
     target_level = new_level + 1 if has_another_level else new_level
+    remaining_levelups = pending_before - 1 + (1 if has_another_level else 0)
+    remaining_perks = perk_pending_before - (1 if perk else 0)
+    if has_another_level and target_level % 3 == 0:
+        remaining_perks += 1
 
     # Recalculate max HP with the assigned stat and any immediately queued level.
     new_end = new_stat_val if stat == "end" else player["end_stat"]
@@ -336,10 +362,17 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
         execute_write(f"UPDATE players SET {col} = ? WHERE id = ?", (new_stat_val, player_id))
         # Always fully restore HP on level up
         execute_write(
-            "UPDATE players SET current_hp = ?, pending_levelup = ?, level = ? WHERE id = ?",
-            (new_max_hp, 1 if has_another_level else 0,
+            """UPDATE players SET current_hp=?,pending_levelup=?,pending_perk=?,level=?
+               WHERE id=?""",
+            (new_max_hp, remaining_levelups,
+             remaining_perks,
              target_level, player_id)
         )
+        if perk:
+            execute_write(
+                "INSERT INTO player_perks(player_id,perk_id,level_chosen) VALUES(?,?,?)",
+                (player_id, perk["id"], new_level)
+            )
         execute_write(
             """INSERT INTO level_up_history (player_id, level_reached, stat_increased)
                VALUES (?, ?, ?)""",
@@ -361,11 +394,28 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
                VALUES ('GLOBAL', NULL, ?, 'LEVEL_UP')""",
             (f"{player['character_name']} reached Level {new_level}!",)
         )
+        if perk:
+            perk_text = f"{player['character_name']} selected the perk {perk['name']}."
+            execute_write(
+                """INSERT INTO daily_feed(feed_scope,player_id,flavor_text,event_category)
+                   VALUES('PERSONAL',?,?,'PERK')""", (player_id, perk_text)
+            )
 
     logger.info("Player %d assigned level-up stat point to %s (now %d)",
                 player_id, stat.upper(), new_stat_val)
     return {"stat": stat.upper(), "new_value": new_stat_val,
-            "level": new_level, "another_level_pending": has_another_level}
+            "level": new_level, "perk": perk["name"] if perk else None,
+            "another_level_pending": has_another_level}
+
+
+def _eligible_perks(player: dict) -> list[dict]:
+    """List unowned active perks at or below character level plus two."""
+    return execute(
+        """SELECT p.* FROM perks p WHERE p.is_active=1 AND p.level <= ?
+           AND NOT EXISTS(SELECT 1 FROM player_perks pp
+                          WHERE pp.player_id=? AND pp.perk_id=p.id)
+           ORDER BY p.level,p.name""", (player["level"] + 2, player["id"])
+    )
 
 
 ################################################################################

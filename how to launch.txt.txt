@@ -1,0 +1,49 @@
+activate the bbsgame conda environment
+
+$env:GAME_SECRET_KEY = "replace-this-with-a-long-random-value"
+python run.py
+
+In a second PowerShell window, also inside game:
+$env:GAME_SECRET_KEY = "use-the-same-value"
+$env:ADMIN_PASSWORD = "choose-an-admin-password"
+flask --app admin:create_admin_app run --port 5001
+
+Then open:
+Game: http://localhost:5000
+Admin: http://localhost:5001/admin
+
+
+TO RESET THE GAME:
+
+Do not manually delete game.db. Use the Admin “Full Game Reset” because it:
+Validates the workbook before deleting player data.
+Creates an automatic database backup.
+Clears players, NPCs, inventories, combat, logs, and world-boss progress.
+Preserves/reconciles content tables.
+Imports the staged workbook.
+Rebuilds the unique-item registry.
+Safe sequence:
+Stop both Flask servers with Ctrl+C.
+
+Place the workbook at exactly:
+C:\Users\charl\OneDrive\Desktop\bbsgame\game\data\pending_import.xlsx
+
+Start only the admin server from the game directory:
+flask --app admin:create_admin_app run --port 5001
+
+Open http://127.0.0.1:5001/admin.
+
+Use “Full Game Reset,” entering RESET when prompted.
+
+Confirm that it reports a successful reset/import. The workbook should move automatically into:
+game\data\logs\applied_<timestamp>.xlsx
+
+If you want a world boss immediately, open the new Admin → World Boss screen and activate one. Otherwise, one will be selected during the next midnight reset.
+
+Stop and restart the admin server, then start the game:
+python run.py
+
+Before starting the game, set your secret key in that Anaconda prompt:
+set GAME_SECRET_KEY=choose-a-long-random-secret-here
+python run.py
+Keep the same secret key between restarts. Manually deleting game.db would bypass the automatic backup and would not automatically import the workbook during ordinary startup

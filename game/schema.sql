@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS players (
     equipped_special_id INTEGER REFERENCES inventory_items(id),
     in_combat           INTEGER NOT NULL DEFAULT 0,
     pending_levelup     INTEGER NOT NULL DEFAULT 0,
+    pending_perk        INTEGER NOT NULL DEFAULT 0,
     combat_preference   TEXT    NOT NULL DEFAULT "Balanced",
     is_banned           INTEGER NOT NULL DEFAULT 0,
     retired_at          TEXT,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS npc_profiles (
     retired            INTEGER NOT NULL DEFAULT 0,
     player_hunter      INTEGER NOT NULL DEFAULT 0 CHECK(player_hunter BETWEEN 0 AND 100),
     boss_killer        INTEGER NOT NULL DEFAULT 0 CHECK(boss_killer BETWEEN 0 AND 100),
+    world_boss_hunter  INTEGER NOT NULL DEFAULT 0 CHECK(world_boss_hunter BETWEEN 0 AND 100),
     hoarder            INTEGER NOT NULL DEFAULT 0 CHECK(hoarder BETWEEN 0 AND 100),
     thief              INTEGER NOT NULL DEFAULT 0 CHECK(thief BETWEEN 0 AND 100),
     aggression         INTEGER NOT NULL DEFAULT 50 CHECK(aggression BETWEEN 0 AND 100),
@@ -85,6 +87,17 @@ CREATE TABLE IF NOT EXISTS level_up_history (
     level_reached  INTEGER NOT NULL,
     stat_increased TEXT    NOT NULL,
     timestamp      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Permanent perk selections earned at levels 3, 6, 9, 12, and 15.
+CREATE TABLE IF NOT EXISTS player_perks (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id   INTEGER NOT NULL REFERENCES players(id),
+    perk_id     INTEGER NOT NULL REFERENCES perks(id),
+    level_chosen INTEGER NOT NULL,
+    acquired_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(player_id, perk_id),
+    UNIQUE(player_id, level_chosen)
 );
 
 -- Temporary character modifiers, normally cleared by the UTC reset.
@@ -120,6 +133,10 @@ CREATE TABLE IF NOT EXISTS combat_sessions (
     defender_player_id          INTEGER REFERENCES players(id),
     boss_instance_id            INTEGER REFERENCES boss_instances(id),
     minion_instance_id          INTEGER REFERENCES minion_instances(id),
+    world_boss_event_id         INTEGER REFERENCES world_boss_events(id),
+    special_attack_used         INTEGER NOT NULL DEFAULT 0,
+    special_buff_used           INTEGER NOT NULL DEFAULT 0,
+    current_phase               INTEGER NOT NULL DEFAULT 1,
     status                      TEXT    NOT NULL DEFAULT "ACTIVE",
     result                      TEXT,
     current_round               INTEGER NOT NULL DEFAULT 1,
@@ -372,6 +389,45 @@ CREATE TABLE IF NOT EXISTS bosses (
     imported_at              TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Shared-event boss definitions. Encounter state and rewards will be layered
+-- on separately once the multiplayer event rules are finalized.
+CREATE TABLE IF NOT EXISTS world_bosses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    level INTEGER NOT NULL,
+    str_stat INTEGER NOT NULL,
+    end_stat INTEGER NOT NULL,
+    agi_stat INTEGER NOT NULL,
+    lck_stat INTEGER NOT NULL,
+    per_stat INTEGER NOT NULL,
+    max_hp INTEGER NOT NULL,
+    phase2_hp_percent INTEGER NOT NULL,
+    phase3_hp_percent INTEGER NOT NULL,
+    special_attack_name TEXT NOT NULL,
+    special_attack_die TEXT NOT NULL,
+    special_attack_damage_type TEXT NOT NULL,
+    special_attack_flavor TEXT NOT NULL,
+    special_buff_name TEXT NOT NULL,
+    special_buff_type TEXT NOT NULL,
+    special_buff_value REAL NOT NULL,
+    special_buff_damage_type TEXT,
+    special_buff_flavor TEXT NOT NULL,
+    res_blade INTEGER NOT NULL DEFAULT 0, res_blunt INTEGER NOT NULL DEFAULT 0,
+    res_ballistic INTEGER NOT NULL DEFAULT 0, res_energy INTEGER NOT NULL DEFAULT 0,
+    res_arcane INTEGER NOT NULL DEFAULT 0, res_explosive INTEGER NOT NULL DEFAULT 0,
+    res_venom INTEGER NOT NULL DEFAULT 0,
+    weak_blade INTEGER NOT NULL DEFAULT 0, weak_blunt INTEGER NOT NULL DEFAULT 0,
+    weak_ballistic INTEGER NOT NULL DEFAULT 0, weak_energy INTEGER NOT NULL DEFAULT 0,
+    weak_arcane INTEGER NOT NULL DEFAULT 0, weak_explosive INTEGER NOT NULL DEFAULT 0,
+    weak_venom INTEGER NOT NULL DEFAULT 0,
+    drop_weapon_chance REAL NOT NULL, drop_armor_chance REAL NOT NULL,
+    drop_special_item_chance REAL NOT NULL,
+    drop_credit_min INTEGER NOT NULL, drop_credit_max INTEGER NOT NULL,
+    flavor_text TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
+    imported_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Excel-imported minion statistics and combat definitions.
 CREATE TABLE IF NOT EXISTS minions (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -485,6 +541,91 @@ CREATE TABLE IF NOT EXISTS special_items (
     imported_at         TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Permanent level-up perks use the same bonus vocabulary as special items.
+CREATE TABLE IF NOT EXISTS perks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    is_active INTEGER NOT NULL DEFAULT 1,
+    level INTEGER NOT NULL,
+    str_bonus INTEGER NOT NULL DEFAULT 0, end_bonus INTEGER NOT NULL DEFAULT 0,
+    agi_bonus INTEGER NOT NULL DEFAULT 0, lck_bonus INTEGER NOT NULL DEFAULT 0,
+    per_bonus INTEGER NOT NULL DEFAULT 0,
+    initiative_bonus INTEGER NOT NULL DEFAULT 0, extra_attack INTEGER NOT NULL DEFAULT 0,
+    crit_chance_bonus REAL NOT NULL DEFAULT 0, crit_dmg_multiplier REAL NOT NULL DEFAULT 0,
+    ac_bonus INTEGER NOT NULL DEFAULT 0,
+    res_blade INTEGER NOT NULL DEFAULT 0, res_blunt INTEGER NOT NULL DEFAULT 0,
+    res_ballistic INTEGER NOT NULL DEFAULT 0, res_energy INTEGER NOT NULL DEFAULT 0,
+    res_arcane INTEGER NOT NULL DEFAULT 0, res_explosive INTEGER NOT NULL DEFAULT 0,
+    res_venom INTEGER NOT NULL DEFAULT 0,
+    bonus_damage_type TEXT, bonus_damage_amount INTEGER NOT NULL DEFAULT 0,
+    xp_multiplier REAL NOT NULL DEFAULT 0, credit_multiplier REAL NOT NULL DEFAULT 0,
+    steal_bonus REAL NOT NULL DEFAULT 0, bonus_ap INTEGER NOT NULL DEFAULT 0,
+    hp_regen_bonus INTEGER NOT NULL DEFAULT 0, durability_reduction REAL NOT NULL DEFAULT 0,
+    shop_discount REAL NOT NULL DEFAULT 0, sell_bonus REAL NOT NULL DEFAULT 0,
+    encounter_bonus REAL NOT NULL DEFAULT 0,
+    description TEXT NOT NULL DEFAULT '',
+    imported_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Imported relationship between a world boss and its three exclusive prizes.
+CREATE TABLE IF NOT EXISTS world_boss_loot (
+    world_boss_id INTEGER PRIMARY KEY REFERENCES world_bosses(id),
+    weapon_id INTEGER NOT NULL REFERENCES weapons(id),
+    armor_id INTEGER NOT NULL REFERENCES armor(id),
+    special_item_id INTEGER NOT NULL REFERENCES special_items(id)
+);
+
+-- One non-repeating weekly shared encounter and its authoritative HP pool.
+CREATE TABLE IF NOT EXISTS world_boss_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    world_boss_id INTEGER NOT NULL REFERENCES world_bosses(id),
+    status TEXT NOT NULL DEFAULT 'ACTIVE',
+    starting_hp INTEGER NOT NULL,
+    current_hp INTEGER NOT NULL,
+    hp_multiplier REAL NOT NULL DEFAULT 1.0,
+    started_at TEXT NOT NULL,
+    scheduled_end_at TEXT NOT NULL,
+    ended_at TEXT,
+    end_reason TEXT,
+    defeated_by_player_id INTEGER REFERENCES players(id),
+    rewards_completed_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS world_boss_contributions (
+    event_id INTEGER NOT NULL REFERENCES world_boss_events(id),
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    damage INTEGER NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    xp_earned INTEGER NOT NULL DEFAULT 0,
+    credits_earned INTEGER NOT NULL DEFAULT 0,
+    first_damage_at TEXT,
+    last_damage_at TEXT,
+    PRIMARY KEY(event_id,player_id)
+);
+
+CREATE TABLE IF NOT EXISTS world_boss_event_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES world_boss_events(id),
+    player_id INTEGER REFERENCES players(id),
+    category TEXT NOT NULL,
+    message TEXT NOT NULL,
+    details_json TEXT,
+    occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS world_boss_rewards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES world_boss_events(id),
+    place INTEGER NOT NULL CHECK(place BETWEEN 1 AND 3),
+    player_id INTEGER NOT NULL REFERENCES players(id),
+    status TEXT NOT NULL DEFAULT 'PENDING',
+    item_type TEXT,
+    item_id INTEGER,
+    selection_deadline TEXT NOT NULL,
+    awarded_at TEXT,
+    UNIQUE(event_id,place), UNIQUE(event_id,player_id)
+);
+
 -- Weighted good and bad encounters plus their mechanical effects.
 CREATE TABLE IF NOT EXISTS random_events (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -544,6 +685,9 @@ CREATE INDEX IF NOT EXISTS idx_daily_feed_player       ON daily_feed(player_id, 
 CREATE INDEX IF NOT EXISTS idx_daily_feed_global       ON daily_feed(feed_scope, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_boss_instances_player   ON boss_instances(player_id);
 CREATE INDEX IF NOT EXISTS idx_minion_instances_player ON minion_instances(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_perks_player ON player_perks(player_id);
+CREATE INDEX IF NOT EXISTS idx_world_boss_events_status ON world_boss_events(status);
+CREATE INDEX IF NOT EXISTS idx_world_boss_log_event ON world_boss_event_log(event_id,id);
 CREATE INDEX IF NOT EXISTS idx_action_queue_status     ON action_queue(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_player_activity_date    ON player_activity_log(player_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_player_activity_status  ON player_activity_log(status, occurred_at);

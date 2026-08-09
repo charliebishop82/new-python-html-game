@@ -6,7 +6,8 @@
     <p>This guide describes the rules the game currently calculates. Hover or focus the small <b>?</b> badges elsewhere for shorter explanations.</p>
     <nav class="help-toc" aria-label="Guide sections">
         <a href="#turns">Turns & AP</a><a href="#stats">Stats</a><a href="#combat">Combat</a>
-        <a href="#actions">Combat Actions</a><a href="#rewards">Rewards & XP</a>
+        <a href="#actions">Combat Actions</a><a href="#rewards">Rewards, Perks & XP</a>
+        <a href="#world-boss">Weekly World Boss</a>
         <a href="#equipment">Equipment</a><a href="#economy">Economy</a><a href="#logs">Logs</a>
     </nav>
 
@@ -54,8 +55,14 @@
     <section id="rewards"><h2>Experience, Rewards, and Leveling</h2>
         <p>Victory XP begins with the opponent’s level and encounter type, then adjusts for level difference and equipped XP bonuses. Higher-level opponents add 10% per level; lower-level opponents reduce rewards by 15% per level, with a 10% minimum.</p>
         <div class="formula">Base victory XP: Minion {{ settings.get('MINION_XP_PER_LEVEL', 20) }} × level; Boss {{ settings.get('BOSS_XP_PER_LEVEL', 35) }} × level; PvP {{ settings.get('PVP_XP_PER_LEVEL', 25) }} × opponent level.</div>
-        <p>Successful steals and completed defeats can award smaller XP amounts. XP never decreases. Crossing a threshold raises your level and requires one permanent stat choice.</p>
+        <p>Successful steals and completed defeats can award smaller XP amounts. XP never decreases. Crossing a threshold raises your level and requires one permanent stat choice. At Levels 3, 6, 9, and every third level afterward, you also choose one unowned perk whose listed level is no higher than your new level plus two. Perk effects are permanent and are included anywhere the matching equipment-style bonus is calculated.</p>
         <details><summary>Level thresholds</summary><table><tr><th>Level</th><th>Total XP required</th></tr>{% for level, xp in xp_curve.items() %}<tr><td>{{ level }}</td><td>{{ xp }}</td></tr>{% endfor %}</table></details>
+    </section>
+
+    <section id="world-boss"><h2>Weekly World Boss</h2>
+        <p>All participating characters attack one shared HP pool. An attempt costs {{ settings.get('AP_COST_WORLD_BOSS', 4) }} AP, uses normal boss combat rules, and grants a small attempt reward without ordinary drops. Damage shown on the leaderboard is actual post-resistance damage, capped at the boss's remaining HP.</p>
+        <p>The event closes when the boss falls or at the weekly Monday UTC turnover. First, second, and third place are ranked by total damage; audited deterministic coin flips break exact ties. First place chooses one of the boss's three unique artifacts, second chooses from the remaining two, and third receives the last. Each winner also gains a full independent level. A missed 12-hour choice defaults to the highest-credit remaining prize.</p>
+        <p>Steal cannot remove weekly prize artifacts during combat. If another player lands the final blow while your attempt is open, your fight closes immediately and the shared event log identifies the finisher.</p>
     </section>
 
     <section id="equipment"><h2>Equipment and Durability</h2>

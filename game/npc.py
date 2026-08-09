@@ -24,6 +24,7 @@ def _ensure_handlers_loaded():
     import routes.blacksmith  # noqa: F401
     import routes.combat  # noqa: F401
     import routes.shop  # noqa: F401
+    import routes.world_boss  # noqa: F401
 
 
 def run_due_npc_turns(now: datetime | None = None) -> dict:
@@ -138,9 +139,39 @@ def run_npc_turn(player_id: int) -> dict:
     # AP remainder is legitimate when no useful legal action fits that balance.
     pvp_cost = settings.get("AP_COST_PVP", cfg.AP_COST_PVP)
     boss_cost = settings.get("AP_COST_BOSS", cfg.AP_COST_BOSS)
+    world_cost = settings.get("AP_COST_WORLD_BOSS", cfg.AP_COST_WORLD_BOSS)
     can_pvp = player["current_ap"] >= pvp_cost
     can_boss = player["current_ap"] >= boss_cost
     pvp_targets = _eligible_pvp_targets(player) if can_pvp else []
+    # Every archetype occasionally joins the shared event. Boss killers lead;
+    # thieves use it for growth, hoarders value its unique prize, and hunters
+    # participate least often. Per-turn noise prevents clones acting in sync.
+    from world_boss import get_active_event, pending_event_for_player, prize_options, claim_prize
+    pending_reward = pending_event_for_player(player_id)
+    if pending_reward:
+        options = prize_options(pending_reward["id"], pending_reward["place"])
+        if options and not execute_one(
+            """SELECT 1 FROM world_boss_rewards WHERE event_id=? AND place<?
+               AND status!='AWARDED' LIMIT 1""", (pending_reward["id"], pending_reward["place"])
+        ):
+            chosen = max(options, key=lambda item: (_score_item(item["item_type"], item, player, profile),
+                                                     item.get("credit_cost", 0)))
+            claim_prize(player_id, pending_reward["id"], chosen["item_type"], chosen["id"])
+            return _finish_turn(profile, "WORLD_REWARD", "Selected best available weekly prize",
+                                f"Claimed {chosen['name']}")
+    world_event = get_active_event()
+    # World-boss interest is explicit so admins can create specialists without
+    # also making them ordinary-boss specialists. Boss killers retain a small
+    # crossover chance for compatibility with profiles created before this trait.
+    world_chance = min(85, 5 + profile["world_boss_hunter"] * .70
+                       + profile["boss_killer"] * .10)
+    if world_event and player["current_ap"] >= world_cost and random.random() * 100 < world_chance:
+        result = enqueue_and_process(player_id, "start_world_boss_fight",
+                                     {"event_id": world_event["id"]})
+        if not result.get("error"):
+            combat = _finish_active_combat(player_id, result["session_id"], profile)
+            return _finish_turn(profile, "WORLD_BOSS",
+                                f"Joined weekly fight against {world_event['name']}", combat)
     if not can_pvp and not can_boss:
         return _finish_turn(
             profile, "WAIT", "Remaining AP cannot fund another useful action",
@@ -194,7 +225,10 @@ def run_npc_turn(player_id: int) -> dict:
             return _finish_turn(profile, encounter_type, "Thief's XP-building turn", result["error"])
 
     pvp_score = profile["player_hunter"] + random.randint(-10, 10)
-    boss_score = profile["boss_killer"] + random.randint(-10, 10)
+    # Between weekly attempts (or when no event is active), world-boss hunters
+    # use ordinary bosses to gain levels and improve their loadout.
+    boss_score = (profile["boss_killer"] + profile["world_boss_hunter"] * .45
+                  + random.randint(-10, 10))
     if not pvp_targets:
         boss_score += profile["player_hunter"]  # hunter fallback
     if profile["hoarder"] >= max(profile["player_hunter"], profile["boss_killer"],
@@ -551,7 +585,7 @@ def _combat_decision_summary(session_id: int, player_id: int,
     """Build a durable, administrator-readable summary of an NPC combat."""
     combat = execute_one(
         """SELECT cs.*,att.character_name attacker_name,def.character_name defender_name,
-                  b.name boss_name,m.name minion_name
+                  b.name boss_name,m.name minion_name,wb.name world_boss_name
            FROM combat_sessions cs
            JOIN players att ON att.id=cs.attacker_player_id
            LEFT JOIN players def ON def.id=cs.defender_player_id
@@ -559,13 +593,16 @@ def _combat_decision_summary(session_id: int, player_id: int,
            LEFT JOIN bosses b ON b.id=bi.boss_id
            LEFT JOIN minion_instances mi ON mi.id=cs.minion_instance_id
            LEFT JOIN minions m ON m.id=mi.minion_id
+           LEFT JOIN world_boss_events wbe ON wbe.id=cs.world_boss_event_id
+           LEFT JOIN world_bosses wb ON wb.id=wbe.world_boss_id
            WHERE cs.id=?""", (session_id,)
     )
     if not combat:
         return {"summary": note, "combat_id": session_id, "status": "MISSING"}
 
     opponent_name = (combat.get("defender_name") or combat.get("boss_name")
-                     or combat.get("minion_name") or "Unknown opponent")
+                     or combat.get("minion_name") or combat.get("world_boss_name")
+                     or "Unknown opponent")
     final = (action_result or {}).get("final_result") or {}
     winner_side = (action_result or {}).get("winner_side") or final.get("winner_side")
     if winner_side == "ATTACKER":
@@ -638,8 +675,12 @@ def _assign_pending_levelup(player_id: int, profile: dict):
     player = get_player(player_id)
     if not player or not player["pending_levelup"]:
         return
-    if profile["thief"] >= max(profile["player_hunter"], profile["boss_killer"], profile["hoarder"]):
+    if profile["thief"] >= max(profile["player_hunter"], profile["boss_killer"],
+                                profile["world_boss_hunter"], profile["hoarder"]):
         priorities = ("agi", "lck", "per")
+    elif profile["world_boss_hunter"] >= max(profile["player_hunter"], profile["boss_killer"],
+                                               profile["hoarder"]):
+        priorities = ("end", "str", "agi")
     elif profile["boss_killer"] >= max(profile["player_hunter"], profile["hoarder"]):
         priorities = ("str", "end", "agi")
     elif profile["hoarder"] >= profile["player_hunter"]:
@@ -649,7 +690,30 @@ def _assign_pending_levelup(player_id: int, profile: dict):
     # Choose the currently lowest preferred stat, randomizing exact ties.
     lowest = min(player[f"{stat}_stat"] for stat in priorities)
     choices = [stat for stat in priorities if player[f"{stat}_stat"] == lowest]
-    enqueue_and_process(player_id, "assign_levelup", {"stat": random.choice(choices)})
+    payload = {"stat": random.choice(choices)}
+    if player.get("pending_perk"):
+        perks = execute(
+            """SELECT p.* FROM perks p WHERE p.is_active=1 AND p.level <= ?
+               AND NOT EXISTS(SELECT 1 FROM player_perks pp
+                              WHERE pp.player_id=? AND pp.perk_id=p.id)""",
+            (player["level"] + 2, player_id)
+        )
+        if perks:
+            # Personality-weighted utility with a small random term prevents
+            # identical NPC builds from making identical perk choices.
+            def perk_score(perk):
+                combat = (perk["str_bonus"] + perk["end_bonus"] + perk["agi_bonus"] +
+                          perk["ac_bonus"] * 3 + perk["bonus_damage_amount"] * 2 +
+                          perk["crit_chance_bonus"] * 20)
+                thief = perk["steal_bonus"] * 30 + perk["lck_bonus"] + perk["agi_bonus"]
+                hoard = perk["shop_discount"] * 20 + perk["sell_bonus"] * 20 + perk["per_bonus"]
+                growth = perk["xp_multiplier"] * 25 + perk["credit_multiplier"] * 15
+                return (combat * (profile["boss_killer"] + profile["player_hunter"]
+                                  + profile["world_boss_hunter"] * 1.25) / 100 +
+                        thief * profile["thief"] / 100 + hoard * profile["hoarder"] / 100 +
+                        growth + random.uniform(0, 5))
+            payload["perk_id"] = max(perks, key=perk_score)["id"]
+    enqueue_and_process(player_id, "assign_levelup", payload)
 
 
 def _maybe_repair(player: dict, profile: dict):
@@ -768,6 +832,7 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
     # while the per-turn roll prevents a completely predictable schedule.
     temperament = random.Random(player["id"] * 65537).randint(-10, 10)
     shop_interest = max(profile["hoarder"], profile["boss_killer"] // 2,
+                        profile["world_boss_hunter"] // 2,
                         profile["player_hunter"] // 2, profile["thief"] // 2)
     minimum_spares = max(1, int(settings.get(
         "NPC_UPGRADE_MIN_UNEQUIPPED", cfg.NPC_UPGRADE_MIN_UNEQUIPPED
@@ -1150,10 +1215,15 @@ def _score_item(item_type: str, item: dict, player: dict, profile: dict,
                 durability: int = 100) -> float:
     """Estimate practical value without hidden opponent information."""
     thief_led = profile["thief"] >= max(profile["player_hunter"], profile["boss_killer"],
-                                         profile["hoarder"])
+                                         profile["world_boss_hunter"], profile["hoarder"])
+    world_led = profile["world_boss_hunter"] >= max(
+        profile["player_hunter"], profile["boss_killer"], profile["hoarder"], profile["thief"]
+    )
     weights = {"str": 1.2, "end": 1.2, "agi": 1.2, "lck": 1.0, "per": 1.0}
     if thief_led:
         weights.update({"agi": 2.0, "lck": 1.7, "per": 1.5})
+    elif world_led:
+        weights.update({"end": 2.1, "str": 1.9, "agi": 1.4})
     elif profile["boss_killer"] >= max(profile["player_hunter"], profile["hoarder"]):
         weights.update({"str": 1.8, "end": 1.7, "agi": 1.4})
     elif profile["player_hunter"] >= profile["hoarder"]:

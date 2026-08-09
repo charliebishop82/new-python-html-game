@@ -36,6 +36,25 @@ def _get_session_id() -> int | None:
     return session.get("combat_session_id")
 
 
+def _external_world_boss_end(session_id: int) -> str | None:
+    """Turn a concurrent final blow into a normal notice instead of a 500."""
+    row = execute_one(
+        """SELECT cs.status,cs.combat_type,w.name,p.character_name finisher
+           FROM combat_sessions cs
+           LEFT JOIN world_boss_events e ON e.id=cs.world_boss_event_id
+           LEFT JOIN world_bosses w ON w.id=e.world_boss_id
+           LEFT JOIN players p ON p.id=e.defeated_by_player_id WHERE cs.id=?""",
+        (session_id,)
+    )
+    if row and row["combat_type"] == "WORLD_BOSS" and row["status"] != "ACTIVE":
+        _clear_browser_combat_session()
+        message = (f"{row['finisher']} delivered the final blow to {row['name']}."
+                   if row.get("finisher") else f"The shared battle against {row['name']} has ended.")
+        return render_template("fragments/combat_external_end.html", message=message,
+                               player=get_player(g.player["id"]))
+    return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /combat/action
 # ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +65,8 @@ def action():
     session_id = _get_session_id()
     if not session_id:
         return _error_fragment("No active combat session.")
+    if ended_notice := _external_world_boss_end(session_id):
+        return ended_notice
 
     action_type = request.form.get("action_type", "attack").lower()
     player      = g.player
@@ -79,12 +100,12 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
 
     attacker = state["attacker"]
     att_eq   = state["attacker_equipped"]
-    att_special = att_eq.get("special")
+    att_special = att_eq.get("bonuses")
 
     # Determine opponent for initiative
     if sess["combat_type"] == "PVP":
         defender = state["defender"]
-        def_special = state["defender_equipped"].get("special")
+        def_special = state["defender_equipped"].get("bonuses")
     else:
         defender = state["boss"] or state["minion"]
         def_special = None
@@ -177,7 +198,7 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
     # Boss and minion fights normally continue until someone falls, but a hard
     # cap prevents corrupted balance or modifiers from creating endless combat.
     hard_cap = settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP)
-    forced_stalemate = (not combat_ended and sess["combat_type"] in ("BOSS", "MINION")
+    forced_stalemate = (not combat_ended and sess["combat_type"] in ("BOSS", "MINION", "WORLD_BOSS")
                         and reload_sess["current_round"] > hard_cap)
 
     # Capture the opponent's post-round condition before finalization can reset
@@ -273,6 +294,12 @@ def _record_round_history_impl(result: dict) -> None:
                FROM boss_instances bi JOIN bosses b ON b.id=bi.boss_id
                WHERE bi.id=?""",
             (combat["boss_instance_id"],)
+        )
+    elif combat["combat_type"] == "WORLD_BOSS":
+        opponent = execute_one(
+            """SELECT w.name AS character_name FROM world_boss_events e
+               JOIN world_bosses w ON w.id=e.world_boss_id WHERE e.id=?""",
+            (combat["world_boss_event_id"],)
         )
     else:
         opponent = execute_one(
@@ -403,6 +430,8 @@ def steal_confirm():
     session_id = _get_session_id()
     if not session_id:
         return _error_fragment("No active combat session.")
+    if ended_notice := _external_world_boss_end(session_id):
+        return ended_notice
     player = g.player
     result = enqueue_and_process(
         player["id"], "combat_steal", {"session_id": session_id}
@@ -467,7 +496,7 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
         at_round_limit = (sess["combat_type"] == "PVP"
                           and reload_sess["current_round"] > max_rounds)
         hard_cap = settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP)
-        forced_stalemate = (sess["combat_type"] in ("BOSS", "MINION")
+        forced_stalemate = (sess["combat_type"] in ("BOSS", "MINION", "WORLD_BOSS")
                             and reload_sess["current_round"] > hard_cap)
         state = combat_actions.get_combat_state(session_id)
         opponent = state.get("defender") or state.get("boss") or state.get("minion")

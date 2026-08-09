@@ -47,6 +47,7 @@ def midnight_reset():
     _step0_clear_status_effects()
     purge_old_done_rows()                # step 1
     _step2_apply_import()                # step 2
+    _step_world_boss_cycle()             # weekly shared event lifecycle
     _step3_archive_and_clear_feeds()     # step 3
     _step4_5_award_daily_ap()            # steps 4+5
     _step6_restore_midnight_hp()         # step 6
@@ -55,6 +56,21 @@ def midnight_reset():
     _step11_pending_feed_entries()       # step 11
 
     logger.info("=== MIDNIGHT RESET COMPLETE %s ===", datetime.utcnow().isoformat())
+
+
+def _step_world_boss_cycle():
+    """Close the outgoing event every Monday and activate an eligible successor."""
+    from world_boss import (get_active_event, close_event, activate_next_event,
+                            process_expired_rewards)
+    now = datetime.utcnow()
+    process_expired_rewards(now)
+    active = get_active_event()
+    if active and (now.weekday() == 0 or now >= datetime.fromisoformat(active["scheduled_end_at"])):
+        close_event(active["id"], "WEEK_ENDED")
+        active = None
+    # Activation deliberately waits while any prior prize workflow is pending.
+    if not active:
+        activate_next_event(now)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -262,7 +278,9 @@ def _step8_9_10_shop_rotation():
 def _populate_shop_rotation(table: str, count: int):
     """Select 'count' unique items from the content table and list them in the shop."""
     items = execute(
-        f"SELECT * FROM {table} WHERE is_active = 1 ORDER BY RANDOM() LIMIT ?", (count * 3,)
+        f"""SELECT * FROM {table} WHERE is_active=1
+            AND COALESCE(associated_to,'') NOT LIKE '% (WorldBoss)'
+            ORDER BY RANDOM() LIMIT ?""", (count * 3,)
     )
     # Weight by drop_chance
     weighted = []
@@ -296,6 +314,7 @@ def _populate_special_slots(slots: int):
            FROM special_items si
            JOIN special_item_registry sir ON sir.special_item_id = si.id
            WHERE sir.status = 'IN_POOL' AND si.is_active = 1
+             AND si.association_type <> 'WorldBoss'
            ORDER BY RANDOM()
            LIMIT ?""",
         (slots,)

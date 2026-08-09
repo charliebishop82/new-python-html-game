@@ -11,7 +11,8 @@ from datetime import datetime
 from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, g, jsonify)
 from database import (execute, execute_one, execute_write,
-                      exclusive_transaction, get_all_settings)
+                      exclusive_transaction, get_all_settings,
+                      get_player_bonus_profile, get_player_perks)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -42,6 +43,7 @@ def index():
            FROM level_up_history WHERE player_id = ? ORDER BY level_reached DESC, id DESC""",
         (player["id"],)
     )
+    perks = get_player_perks(player["id"])
 
     return render_template(
         "character/character.html",
@@ -50,6 +52,7 @@ def index():
         derived=derived,
         active_effects=active_effects,
         level_history=level_history,
+        perks=perks,
         preferences=["Aggressive", "Defensive", "Opportunist", "Balanced"],
         feedback=request.args.get("feedback"),
         error=request.args.get("error"),
@@ -168,19 +171,20 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     w = equipped.get("weapon")
     a = equipped.get("armor")
     s = equipped.get("special")
+    b = get_player_bonus_profile(player["id"], s)
 
     str_total = player["str_stat"] + (w.get("str_bonus", 0) if w else 0) + \
-                (a.get("str_bonus", 0) if a else 0) + (s.get("str_bonus", 0) if s else 0)
+                (a.get("str_bonus", 0) if a else 0) + int(b.get("str_bonus", 0) or 0)
     end_total = player["end_stat"] + (w.get("end_bonus", 0) if w else 0) + \
-                (a.get("end_bonus", 0) if a else 0) + (s.get("end_bonus", 0) if s else 0)
+                (a.get("end_bonus", 0) if a else 0) + int(b.get("end_bonus", 0) or 0)
     agi_total = player["agi_stat"] + (w.get("agi_bonus", 0) if w else 0) + \
-                (a.get("agi_bonus", 0) if a else 0) + (s.get("agi_bonus", 0) if s else 0)
+                (a.get("agi_bonus", 0) if a else 0) + int(b.get("agi_bonus", 0) or 0)
     lck_total = player["lck_stat"] + (w.get("lck_bonus", 0) if w else 0) + \
-                (a.get("lck_bonus", 0) if a else 0) + (s.get("lck_bonus", 0) if s else 0)
+                (a.get("lck_bonus", 0) if a else 0) + int(b.get("lck_bonus", 0) or 0)
     per_total = player["per_stat"] + (w.get("per_bonus", 0) if w else 0) + \
-                (a.get("per_bonus", 0) if a else 0) + (s.get("per_bonus", 0) if s else 0)
+                (a.get("per_bonus", 0) if a else 0) + int(b.get("per_bonus", 0) or 0)
 
-    ac_bonus     = (a.get("ac_bonus", 0) if a else 0) + (s.get("ac_bonus", 0) if s else 0)
+    ac_bonus     = (a.get("ac_bonus", 0) if a else 0) + int(b.get("ac_bonus", 0) or 0)
     ac           = 10 + math.floor(agi_total / 2) + ac_bonus
     max_hp       = 10 + end_total + (5 * player["level"])
     inv_limit    = settings.get("INVENTORY_LIMIT", cfg.INVENTORY_LIMIT) + \
@@ -190,20 +194,20 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         settings.get("CRIT_BASE_THRESHOLD", cfg.CRIT_BASE_THRESHOLD) -
         math.floor(lck_total / settings.get("CRIT_LCK_DIVISOR", cfg.CRIT_LCK_DIVISOR))
     )
-    if s:
+    if b:
         crit_thresh = max(
             settings.get("CRIT_MIN_THRESHOLD", cfg.CRIT_MIN_THRESHOLD),
-            crit_thresh - int(round(float(s.get("crit_chance_bonus", 0) or 0) * 20))
+            crit_thresh - int(round(float(b.get("crit_chance_bonus", 0) or 0) * 20))
         )
     shop_discount= min(
-        math.floor(per_total / 2) + int((s.get("shop_discount", 0) if s else 0) * 100),
+        math.floor(per_total / 2) + int(float(b.get("shop_discount", 0) or 0) * 100),
         int(settings.get("SHOP_DISCOUNT_MAX", cfg.SHOP_DISCOUNT_MAX) * 100)
     )
     daily_ap     = settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP) + \
-                   math.floor(end_total / 2) + (s.get("bonus_ap", 0) if s else 0)
+                   math.floor(end_total / 2) + int(b.get("bonus_ap", 0) or 0)
     passive_regen= settings.get("AP_PASSIVE_HP_REGEN", cfg.AP_PASSIVE_HP_REGEN) + \
                    math.floor(end_total / settings.get("END_HP_REGEN_DIVISOR", cfg.END_HP_REGEN_DIVISOR)) + \
-                   (s.get("hp_regen_bonus", 0) if s else 0)
+                   int(b.get("hp_regen_bonus", 0) or 0)
 
     # Show a pre-resistance range rather than a misleading average. Actual
     # damage can still change through criticals, resistances, weaknesses,
@@ -223,19 +227,22 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     attack_stat = str_total if weapon_type == "Melee" else agi_total
     attack_modifier = math.floor(attack_stat / 2)
     initiative_modifier = math.floor(agi_total / 2) + \
-                          (int(s.get("initiative_bonus", 0) or 0) if s else 0)
+                          int(b.get("initiative_bonus", 0) or 0)
     dodge_modifier = math.floor(agi_total / 2) + math.floor(lck_total / 2)
-    steal_roll_bonus = int((s.get("steal_bonus", 0) or 0) * 20) if s else 0
+    steal_roll_bonus = int(float(b.get("steal_bonus", 0) or 0) * 20)
     steal_modifier = dodge_modifier + steal_roll_bonus
     escape_modifier = dodge_modifier
     observe_modifier = dodge_modifier + math.floor(per_total / 2)
-    bonus_damage = int(s.get("bonus_damage_amount", 0) or 0) if s else 0
-    bonus_damage_type = s.get("bonus_damage_type", "") if s else ""
+    components = b.get("bonus_damage_components", [])
+    bonus_damage = sum(int(part.get("amount", 0)) for part in components)
+    bonus_damage_type = ", ".join(dict.fromkeys(part.get("type", "") for part in components if part.get("type")))
     damage_min = die_count + attack_modifier + bonus_damage
     damage_max = (die_count * die_sides) + attack_modifier + bonus_damage
     damage_types = [damage_type]
-    if bonus_damage and bonus_damage_type and bonus_damage_type not in damage_types:
-        damage_types.append(bonus_damage_type)
+    for component in components:
+        component_type = component.get("type")
+        if component_type and component_type not in damage_types:
+            damage_types.append(component_type)
 
     # Armor and specials are independent resistance sources. Preserve the
     # count because combat treats two matching sources as stacked resistance.
@@ -243,7 +250,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     for resistance_type in ("Blade", "Blunt", "Ballistic", "Energy",
                             "Arcane", "Explosive", "Venom"):
         column = f"res_{resistance_type.lower()}"
-        sources = int(bool(a and a.get(column))) + int(bool(s and s.get(column)))
+        sources = int(bool(a and a.get(column))) + int(b.get(column, 0) or 0)
         if sources:
             resistance_counts[resistance_type] = sources
     resistances = [
@@ -252,21 +259,21 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     ]
 
     crit_chance_pct = max(0, min(100, (21 - crit_thresh) * 5))
-    sell_bonus_pct = int((s.get("sell_bonus", 0) or 0) * 100) if s else 0
-    durability_reduction_pct = int((s.get("durability_reduction", 0) or 0) * 100) if s else 0
-    encounter_bonus_pct = int((s.get("encounter_bonus", 0) or 0) * 100) if s else 0
+    sell_bonus_pct = int(float(b.get("sell_bonus", 0) or 0) * 100)
+    durability_reduction_pct = int(float(b.get("durability_reduction", 0) or 0) * 100)
+    encounter_bonus_pct = int(float(b.get("encounter_bonus", 0) or 0) * 100)
     brace_heal_pct = int(settings.get("BRACE_HEAL_PERCENT", cfg.BRACE_HEAL_PERCENT) * 100)
     tavern_heal_pct = int(settings.get("TAVERN_HEAL_PERCENT", cfg.TAVERN_HEAL_PERCENT) * 100)
     inventory_count = int(player.get("inventory_count", 0) or 0)
     special_effects = []
-    if s:
-        if s.get("extra_attack"): special_effects.append("Extra attack enabled")
+    if b:
+        if b.get("extra_attack"): special_effects.append("Extra attack enabled")
         if bonus_damage: special_effects.append(f"+{bonus_damage} {bonus_damage_type or 'bonus'} damage")
-        if s.get("bonus_ap"): special_effects.append(f"+{int(s['bonus_ap'])} daily AP")
-        if s.get("hp_regen_bonus"): special_effects.append(f"+{int(s['hp_regen_bonus'])} HP regeneration per AP")
+        if b.get("bonus_ap"): special_effects.append(f"+{int(b['bonus_ap'])} daily AP")
+        if b.get("hp_regen_bonus"): special_effects.append(f"+{int(b['hp_regen_bonus'])} HP regeneration per AP")
         if durability_reduction_pct: special_effects.append(f"{durability_reduction_pct}% less durability loss")
-        if s.get("xp_multiplier"): special_effects.append(f"+{int(s['xp_multiplier'] * 100)}% XP rewards")
-        if s.get("credit_multiplier"): special_effects.append(f"+{int(s['credit_multiplier'] * 100)}% credit rewards")
+        if b.get("xp_multiplier"): special_effects.append(f"+{int(b['xp_multiplier'] * 100)}% XP rewards")
+        if b.get("credit_multiplier"): special_effects.append(f"+{int(b['credit_multiplier'] * 100)}% credit rewards")
 
     return {
         "str": str_total, "end": end_total, "agi": agi_total,
@@ -283,15 +290,15 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         "steal_modifier": steal_modifier, "steal_roll_bonus": steal_roll_bonus,
         "escape_modifier": escape_modifier, "observe_modifier": observe_modifier,
         "damage_min": damage_min, "damage_max": damage_max,
-        "crit_damage_min": int(damage_min * 2 * (1 + (s.get("crit_dmg_multiplier", 0) if s else 0))),
-        "crit_damage_max": int(damage_max * 2 * (1 + (s.get("crit_dmg_multiplier", 0) if s else 0))),
+        "crit_damage_min": int(damage_min * 2 * (1 + float(b.get("crit_dmg_multiplier", 0) or 0))),
+        "crit_damage_max": int(damage_max * 2 * (1 + float(b.get("crit_dmg_multiplier", 0) or 0))),
         "bonus_damage": bonus_damage, "bonus_damage_type": bonus_damage_type,
         "damage_types": damage_types, "resistances": resistances,
         "resistance_counts": resistance_counts,
         "resistance_sources": sum(resistance_counts.values()),
-        "extra_attack": bool(s.get("extra_attack")) if s else False,
-        "xp_multiplier_pct": int((s.get("xp_multiplier", 0) if s else 0) * 100),
-        "credit_multiplier_pct": int((s.get("credit_multiplier", 0) if s else 0) * 100),
+        "extra_attack": bool(b.get("extra_attack")),
+        "xp_multiplier_pct": int(float(b.get("xp_multiplier", 0) or 0) * 100),
+        "credit_multiplier_pct": int(float(b.get("credit_multiplier", 0) or 0) * 100),
         "sell_bonus_pct": sell_bonus_pct,
         "durability_reduction_pct": durability_reduction_pct,
         "encounter_bonus_pct": encounter_bonus_pct,

@@ -2,16 +2,17 @@
 {% block title %}NPCs{% endblock %}
 {% block content %}
 <h1>Automated Player Characters</h1>
-<p style="color:#666;margin-bottom:16px;">NPC wake times are staggered through the UTC day. AP alone limits their actions, with catch-up attempts during the final hour.</p>
+<p style="color:#666;margin-bottom:16px;">NPC wake times are staggered through the UTC day. AP alone limits their actions, with catch-up attempts during the final hour. World Boss priority controls how often an NPC joins the active weekly shared fight.</p>
 
 <h2>Create NPC</h2>
 <form id="create-npc-form" method="POST" action="/admin/npcs" style="display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px;background:#111;padding:12px;border:1px solid #222;">
     <label>Name<br><input name="character_name" required></label>
     <label>Class<br><select name="class_id" required>{% for c in classes %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
     <label>Starting level<br><select name="level"><option value="3">3</option><option value="2">2</option></select></label>
-    <label>Preset<br><select id="npc-preset" name="preset"><option value="hunter">Player Hunter</option><option value="boss">Boss Killer</option><option value="hoarder">Hoarder</option><option value="thief">Thief</option><option value="hybrid">Hybrid</option><option value="custom">Custom</option></select></label>
+    <label>Preset<br><select id="npc-preset" name="preset"><option value="hunter">Player Hunter</option><option value="boss">Boss Killer</option><option value="world_boss">World Boss Hunter</option><option value="hoarder">Hoarder</option><option value="thief">Thief</option><option value="hybrid">Hybrid</option><option value="custom">Custom</option></select></label>
     <label>Player Hunter 0-100<br><input type="number" name="player_hunter" min="0" max="100" value="100"></label>
     <label>Boss Killer 0-100<br><input type="number" name="boss_killer" min="0" max="100" value="0"></label>
+    <label title="How strongly this NPC prioritizes the active weekly shared boss over ordinary activities.">World Boss Hunter 0-100<br><input type="number" name="world_boss_hunter" min="0" max="100" value="0"></label>
     <label>Hoarder 0-100<br><input type="number" name="hoarder" min="0" max="100" value="0"></label>
     <label>Thief 0-100<br><input type="number" name="thief" min="0" max="100" value="0"></label>
     <label>Aggression 0-100<br><input type="number" name="aggression" min="0" max="100" value="85"></label>
@@ -25,7 +26,7 @@
 <section style="margin-top:20px;padding:12px;border:1px solid #333;background:#0d0d0d;opacity:{{ '0.55' if npc.retired else '1' }}">
     <h2 style="margin-top:0">{{ npc.character_name }} <span style="color:#666">Level {{ npc.level }} {{ npc.class_name or '' }} · {{ 'RETIRED' if npc.retired else ('ENABLED' if npc.enabled else 'PAUSED') }}</span></h2>
     <form method="POST" action="/admin/npcs/{{ npc.player_id }}/edit" style="display:flex;flex-wrap:wrap;gap:8px;align-items:end">
-        {% for field,label in [('player_hunter','Hunter'),('boss_killer','Boss'),('hoarder','Hoarder'),('thief','Thief'),('aggression','Aggression'),('self_preservation','Safety'),('repair_tendency','Repair')] %}
+        {% for field,label in [('player_hunter','Hunter'),('boss_killer','Boss'),('world_boss_hunter','World Boss'),('hoarder','Hoarder'),('thief','Thief'),('aggression','Aggression'),('self_preservation','Safety'),('repair_tendency','Repair')] %}
         <label>{{ label }}<br><input style="width:70px" type="number" name="{{ field }}" min="0" max="100" value="{{ npc[field] }}"></label>
         {% endfor %}
         <label><input type="checkbox" name="enabled" {% if npc.enabled %}checked{% endif %}> Enabled</label>
@@ -92,11 +93,12 @@
   const select = document.getElementById('npc-preset');
   const description = document.getElementById('preset-description');
   const presets = {
-    hunter:  {player_hunter:100,boss_killer:0,hoarder:0,thief:0,aggression:85,self_preservation:35,repair_tendency:55,description:'Prioritizes eligible PvP opponents and fights aggressively.'},
-    boss:    {player_hunter:0,boss_killer:100,hoarder:0,thief:0,aggression:65,self_preservation:55,repair_tendency:75,description:'Prioritizes boss progression, observation, and maintaining reliable gear.'},
-    hoarder: {player_hunter:0,boss_killer:0,hoarder:100,thief:0,aggression:25,self_preservation:85,repair_tendency:80,description:'Prioritizes collecting specials and protecting its inventory.'},
-    thief:   {player_hunter:0,boss_killer:0,hoarder:0,thief:100,aggression:55,self_preservation:70,repair_tendency:65,description:'Alternates random legal PvP theft attempts with boss fights for progression.'},
-    hybrid:  {player_hunter:60,boss_killer:60,hoarder:60,thief:0,aggression:55,self_preservation:55,repair_tendency:65,description:'Balances PvP, bosses, and collecting with no single dominant motivation.'}
+    hunter:     {player_hunter:100,boss_killer:0,world_boss_hunter:5,hoarder:0,thief:0,aggression:85,self_preservation:35,repair_tendency:55,description:'Prioritizes eligible PvP opponents and fights aggressively.'},
+    boss:       {player_hunter:0,boss_killer:100,world_boss_hunter:25,hoarder:0,thief:0,aggression:65,self_preservation:55,repair_tendency:75,description:'Prioritizes ordinary boss progression, observation, and maintaining reliable gear.'},
+    world_boss: {player_hunter:5,boss_killer:35,world_boss_hunter:100,hoarder:10,thief:0,aggression:75,self_preservation:45,repair_tendency:80,description:'Prioritizes the active weekly shared boss, maintains strong gear, and hunts ordinary bosses between weekly fights.'},
+    hoarder:    {player_hunter:0,boss_killer:0,world_boss_hunter:15,hoarder:100,thief:0,aggression:25,self_preservation:85,repair_tendency:80,description:'Prioritizes collecting specials and protecting its inventory.'},
+    thief:      {player_hunter:0,boss_killer:0,world_boss_hunter:10,hoarder:0,thief:100,aggression:55,self_preservation:70,repair_tendency:65,description:'Alternates random legal PvP theft attempts with boss fights for progression.'},
+    hybrid:     {player_hunter:50,boss_killer:50,world_boss_hunter:50,hoarder:50,thief:20,aggression:55,self_preservation:55,repair_tendency:65,description:'Balances PvP, ordinary bosses, the weekly world boss, and collecting.'}
   };
   function applyPreset() {
     const preset = presets[select.value];

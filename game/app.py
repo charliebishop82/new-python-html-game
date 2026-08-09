@@ -78,9 +78,10 @@ def _register_blueprints(app: Flask):
     from routes.character   import bp as character_bp
     from routes.scoreboards import bp as scoreboards_bp
     from routes.feeds       import bp as feeds_bp
+    from routes.world_boss  import bp as world_boss_bp
 
     for bp in [auth_bp, dashboard_bp, actions_bp, combat_bp, shop_bp,
-               blacksmith_bp, character_bp, scoreboards_bp, feeds_bp]:
+               blacksmith_bp, character_bp, scoreboards_bp, feeds_bp, world_boss_bp]:
         app.register_blueprint(bp)
 
 
@@ -146,6 +147,7 @@ def _start_scheduler(app: Flask):
     """Provide the internal start scheduler operation used by this module."""
     from scheduler import midnight_reset, ap_trickle
     from npc import run_due_npc_turns
+    from world_boss import process_expired_rewards
 
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(
@@ -165,6 +167,12 @@ def _start_scheduler(app: Flask):
         trigger=CronTrigger(minute="*/5", timezone="UTC"),
         id="npc_turns", name="NPC Turns",
         replace_existing=True, misfire_grace_time=240,
+    )
+    scheduler.add_job(
+        func=lambda: _run_with_context(app, process_expired_rewards),
+        trigger=CronTrigger(minute="*/15", timezone="UTC"),
+        id="world_boss_rewards", name="World Boss Reward Deadlines",
+        replace_existing=True, misfire_grace_time=600,
     )
     scheduler.start()
     logger.info("APScheduler started")

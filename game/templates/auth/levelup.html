@@ -25,6 +25,21 @@
             {% endfor %}
         </div>
 
+        {% if player.pending_perk %}
+        <h3 class="auth-heading term-amber" style="margin-top:20px;">Choose a Perk</h3>
+        <p>Levels 3, 6, 9, 12, and 15 grant one permanent perk. Available perks may be up to two ranks above your current level.</p>
+        <div id="levelup-perks" class="perk-choice-grid">
+            {% for perk in perks %}
+            <label class="stat-choice perk-choice">
+                <input type="radio" name="perk_id" value="{{ perk.id }}" required>
+                <span class="stat-name">{{ perk.name }} <small>Rank {{ perk.level }}</small></span>
+                <span class="stat-detail">{{ perk.description }}</span>
+                {% set item = perk %}{% include "fragments/item_combat_stats.html" %}
+            </label>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         {% if error %}
         <div class="term-error">{{ error }}</div>
         {% endif %}
@@ -32,6 +47,11 @@
         <button type="submit" class="auth-btn">CONFIRM</button>
     </form>
 </div>
+<style>
+.perk-choice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px}
+.perk-choice input:checked~.stat-name{color:var(--green)}
+.perk-choice:has(input:checked){border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
+</style>
 {% endblock %}
 
 

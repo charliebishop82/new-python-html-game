@@ -18,7 +18,7 @@
 {% for summary in summaries %}
 <section style="border:1px solid var(--border,#333);padding:12px;margin:12px 0;background:var(--bg-panel,#111)">
     <h2 style="margin-top:0">{{ summary.profile.character_name }} · {{ summary.archetype }}</h2>
-    <p style="color:#777;margin-bottom:8px">Hunter {{ summary.profile.player_hunter }} · Boss {{ summary.profile.boss_killer }} · Hoarder {{ summary.profile.hoarder }} · Thief {{ summary.profile.thief }} · AP {{ summary.profile.current_ap }}</p>
+    <p style="color:#777;margin-bottom:8px">Hunter {{ summary.profile.player_hunter }} · Boss {{ summary.profile.boss_killer }} · World Boss {{ summary.profile.world_boss_hunter }} · Hoarder {{ summary.profile.hoarder }} · Thief {{ summary.profile.thief }} · AP {{ summary.profile.current_ap }}</p>
     {% if summary.alerts %}<div class="error">⚠ {{ summary.alerts|join(' · ') }}</div>{% else %}<div class="feedback">✓ No audit warnings in this range.</div>{% endif %}
     <table><tr><th>Decision Mix</th><th>Combat Choices</th><th>Results</th></tr><tr>
         <td>{% for name,count in summary.decisions|dictsort(by='value', reverse=true) %}<div>{{ name }}: <strong>{{ count }}</strong></div>{% else %}No decisions{% endfor %}</td>

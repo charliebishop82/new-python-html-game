@@ -182,7 +182,7 @@ def resolve_resistance(damage: int, damage_type: str,
     if armor  and armor.get(dtype_col):
         sources += 1
     if special and special.get(dtype_col):
-        sources += 1
+        sources += max(1, int(special.get(dtype_col) or 0))
     if boss_buff_resistance and boss_buff_resistance.lower() == damage_type.lower():
         sources += 1
 
@@ -351,8 +351,13 @@ def resolve_full_attack(attacker: dict, defender: dict,
 
     # --- Step 6: Special item bonus damage ---
     bonus_dmg = 0
-    if attacker_special and attacker_special.get("bonus_damage_amount"):
-        raw_bonus, bonus_type = calc_bonus_damage(attacker_special, is_crit)
+    bonus_components = (attacker_special or {}).get("bonus_damage_components") or []
+    if not bonus_components and attacker_special and attacker_special.get("bonus_damage_amount"):
+        bonus_components = [{"amount": attacker_special["bonus_damage_amount"],
+                             "type": attacker_special.get("bonus_damage_type", "")}]
+    for component in bonus_components:
+        raw_bonus = int(component.get("amount", 0) or 0) * (2 if is_crit else 1)
+        bonus_type = component.get("type", "")
         if raw_bonus and bonus_type:
             final_bonus, bonus_res_note = resolve_resistance(
                 raw_bonus, bonus_type, defender_armor, defender_special, boss_resistance_type
@@ -361,7 +366,7 @@ def resolve_full_attack(attacker: dict, defender: dict,
                 final_bonus, bonus_weak_note = resolve_weakness(final_bonus, bonus_type, boss)
             else:
                 bonus_weak_note = ""
-            bonus_dmg = final_bonus
+            bonus_dmg += final_bonus
             damage_breakdown.append({
                 "type": bonus_type,
                 "raw": final_bonus,
@@ -553,8 +558,10 @@ def check_level_up(player_id: int, current_xp: int, current_level: int) -> bool:
     from database import execute_write, exclusive_transaction
     with exclusive_transaction():
         execute_write(
-            "UPDATE players SET level = level + 1, pending_levelup = 1 WHERE id = ?",
-            (player_id,)
+            """UPDATE players SET level = level + 1,
+               pending_levelup = pending_levelup + 1,
+               pending_perk = pending_perk + CASE WHEN ((level + 1) % 3)=0 THEN 1 ELSE 0 END
+               WHERE id = ?""", (player_id,)
         )
     return True
 

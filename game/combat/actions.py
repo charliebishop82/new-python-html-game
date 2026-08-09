@@ -11,7 +11,8 @@ import json
 from datetime import datetime
 
 from database import (execute, execute_one, execute_write, get_player,
-                      exclusive_transaction, get_all_settings)
+                      exclusive_transaction, get_all_settings,
+                      get_player_bonus_profile)
 from combat import engine
 from combat import flavour
 import config_defaults as cfg
@@ -60,6 +61,23 @@ def get_combat_state(session_id: int) -> dict:
                 "current_phase":       instance["current_phase"],
                 "instance_id":         instance["id"]}
 
+    elif session["combat_type"] == "WORLD_BOSS":
+        event = execute_one(
+            """SELECT e.*,w.* FROM world_boss_events e
+               JOIN world_bosses w ON w.id=e.world_boss_id WHERE e.id=?""",
+            (session["world_boss_event_id"],)
+        )
+        if not event:
+            raise ValueError("World-boss event no longer exists.")
+        boss = {**event,
+                "id": event["world_boss_id"],
+                "event_id": session["world_boss_event_id"],
+                "max_hp": event["starting_hp"],
+                "special_attack_used": session.get("special_attack_used", 0),
+                "special_buff_used": session.get("special_buff_used", 0),
+                "current_phase": session.get("current_phase", 1),
+                "instance_id": None}
+
     elif session["combat_type"] == "MINION":
         instance = execute_one(
             "SELECT * FROM minion_instances WHERE id = ?", (session["minion_instance_id"],)
@@ -92,7 +110,7 @@ def get_combat_state(session_id: int) -> dict:
 
 def _load_equipped(player: dict) -> dict:
     """Load weapon, armor, and special item rows for a player."""
-    result = {"weapon": None, "armor": None, "special": None}
+    result = {"weapon": None, "armor": None, "special": None, "bonuses": None}
     if player is None:
         return result
     for slot, col, table in [
@@ -108,6 +126,7 @@ def _load_equipped(player: dict) -> dict:
                 if item:
                     result[slot] = {**item, "inv_id": inv_id,
                                     "current_durability": inv["current_durability"]}
+    result["bonuses"] = get_player_bonus_profile(player["id"], result["special"])
     return result
 
 
@@ -134,11 +153,11 @@ def apply_equipped_stat_bonuses(player: dict, equipped: dict | None = None) -> d
     ):
         effective[column] = player[column] + sum(
             int((item or {}).get(bonus_key, 0) or 0)
-            for item in equipped.values()
+            for key, item in equipped.items() if key != "bonuses"
         )
     effective["max_hp"] = engine.calc_max_hp(effective)
     effective["special_ac_bonus"] = int(
-        (equipped.get("special") or {}).get("ac_bonus", 0) or 0
+        (equipped.get("bonuses") or {}).get("ac_bonus", 0) or 0
     )
     effective["hp_pct"] = round(
         effective["current_hp"] / effective["max_hp"] * 100, 1
@@ -166,6 +185,16 @@ def check_combat_end(state: dict) -> tuple[bool, str | None]:
             return True, "DEFENDER"
         if dfn["current_hp"] <= 1:
             return True, "ATTACKER"
+
+    elif session["combat_type"] == "WORLD_BOSS":
+        event = execute_one("SELECT current_hp,status FROM world_boss_events WHERE id=?",
+                            (session["world_boss_event_id"],))
+        if not event or event["current_hp"] <= 0 or event["status"] != "ACTIVE":
+            return True, "ATTACKER"
+        att = execute_one("SELECT current_hp FROM players WHERE id=?",
+                          (session["attacker_player_id"],))
+        if att["current_hp"] <= 1:
+            return True, "DEFENDER"
 
     elif session["combat_type"] in ("BOSS", "MINION"):
         table = "boss_instances" if session["combat_type"] == "BOSS" else "minion_instances"
@@ -202,14 +231,14 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
     def_eq      = state["defender_equipped"] if is_attacker else state["attacker_equipped"]
     att_buffs   = state["attacker_buffs"] if is_attacker else state["defender_buffs"]
     def_buffs   = state["defender_buffs"] if is_attacker else state["attacker_buffs"]
-    boss        = state["boss"] if session["combat_type"] == "BOSS" else None
+    boss        = state["boss"] if session["combat_type"] in ("BOSS", "WORLD_BOSS") else None
     minion      = state["minion"] if session["combat_type"] == "MINION" else None
     opponent    = boss or minion or defender
 
     weapon  = att_eq.get("weapon")
     armor   = def_eq.get("armor") if def_eq else None
-    special = att_eq.get("special")
-    def_special = def_eq.get("special") if def_eq else None
+    special = att_eq.get("bonuses")
+    def_special = def_eq.get("bonuses") if def_eq else None
 
     if weapon is None:
         # Unarmed: d4 Blunt, no stat bonus weapon
@@ -263,6 +292,14 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
                 current = execute_one("SELECT current_hp FROM players WHERE id = ?", (target_id,))
                 new_hp  = max(1, current["current_hp"] - damage_total)
             execute_write("UPDATE players SET current_hp = ? WHERE id = ?", (new_hp, target_id))
+        elif session["combat_type"] == "WORLD_BOSS":
+            if not is_attacker:
+                raise ValueError("World bosses cannot damage their shared HP pool.")
+            from world_boss import record_damage
+            applied = record_damage(session["world_boss_event_id"],
+                                    session["attacker_player_id"], damage_total)
+            damage_total = applied["applied"]
+            new_hp = applied.get("remaining_hp", 0)
         else:
             # Boss or minion HP: floor 0
             inst_id  = (session["boss_instance_id"] if session["combat_type"] == "BOSS"
@@ -362,7 +399,15 @@ def handle_steal(session_id: int, player_id: int, state: dict) -> dict:
     actor_side = "DEFENDER" if is_defender else "ATTACKER"
     actor_equipped = state["defender_equipped"] if is_defender else state["attacker_equipped"]
 
-    special     = actor_equipped.get("special")
+    if session["combat_type"] == "WORLD_BOSS":
+        message = ("The weekly prize artifacts are sealed until the final standings. "
+                   "Nothing can be stolen during an attempt.")
+        _write_combat_log(session_id, session["current_round"], "ATTACKER",
+                          "STEAL", "World-boss rewards are locked", message)
+        return {"action": "STEAL", "success": False,
+                "roll_detail": "No mid-event drops are available.", "flavor": message}
+
+    special     = actor_equipped.get("bonuses")
     steal_bonus = special.get("steal_bonus", 0.0) if special else 0.0
 
     if session["combat_type"] == "PVP":
@@ -725,7 +770,7 @@ def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
                     "UPDATE players SET in_combat = 0 WHERE id = ?",
                     (session["defender_player_id"],)
                 )
-            # Reset boss/minion HP on escape
+            # Reset only private boss/minion HP on escape; shared HP persists.
             if session["combat_type"] == "BOSS":
                 boss = state["boss"]
                 execute_write(
@@ -769,6 +814,9 @@ def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
                           "ESCAPE", roll_result["detail"],
                           f"{'Escaped' if roll_result['success'] else 'Failed'}, credits lost: {credits_lost}")
 
+    if roll_result["success"] and session["combat_type"] == "WORLD_BOSS":
+        _finalize_world_boss_attempt(session_id, state, "ESCAPE", False)
+
     flv = flavour.escape_flavor(attacker["character_name"],
                                 roll_result["success"], credits_lost)
     return {"action": "ESCAPE", "success": roll_result["success"],
@@ -806,7 +854,7 @@ def handle_observe(session_id: int, player_id: int, state: dict) -> dict:
                 "UPDATE combat_sessions SET attacker_observed = 1 WHERE id = ?",
                 (session_id,)
             )
-            if session["combat_type"] == "BOSS":
+            if session["combat_type"] in ("BOSS", "WORLD_BOSS"):
                 boss = state["boss"]
                 resistances = [t for t in engine.DAMAGE_TYPES if boss.get(f"res_{t}")]
                 weaknesses  = [t for t in engine.DAMAGE_TYPES if boss.get(f"weak_{t}")]
@@ -943,7 +991,7 @@ def handle_opponent_action(session_id: int, state: dict) -> dict:
 
     if session["combat_type"] == "PVP":
         return _pvp_defender_action(session_id, state)
-    if session["combat_type"] == "BOSS":
+    if session["combat_type"] in ("BOSS", "WORLD_BOSS"):
         return _boss_action(session_id, state)
     if session["combat_type"] == "MINION":
         return _minion_action(session_id, state)
@@ -956,7 +1004,7 @@ def _minion_action(session_id: int, state: dict) -> dict:
     session = state["session"]
     player = state["attacker"]
     player_armor = state["attacker_equipped"].get("armor")
-    player_special = state["attacker_equipped"].get("special")
+    player_special = state["attacker_equipped"].get("bonuses")
     player_buffs = state["attacker_buffs"]
     weapon = _get_minion_weapon(minion)
 
@@ -1091,23 +1139,15 @@ def _boss_action(session_id: int, state: dict) -> dict:
         with exclusive_transaction():
             # On entering phase 3: reset special move flags (can use again)
             if new_phase == 3:
-                execute_write(
-                    """UPDATE boss_instances
-                       SET current_phase = 3,
-                           special_attack_used = 0,
-                           special_buff_used = 0
-                       WHERE id = ?""",
-                    (boss["instance_id"],)
-                )
+                _update_boss_attempt_state(session, current_phase=3,
+                                           special_attack_used=0,
+                                           special_buff_used=0)
                 flavor_text = (
                     f"{boss['name'].upper()} ENTERS PHASE 3 — "
                     f"desperate, enraged, and more dangerous than ever!"
                 )
             else:
-                execute_write(
-                    "UPDATE boss_instances SET current_phase = ? WHERE id = ?",
-                    (new_phase, boss["instance_id"])
-                )
+                _update_boss_attempt_state(session, current_phase=new_phase)
                 flavor_text = (
                     f"{boss['name'].upper()} ENTERS PHASE 2 — "
                     f"wounded and furious, its attacks grow more deliberate."
@@ -1193,7 +1233,7 @@ def _boss_special_attack(session_id: int, state: dict) -> dict:
 
     final_dmg, res_note = engine.resolve_resistance(
         raw_dmg, boss["special_attack_damage_type"],
-        att_eq.get("armor"), att_eq.get("special")
+        att_eq.get("armor"), att_eq.get("bonuses")
     )
     damage_scale = max(0.10, min(2.00, float(get_all_settings().get(
         "ENEMY_DAMAGE_SCALE", cfg.ENEMY_DAMAGE_SCALE
@@ -1208,10 +1248,7 @@ def _boss_special_attack(session_id: int, state: dict) -> dict:
             "UPDATE combat_sessions SET defender_total_damage_dealt = defender_total_damage_dealt + ? WHERE id = ?",
             (final_dmg, session_id)
         )
-        instance_id = boss["instance_id"]
-        execute_write(
-            "UPDATE boss_instances SET special_attack_used = 1 WHERE id = ?", (instance_id,)
-        )
+        _update_boss_attempt_state(session, special_attack_used=1)
         _write_combat_log(session_id, session["current_round"], "DEFENDER",
                           "SPECIAL_ATTACK", f"Special: {boss['special_attack_name']}",
                           f"{final_dmg} {boss['special_attack_damage_type']} damage")
@@ -1235,11 +1272,17 @@ def _boss_special_buff(session_id: int, state: dict) -> dict:
     with exclusive_transaction():
         if buff_type == "HP_RESTORE":
             restore = int(boss["max_hp"] * buff_value)
-            inst_id = boss["instance_id"]
-            execute_write(
-                "UPDATE boss_instances SET current_hp = MIN(current_hp + ?, ?) WHERE id = ?",
-                (restore, boss["max_hp"], inst_id)
-            )
+            if session["combat_type"] == "WORLD_BOSS":
+                execute_write(
+                    """UPDATE world_boss_events SET current_hp=MIN(current_hp+?,starting_hp)
+                       WHERE id=? AND status='ACTIVE'""",
+                    (restore, session["world_boss_event_id"])
+                )
+            else:
+                execute_write(
+                    "UPDATE boss_instances SET current_hp = MIN(current_hp + ?, ?) WHERE id = ?",
+                    (restore, boss["max_hp"], boss["instance_id"])
+                )
         else:
             # A phase reset may allow the named special again, but persistent
             # boss buffs refresh rather than multiply their mechanical value.
@@ -1254,10 +1297,7 @@ def _boss_special_buff(session_id: int, state: dict) -> dict:
                 (session_id, f"BOSS_{buff_type}", boss.get("special_buff_damage_type"),
                  buff_value, expires_on)
             )
-        instance_id = boss["instance_id"]
-        execute_write(
-            "UPDATE boss_instances SET special_buff_used = 1 WHERE id = ?", (instance_id,)
-        )
+        _update_boss_attempt_state(session, special_buff_used=1)
         _write_combat_log(session_id, session["current_round"], "DEFENDER",
                           "SPECIAL_BUFF", f"Special buff: {boss['special_buff_name']}",
                           f"Type: {buff_type}, Value: {buff_value}")
@@ -1271,6 +1311,13 @@ def _boss_special_buff(session_id: int, state: dict) -> dict:
 
 def _get_boss_weapon(boss: dict) -> dict:
     """Load the boss's weapon from master table."""
+    if boss.get("event_id"):
+        weapon = execute_one(
+            """SELECT w.* FROM world_boss_loot l JOIN weapons w ON w.id=l.weapon_id
+               WHERE l.world_boss_id=?""", (boss["id"],)
+        )
+        if weapon:
+            return weapon
     master = execute_one("SELECT boss_weapon_id FROM master WHERE boss_id = ?", (boss["id"],))
     if master:
         weapon = execute_one("SELECT * FROM weapons WHERE id = ?", (master["boss_weapon_id"],))
@@ -1280,13 +1327,81 @@ def _get_boss_weapon(boss: dict) -> dict:
             "name": "Attack", "str_bonus": 0}
 
 
+def _update_boss_attempt_state(session: dict, **values) -> None:
+    """Persist phase/special usage on the correct per-attempt record."""
+    if not values:
+        return
+    assignments = ",".join(f"{key}=?" for key in values)
+    if session["combat_type"] == "WORLD_BOSS":
+        execute_write(f"UPDATE combat_sessions SET {assignments} WHERE id=?",
+                      (*values.values(), session["id"]))
+    else:
+        execute_write(f"UPDATE boss_instances SET {assignments} WHERE id=?",
+                      (*values.values(), session["boss_instance_id"]))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # POST-COMBAT RESOLUTION
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _finalize_world_boss_attempt(session_id: int, state: dict,
+                                 result_type: str, boss_defeated: bool) -> dict:
+    """Close one player's attempt without resetting the shared boss."""
+    session = state["session"]
+    player = state["attacker"]
+    boss = state["boss"]
+    settings = get_all_settings()
+    xp = max(0, int(settings.get("WORLD_BOSS_ATTEMPT_XP",
+                                 cfg.WORLD_BOSS_ATTEMPT_XP)))
+    credits = max(0, int(settings.get("WORLD_BOSS_ATTEMPT_CREDITS",
+                                      cfg.WORLD_BOSS_ATTEMPT_CREDITS)))
+    damage = execute_one(
+        "SELECT attacker_total_damage_dealt AS damage FROM combat_sessions WHERE id=?",
+        (session_id,)
+    )["damage"]
+    if boss_defeated:
+        flavor_text = (f"{player['character_name']} helped bring down {boss['name']} "
+                       f"after dealing {damage} damage this attempt!")
+    elif result_type == "STALEMATE":
+        flavor_text = (f"{player['character_name']} withdrew from {boss['name']} "
+                       f"after dealing {damage} damage this attempt.")
+    elif result_type == "ESCAPE":
+        flavor_text = (f"{player['character_name']} escaped from {boss['name']} after "
+                       f"dealing {damage} damage this attempt.")
+    else:
+        flavor_text = (f"{boss['name']} defeated {player['character_name']}, but the "
+                       f"shared enemy suffered {damage} damage this attempt.")
+    with exclusive_transaction():
+        execute_write("UPDATE players SET xp=xp+?,credits=credits+?,in_combat=0 WHERE id=?",
+                      (xp, credits, player["id"]))
+        execute_write(
+            """UPDATE world_boss_contributions
+               SET xp_earned=xp_earned+?,credits_earned=credits_earned+?
+               WHERE event_id=? AND player_id=?""",
+            (xp, credits, session["world_boss_event_id"], player["id"])
+        )
+        execute_write(
+            """UPDATE combat_sessions SET status='RESOLVED',result=?,resolved_at=? WHERE id=?""",
+            (result_type, datetime.utcnow().isoformat(), session_id)
+        )
+        execute_write("DELETE FROM combat_buffs WHERE combat_session_id=?", (session_id,))
+        execute_write(
+            """INSERT INTO daily_feed
+               (feed_scope,player_id,flavor_text,event_category,combat_session_id)
+               VALUES('PERSONAL',?,?,'WORLD_BOSS',?)""",
+            (player["id"], flavor_text, session_id)
+        )
+    engine.check_level_up(player["id"], player["xp"] + xp, player["level"])
+    return {"result_type": result_type, "flavor": flavor_text,
+            "xp_earned": xp, "credits_stolen": credits,
+            "item_stolen": None, "drops": None}
+
+
 def finalize_stalemate(session_id: int, state: dict) -> dict:
     """End an abnormally long boss/minion fight without rewards or penalties."""
     session = state["session"]
+    if session["combat_type"] == "WORLD_BOSS":
+        return _finalize_world_boss_attempt(session_id, state, "STALEMATE", False)
     now = datetime.utcnow().isoformat()
     flavor_text = "Combat ended as a stalemate after reaching the configured round safety limit."
     with exclusive_transaction():
@@ -1325,6 +1440,10 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
     Steps: XP → credits stolen → durability hits → item steal → over-encumbered check
            → feed entries → boss intel → clear in_combat → clear combat buffs."""
     session  = state["session"]
+    if session["combat_type"] == "WORLD_BOSS":
+        return _finalize_world_boss_attempt(
+            session_id, state, result_type, winner_side == "ATTACKER"
+        )
     attacker = state["attacker"]
     settings = get_all_settings()
 
@@ -1347,7 +1466,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                      if session["combat_type"] == "BOSS"
                      else settings.get("MINION_XP_PER_LEVEL", cfg.MINION_XP_PER_LEVEL))
         base_xp = per_level * opp["level"]
-        special = state["attacker_equipped"].get("special")
+        special = state["attacker_equipped"].get("bonuses")
         xp_mult = special.get("xp_multiplier", 0.0) if special else 0.0
         xp_earned = engine.calc_xp_reward(
             base_xp, attacker["level"], opp["level"], xp_mult
@@ -1383,12 +1502,12 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
             combat_type=session["combat_type"],
             master_row=_get_master_for_opponent(opp, session["combat_type"]),
             settings=settings,
-            equipped_special=state["attacker_equipped"].get("special"),
+            equipped_special=state["attacker_equipped"].get("bonuses"),
         )
 
     elif session["combat_type"] == "PVP":
         zero_xp_bonus = settings.get("ZERO_CREDIT_XP_BONUS", cfg.ZERO_CREDIT_XP_BONUS)
-        special       = state["attacker_equipped"].get("special")
+        special       = state["attacker_equipped"].get("bonuses")
         xp_mult       = special.get("xp_multiplier", 0.0) if special else 0.0
 
         if winner_is_attacker:
@@ -1413,7 +1532,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
             # The defending winner earns XP; the defeated initiator keeps all
             # previously earned XP because progression is permanent.
             defender = state["defender"]
-            defender_special = state["defender_equipped"].get("special")
+            defender_special = state["defender_equipped"].get("bonuses")
             defender_xp_mult = (defender_special.get("xp_multiplier", 0.0)
                                 if defender_special else 0.0)
             defender_xp = engine.calc_xp_reward(
@@ -1431,9 +1550,9 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                 execute_write("UPDATE players SET xp = xp + ? WHERE id = ?",
                               (defender_xp, defender["id"]))
 
-        winner_special = (state["attacker_equipped"].get("special")
+        winner_special = (state["attacker_equipped"].get("bonuses")
                           if winner_is_attacker
-                          else state["defender_equipped"].get("special"))
+                          else state["defender_equipped"].get("bonuses"))
 
         # Step 2: Credits stolen
         if winner and loser:
@@ -1918,7 +2037,7 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
     boss_weapon      = _get_boss_weapon(boss)
     attacker_player  = state["attacker"]
     att_armor        = state["attacker_equipped"].get("armor")
-    att_special      = state["attacker_equipped"].get("special")
+    att_special      = state["attacker_equipped"].get("bonuses")
     att_buffs        = state["attacker_buffs"]
     result = engine.resolve_full_attack(
         attacker=boss_as_attacker,

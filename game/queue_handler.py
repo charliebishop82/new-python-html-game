@@ -25,7 +25,7 @@ def _combat_context(player_id: int, session_id: int | None) -> dict:
                   cs.attacker_player_id,cs.defender_player_id,
                   attacker.character_name AS attacker_name,
                   defender.character_name AS defender_name,
-                  b.name AS boss_name,m.name AS minion_name
+                  b.name AS boss_name,m.name AS minion_name,wb.name AS world_boss_name
            FROM combat_sessions cs
            LEFT JOIN players attacker ON attacker.id=cs.attacker_player_id
            LEFT JOIN players defender ON defender.id=cs.defender_player_id
@@ -33,6 +33,8 @@ def _combat_context(player_id: int, session_id: int | None) -> dict:
            LEFT JOIN bosses b ON b.id=bi.boss_id
            LEFT JOIN minion_instances mi ON mi.id=cs.minion_instance_id
            LEFT JOIN minions m ON m.id=mi.minion_id
+           LEFT JOIN world_boss_events wbe ON wbe.id=cs.world_boss_event_id
+           LEFT JOIN world_bosses wb ON wb.id=wbe.world_boss_id
            WHERE cs.id=?""", (session_id,)
     )
     if not row:
@@ -43,6 +45,8 @@ def _combat_context(player_id: int, session_id: int | None) -> dict:
         opponent = row["boss_name"]
     elif row["combat_type"] == "MINION":
         opponent = row["minion_name"]
+    elif row["combat_type"] == "WORLD_BOSS":
+        opponent = row["world_boss_name"]
     return {
         "combat_session_id": row["id"], "combat_type": row["combat_type"],
         "opponent": opponent, "player_role": ("ATTACKER" if player_id == row["attacker_player_id"] else "DEFENDER"),
@@ -78,6 +82,7 @@ def _activity_message(action_type: str, details: dict) -> str:
     opponent = context.get("opponent")
     labels = {
         "start_pvp_fight": "Started PvP combat", "start_boss_fight": "Started boss combat",
+        "start_world_boss_fight": "Started world-boss combat",
         "combat_action": "Completed a combat round", "combat_steal": "Attempted a combat steal",
         "combat_resolve": "Resolved combat by score", "combat_extend": "Extended combat",
         "shop_buy": "Purchased an item", "shop_sell": "Sold an item",

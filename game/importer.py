@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 REQUIRED_SHEETS = {
     "Master", "Bosses", "Minions", "Weapons",
     "Armor", "SpecialItems", "Classes", "RandomEvents", "Settings"
+    , "WorldBosses", "Perks"
 }
 
 DAMAGE_TYPES = ("Blade", "Blunt", "Ballistic", "Energy", "Arcane", "Explosive", "Venom")
@@ -136,10 +137,12 @@ def validate(raw_data: dict) -> list[str]:
 
     _validate_classes(raw_data.get("Classes", []), errors)
     _validate_bosses(raw_data.get("Bosses", []), errors)
+    _validate_world_bosses(raw_data.get("WorldBosses", []), errors)
     _validate_minions(raw_data.get("Minions", []), errors)
     _validate_weapons(raw_data.get("Weapons", []), errors)
     _validate_armor(raw_data.get("Armor", []), errors)
     _validate_special_items(raw_data.get("SpecialItems", []), errors)
+    _validate_perks(raw_data.get("Perks", []), errors)
     _validate_random_events(raw_data.get("RandomEvents", []), errors)
     _validate_master(raw_data, errors)
     return errors
@@ -188,6 +191,29 @@ def _validate_bosses(rows: list, errors: list):
             d = dtype.lower()
             if r.get(f"Res_{dtype}") and r.get(f"Weak_{dtype}"):
                 errors.append(f"[Bosses] '{name}': {dtype} cannot be both resistant AND weak")
+
+
+def _validate_world_bosses(rows: list, errors: list):
+    """Validate shared world-boss definitions without the normal level-15 cap."""
+    names = set()
+    for r in rows:
+        name = r.get("Name", "")
+        if name in names:
+            errors.append(f"[WorldBosses] Duplicate name: '{name}'")
+        names.add(name)
+        _require(r, ["Name", "Level", "STR", "END", "AGI", "LCK", "PER", "HP",
+                     "SpecialAttack_Name", "SpecialAttack_Die", "SpecialAttack_DamageType",
+                     "SpecialBuff_Name", "SpecialBuff_Type", "SpecialBuff_Value"],
+                 "WorldBosses", errors, name)
+        if r.get("Level") is not None and int(r["Level"]) < 1:
+            errors.append(f"[WorldBosses] '{name}': Level must be positive")
+        if r.get("SpecialBuff_Type") not in VALID_BUFF_TYPES:
+            errors.append(f"[WorldBosses] '{name}': invalid SpecialBuff_Type")
+        if r.get("SpecialAttack_DamageType") not in DAMAGE_TYPES:
+            errors.append(f"[WorldBosses] '{name}': invalid SpecialAttack_DamageType")
+        for dtype in DAMAGE_TYPES:
+            if r.get(f"Res_{dtype}") and r.get(f"Weak_{dtype}"):
+                errors.append(f"[WorldBosses] '{name}': {dtype} cannot be resistant and weak")
 
 
 def _validate_minions(rows: list, errors: list):
@@ -239,8 +265,24 @@ def _validate_special_items(rows: list, errors: list):
             errors.append(f"[SpecialItems] Duplicate name: '{name}'")
         names.add(name)
         _require(r, ["Name", "AssociatedTo", "AssociationType", "CreditCost"], "SpecialItems", errors, name)
-        if r.get("AssociationType") not in ("Boss", "Minion", "Protagonist", None):
+        if r.get("AssociationType") not in ("Boss", "Minion", "Protagonist", "WorldBoss", None):
             errors.append(f"[SpecialItems] '{name}': invalid AssociationType")
+
+
+def _validate_perks(rows: list, errors: list):
+    """Validate permanent perks and their shared bonus vocabulary."""
+    names = set()
+    for r in rows:
+        name = r.get("Name", "")
+        if name in names:
+            errors.append(f"[Perks] Duplicate name: '{name}'")
+        names.add(name)
+        _require(r, ["Name", "Level", "Description"], "Perks", errors, name)
+        if r.get("Level") is not None and int(r["Level"]) < 1:
+            errors.append(f"[Perks] '{name}': Level must be positive")
+        dtype = r.get("BonusDamageType")
+        if dtype and dtype not in DAMAGE_TYPES:
+            errors.append(f"[Perks] '{name}': invalid BonusDamageType '{dtype}'")
 
 
 def _validate_random_events(rows: list, errors: list):
@@ -310,13 +352,16 @@ def diff_content(raw_data: dict, full_reset: bool = False) -> dict:
 
     changes["classes"]       = _diff_table(raw_data.get("Classes", []),       "classes",       "Name", _map_class)
     changes["bosses"]        = _diff_table(raw_data.get("Bosses", []),         "bosses",        "Name", _map_boss,  full_reset=full_reset)
+    changes["world_bosses"]  = _diff_table(raw_data.get("WorldBosses", []),    "world_bosses",  "Name", _map_boss, full_reset=full_reset)
     changes["minions"]       = _diff_table(raw_data.get("Minions", []),        "minions",       "Name", _map_minion, full_reset=full_reset)
     changes["weapons"]       = _diff_table(raw_data.get("Weapons", []),        "weapons",       "Name", _map_weapon)
     changes["armor"]         = _diff_table(raw_data.get("Armor", []),          "armor",         "Name", _map_armor)
     changes["special_items"] = _diff_table(raw_data.get("SpecialItems", []),   "special_items", "Name", _map_special_item)
+    changes["perks"]         = _diff_table(raw_data.get("Perks", []),          "perks",         "Name", _map_perk)
     changes["random_events"] = _diff_table(raw_data.get("RandomEvents", []),   "random_events", "Name", _map_random_event)
     changes["settings"]      = _diff_settings(raw_data.get("Settings", []))
     changes["master_rows"]   = raw_data.get("Master", [])  # always reprocess
+    changes["world_boss_rows"] = raw_data.get("WorldBosses", [])
     return changes
 
 
@@ -519,6 +564,16 @@ def _map_special_item(r: dict) -> dict:
     }
 
 
+def _map_perk(r: dict) -> dict:
+    """Map a perk row using the same modifier fields as special items."""
+    mapped = _map_special_item(r)
+    for field in ("associated_to", "association_type", "credit_cost",
+                  "drop_chance", "starting_durability"):
+        mapped.pop(field, None)
+    mapped["level"] = _i(r.get("Level"))
+    return mapped
+
+
 def _map_random_event(r: dict) -> dict:
     """Map a normalized random event worksheet row to database fields."""
     return {
@@ -539,7 +594,7 @@ def apply_changes(changes: dict, full_reset: bool = False) -> dict:
     """Apply all inserts and updates. Must be called inside exclusive_transaction().
     Returns summary dict of counts."""
     summary = {}
-    order   = ["classes", "bosses", "minions", "weapons", "armor", "special_items", "random_events"]
+    order   = ["classes", "bosses", "world_bosses", "minions", "weapons", "armor", "special_items", "perks", "random_events"]
 
     for key in order:
         if key not in changes:
@@ -568,7 +623,7 @@ def apply_changes(changes: dict, full_reset: bool = False) -> dict:
             # Create special_item_registry row for new special items
             if tbl == "special_items":
                 new_id = execute_one("SELECT id FROM special_items WHERE name = ?", (row["name"],))
-                if new_id:
+                if new_id and row.get("association_type") != "WorldBoss":
                     execute_write(
                         """INSERT OR IGNORE INTO special_item_registry (special_item_id, status)
                            VALUES (?, 'IN_POOL')""",
@@ -591,6 +646,8 @@ def apply_changes(changes: dict, full_reset: bool = False) -> dict:
     # Master: process after all content tables are up to date
     _apply_master(changes.get("master_rows", []))
     summary["master"] = {"processed": len(changes.get("master_rows", []))}
+    _apply_world_boss_loot()
+    summary["world_boss_loot"] = {"processed": len(changes.get("world_boss_rows", []))}
 
     return summary
 
@@ -679,6 +736,31 @@ def _apply_master(master_rows: list):
                  prot_description, now)
             )
 
+
+def _apply_world_boss_loot():
+    """Link each imported world boss to exactly one associated reward per slot."""
+    execute_write("DELETE FROM world_boss_loot")
+    for boss in execute("SELECT id,name FROM world_bosses WHERE is_active=1"):
+        weapon = execute_one(
+            "SELECT id FROM weapons WHERE associated_to=? AND is_active=1",
+            (f"{boss['name']} (WorldBoss)",)
+        )
+        armor = execute_one(
+            "SELECT id FROM armor WHERE associated_to=? AND is_active=1",
+            (f"{boss['name']} (WorldBoss)",)
+        )
+        special = execute_one(
+            """SELECT id FROM special_items
+               WHERE associated_to=? AND association_type='WorldBoss' AND is_active=1""",
+            (boss["name"],)
+        )
+        if not all((weapon, armor, special)):
+            logger.warning("World boss '%s' does not yet have all three linked rewards", boss["name"])
+            continue
+        execute_write(
+            "INSERT INTO world_boss_loot(world_boss_id,weapon_id,armor_id,special_item_id) VALUES(?,?,?,?)",
+            (boss["id"], weapon["id"], armor["id"], special["id"])
+        )
 def clear_stale_intel(changes: dict):
     """Clear boss_intel rows for any boss whose intel-sensitive columns changed."""
     for item in changes.get("bosses", {}).get("update", []):

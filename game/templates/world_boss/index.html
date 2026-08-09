@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Weekly World Boss{% endblock %}
+{% block content %}
+<div id="page-content" class="cinematic-page world-boss-page">
+  <a href="{{ url_for('dashboard.index') }}" class="back-link">← Back to Dashboard</a>
+  {% if request.args.get('feedback') %}<div class="success-message">{{ request.args.get('feedback') }}</div>{% endif %}
+  {% if reward_event %}
+  <section class="wb-reward-panel">
+    <div class="sheet-kicker">PLACEMENT REWARD #{{ reward_event.place }}</div>
+    <h2>Choose your prize from {{ reward_event.name }}</h2>
+    <p>Your choice also grants one full level. Choose before {{ reward_event.selection_deadline[:16] }} UTC; afterward the highest-value remaining prize is selected automatically.</p>
+    {% if reward_blocked %}<p class="term-amber">The player ahead of you is still choosing. Your available choices will update after their award is locked.</p>{% endif %}
+    <div class="wb-prize-grid">
+      {% for item in prize_options %}
+      <form method="post" action="{{ url_for('world_boss.claim') }}" class="wb-prize-card">
+        <input type="hidden" name="event_id" value="{{ reward_event.id }}">
+        <input type="hidden" name="item_type" value="{{ item.item_type }}">
+        <input type="hidden" name="item_id" value="{{ item.id }}">
+        <strong>{{ item.name }}</strong><span>{{ item.item_type }} · {{ item.credit_cost }} credits</span>
+        <p>{{ item.description }}</p><button type="submit" {% if reward_blocked %}disabled{% endif %}>Choose {{ item.name }}</button>
+      </form>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+  {% if event %}
+  <div class="sheet-kicker">{{ 'WEEKLY MULTIVERSE EVENT' if is_active else 'FINAL EVENT RESULTS' }}</div>
+  <h2 class="page-title" id="wb-name">{{ event.name }}</h2>
+  <p>{{ event.flavor_text }}</p>
+  <div class="wb-health"><div id="wb-health-fill" style="width:{{ (event.current_hp / event.starting_hp * 100)|round(1) }}%"></div></div>
+  <p><strong id="wb-hp">{{ event.current_hp }} / {{ event.starting_hp }}</strong> shared HP · Ends {{ event.scheduled_end_at[:16] }} UTC</p>
+  {% if request.args.get('error') %}<div class="error-message">{{ request.args.get('error') }}</div>{% endif %}
+  {% if is_active %}<form method="post" action="{{ url_for('world_boss.fight') }}">
+    <button type="submit" {% if not can_fight %}disabled{% endif %}>Attack World Boss ({{ entry_cost }} AP)</button>
+    {% if player.in_combat %}<span class="muted">Finish your current combat first.</span>
+    {% elif player.current_ap < entry_cost %}<span class="muted">You need {{ entry_cost }} AP.</span>{% endif %}
+  </form>{% else %}<p>The standings below are locked. The next unused boss appears at midnight after all earned prizes have been awarded.</p>{% endif %}
+  <div class="wb-grid">
+    <section><h3>Damage Standings</h3><ol id="wb-standings">{% for row in standings %}<li>{{ row.character_name }} — {{ row.damage }} damage</li>{% endfor %}</ol></section>
+    <section><h3>Live Boss Log</h3><div id="wb-log">{% for row in logs %}<div data-log-id="{{ row.id }}">[{{ row.occurred_at[11:19] }}] {{ row.message }}</div>{% endfor %}</div></section>
+  </div>
+  {% else %}<h2>No world boss is active.</h2><p>The next unused boss will appear after the prior rewards are complete.</p>{% endif %}
+</div>
+{% if event and is_active %}<script>
+let wbLast={{ (logs[-1].id if logs else 0)|tojson }};
+async function pollWorldBoss(){
+  try{const r=await fetch(`{{ url_for('world_boss.status') }}?after=${wbLast}`);const d=await r.json();if(!d.active){location.reload();return;}
+    document.querySelector('#wb-hp').textContent=`${d.current_hp} / ${d.starting_hp}`;
+    document.querySelector('#wb-health-fill').style.width=`${d.hp_percent}%`;
+    document.querySelector('#wb-standings').innerHTML=d.standings.map((x,i)=>`<li>${x.character_name} — ${x.damage} damage</li>`).join('');
+    const log=document.querySelector('#wb-log');for(const x of d.logs){const line=document.createElement('div');line.textContent=`[${x.occurred_at.slice(11,19)}] ${x.message}`;log.appendChild(line);wbLast=x.id;}
+  }catch(e){} setTimeout(pollWorldBoss,4000);
+} setTimeout(pollWorldBoss,4000);
+</script>{% endif %}
+{% endblock %}

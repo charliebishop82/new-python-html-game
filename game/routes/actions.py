@@ -11,7 +11,8 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, session, g
 from database import (execute, execute_one, execute_write,
-                      exclusive_transaction, get_all_settings, get_player)
+                      exclusive_transaction, get_all_settings, get_player,
+                      get_player_bonus_profile)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 from combat import engine, flavour
@@ -54,14 +55,7 @@ def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict
     end_divisor = settings.get("END_HP_REGEN_DIVISOR",  cfg.END_HP_REGEN_DIVISOR)
     hp_regen    = ap_regen + math.floor(player["end_stat"] / end_divisor)
 
-    if player.get("equipped_special_id"):
-        inv = execute_one("SELECT item_id FROM inventory_items WHERE id = ?",
-                          (player["equipped_special_id"],))
-        if inv:
-            s = execute_one("SELECT hp_regen_bonus FROM special_items WHERE id = ?",
-                            (inv["item_id"],))
-            if s:
-                hp_regen += s["hp_regen_bonus"]
+    hp_regen += int(get_player_bonus_profile(player_id).get("hp_regen_bonus", 0) or 0)
 
     max_hp = 10 + player["end_stat"] + (5 * player["level"])
     new_ap = player["current_ap"] - cost
@@ -107,6 +101,7 @@ def _describe_random_event_effect(event: dict) -> str:
 def check_random_event(player: dict, settings: dict) -> dict | None:
     """Roll for a random event. Returns event dict if triggered, else None.
     Fires BEFORE AP is deducted. If triggered: apply effect, write feeds."""
+    player = combat_actions.apply_equipped_stat_bonuses(player)
     base_chance   = settings.get("RANDOM_EVENT_BASE_CHANCE", cfg.RANDOM_EVENT_BASE_CHANCE)
     max_chance    = settings.get("RANDOM_EVENT_MAX_CHANCE",  cfg.RANDOM_EVENT_MAX_CHANCE)
     good_base     = settings.get("RANDOM_EVENT_GOOD_BASE",   cfg.RANDOM_EVENT_GOOD_BASE)
@@ -116,15 +111,9 @@ def check_random_event(player: dict, settings: dict) -> dict | None:
 
     lck_steps    = math.floor(player["lck_stat"] / 2)
     # Check for encounter_bonus from equipped special
-    encounter_bonus = 0
-    if player.get("equipped_special_id"):
-        inv = execute_one("SELECT item_id FROM inventory_items WHERE id = ?",
-                          (player["equipped_special_id"],))
-        if inv:
-            s = execute_one("SELECT encounter_bonus FROM special_items WHERE id = ?",
-                            (inv["item_id"],))
-            if s:
-                encounter_bonus = math.floor(s["encounter_bonus"] * 20)  # treat as bonus LCK steps
+    encounter_bonus = math.floor(
+        float(get_player_bonus_profile(player["id"]).get("encounter_bonus", 0) or 0) * 20
+    )
 
     effective_lck_steps = lck_steps + encounter_bonus
     trigger_chance = min(base_chance + effective_lck_steps * lck_bonus_per, max_chance)

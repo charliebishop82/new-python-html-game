@@ -9,7 +9,8 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, g
 from database import (execute, execute_one, execute_write,
-                      exclusive_transaction, get_all_settings)
+                      exclusive_transaction, get_all_settings,
+                      get_player_bonus_profile)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -59,7 +60,8 @@ def index():
     settings = get_all_settings()
 
     # Calculate player's effective discount
-    per_discount = math.floor(player["per_stat"] / 2) / 100
+    perk_per = int(get_player_bonus_profile(player["id"]).get("per_bonus", 0) or 0)
+    per_discount = math.floor((player["per_stat"] + perk_per) / 2) / 100
     special_discount = _get_special_shop_discount(player)
     max_discount = settings.get("SHOP_DISCOUNT_MAX", cfg.SHOP_DISCOUNT_MAX)
     discount = min(per_discount + special_discount, max_discount)
@@ -147,31 +149,13 @@ def _calc_sell_price(item_detail: dict, player: dict) -> int:
 
 
 def _get_special_shop_discount(player: dict) -> float:
-    """Load special shop discount from current database state."""
-    if not player.get("equipped_special_id"):
-        return 0.0
-    inv = execute_one(
-        "SELECT item_id FROM inventory_items WHERE id = ?",
-        (player["equipped_special_id"],)
-    )
-    if not inv:
-        return 0.0
-    s = execute_one("SELECT shop_discount FROM special_items WHERE id = ?", (inv["item_id"],))
-    return s["shop_discount"] if s else 0.0
+    """Load the combined equipped-special and permanent-perk shop discount."""
+    return float(get_player_bonus_profile(player["id"]).get("shop_discount", 0) or 0)
 
 
 def _get_special_sell_bonus(player: dict) -> float:
-    """Load special sell bonus from current database state."""
-    if not player.get("equipped_special_id"):
-        return 0.0
-    inv = execute_one(
-        "SELECT item_id FROM inventory_items WHERE id = ?",
-        (player["equipped_special_id"],)
-    )
-    if not inv:
-        return 0.0
-    s = execute_one("SELECT sell_bonus FROM special_items WHERE id = ?", (inv["item_id"],))
-    return s["sell_bonus"] if s else 0.0
+    """Load the combined equipped-special and permanent-perk sell bonus."""
+    return float(get_player_bonus_profile(player["id"]).get("sell_bonus", 0) or 0)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -208,17 +192,9 @@ def handle_shop_buy(player_id: int, payload: dict) -> dict:
         raise ValueError("This item has been retired from the active catalog.")
 
     # Calculate discounted price
-    per_discount     = math.floor(player["per_stat"] / 2) / 100
-    special_discount = 0.0
-    if player.get("equipped_special_id"):
-        inv = execute_one(
-            "SELECT item_id FROM inventory_items WHERE id = ?",
-            (player["equipped_special_id"],)
-        )
-        if inv:
-            s = execute_one("SELECT shop_discount FROM special_items WHERE id = ?", (inv["item_id"],))
-            if s:
-                special_discount = s["shop_discount"]
+    perk_per = int(get_player_bonus_profile(player["id"]).get("per_bonus", 0) or 0)
+    per_discount     = math.floor((player["per_stat"] + perk_per) / 2) / 100
+    special_discount = _get_special_shop_discount(player)
     max_discount     = settings.get("SHOP_DISCOUNT_MAX", cfg.SHOP_DISCOUNT_MAX)
     discount         = min(per_discount + special_discount, max_discount)
     final_price      = max(0, int(listing["price"] * (1 - discount)))

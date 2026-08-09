@@ -107,12 +107,28 @@
     </div>
 
     <section class="active-effects-panel" aria-labelledby="special-effects-title">
-        <h3 id="special-effects-title">Equipped Special Abilities</h3>
+        <h3 id="special-effects-title">Equipment &amp; Perk Abilities</h3>
         {% if derived.special_effects %}
         <div class="active-effects-list">
             {% for effect in derived.special_effects %}<div class="active-effect effect-good"><span>{{ effect }}</span><span class="active-effect-duration">Equipped</span></div>{% endfor %}
         </div>
         {% else %}<p class="active-effects-empty">No additional special abilities are active.</p>{% endif %}
+    </section>
+
+    <section class="active-effects-panel" aria-labelledby="perks-title">
+        <h3 id="perks-title">Permanent Perks</h3>
+        {% if perks %}
+        <div class="active-effects-list">
+            {% for perk in perks %}
+            <div class="active-effect effect-good">
+                <span><strong>{{ perk.name }}</strong> · {{ perk.description }}<br>
+                    {% set item = perk %}{% include "fragments/item_combat_stats.html" %}
+                </span>
+                <span class="active-effect-duration">Chosen at Level {{ perk.level_chosen }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}<p class="active-effects-empty">Your first perk choice arrives at Level 3.</p>{% endif %}
     </section>
 
     {% if derived.is_overencumbered %}

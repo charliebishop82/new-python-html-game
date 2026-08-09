@@ -9,7 +9,9 @@
         ══════════════════════ {{ 'COMBAT RESUMED' if resumed|default(false) else 'COMBAT BEGINS' }} ══════════════════════
     </div>
     <div class="term-line term-amber">
-        {% if encounter_type == 'BOSS' %}
+        {% if encounter_type == 'WORLD_BOSS' %}
+        === WEEKLY WORLD BOSS: {{ opponent.name|upper }} ===
+        {% elif encounter_type == 'BOSS' %}
         === BOSS FIGHT: {{ opponent.name|upper }} ===
         {% elif encounter_type == 'MINION' %}
         === MINION ENCOUNTER: {{ opponent.name|upper }} ===
@@ -40,6 +42,10 @@
 
     <div class="term-line term-system">Your HP: {{ player.current_hp }}/{{ player.max_hp }} &nbsp;|&nbsp; AP: {{ player.current_ap }}</div>
     <div class="term-line term-amber">Opponent: {{ opponent_health.meter }} {{ opponent_health.label }}</div>
+    {% if encounter_type == 'WORLD_BOSS' %}
+    <div id="world-boss-combat-live" class="term-line term-blue"
+         data-event-id="{{ opponent.event_id }}">Shared HP: {{ opponent.current_hp }} / {{ opponent.max_hp }} · live updates every 4 seconds</div>
+    {% endif %}
     <div class="term-line term-grey combat-help-link">
         <a href="{{ url_for('feeds.game_help') }}#combat" target="_blank">How combat works</a>
         <span> — actions, rolls, damage, escape, rewards, and defeat</span>
@@ -69,4 +75,15 @@
     </details>
     {% endif %}
 </div>
-<script>window._combatSessionId = {{ session_id }};</script>
+<script>
+window._combatSessionId = {{ session_id }};
+{% if encounter_type == 'WORLD_BOSS' %}
+(function pollAttempt(){setTimeout(async function(){
+  const live=document.getElementById('world-boss-combat-live');if(!live)return;
+  try{const response=await fetch('{{ url_for("world_boss.status") }}');const data=await response.json();
+    if(!data.active||data.event_id!==Number(live.dataset.eventId)){location.reload();return;}
+    live.textContent=`Shared HP: ${data.current_hp} / ${data.starting_hp} · live updates every 4 seconds`;
+  }catch(error){} pollAttempt();
+},4000);}());
+{% endif %}
+</script>
