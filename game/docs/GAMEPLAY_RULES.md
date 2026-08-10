@@ -35,3 +35,26 @@ This file is the maintainer index for formula-driven gameplay. Player wording li
 - XP starts with encounter-type XP per opponent level, adjusts for level difference, then applies equipment multipliers.
 
 The player and administrator HTML guides contain the complete current flow descriptions.
+# Cinematic Scenes — dormant version 1
+
+Cinematic Scenes are imported from the `Scenes` and `SceneChoices` workbook
+sheets. Player access is intentionally disabled by the
+`SCENES_PLAYER_ENABLED` setting while the system is tested.
+
+- An eligible scene is at or below the character's level and is selected using
+  its workbook weight.
+- Entry charges the scene's authored AP cost exactly once and creates a durable
+  pending attempt.
+- Each scene exposes one STR, END, AGI, LCK, and PER approach. Resolution is
+  `d20 + the selected effective stat` against the authored Difficulty. Effective
+  stats include equipped-item and perk bonuses.
+- Success grants the choice reward plus the scene's first-completion reward the
+  first time that player succeeds. The complete roll and reward are written to
+  the player's activity history and daily feed.
+- Authored success or failure effects are stored in `scene_effects` for later
+  combat consumption.
+- A failed choice marked `CombatOnFailure` becomes `COMBAT_PENDING`. Version 1
+  records the enemy, protagonist, targeting, and protagonist behavior but does
+  not start combat. Version 2 will add a true allied protagonist turn to the
+  combat engine; it must not be approximated as a hidden buff.
+- Administrators can inspect definitions and attempts at `/admin/scenes`.

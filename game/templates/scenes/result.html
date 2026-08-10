@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="scene-page"><article class="scene-stage">
+  <header><small>SCENE RESULT</small><h1>{{ result.scene_name }}</h1></header>
+  <div class="scene-roll {{ 'scene-success' if result.succeeded else 'scene-failure' }}">
+    <b>{{ 'SUCCESS' if result.succeeded else 'COMPLICATION' }}</b>
+    <span>d20 {{ result.roll }} + {{ result.choice.attribute }} {{ result.bonus }} = {{ result.total }} vs {{ result.choice.difficulty }}</span>
+  </div>
+  <p class="scene-setup">{{ result.outcome_text }}</p>
+  {% if result.xp or result.credits %}<p class="scene-reward">+{{ result.xp }} XP · +{{ result.credits }} credits{% if result.first_completion %} · First completion bonus{% endif %}</p>{% endif %}
+  {% if result.effect %}<p>Staged effect: <b>{{ result.effect|replace('_',' ')|title }}</b> {{ result.effect_value }}</p>{% endif %}
+  {% if result.combat_pending %}
+  <div class="scene-notice scene-failure"><b>COMBAT FOLLOWS</b><br>{{ result.protagonist_name }} will join you against {{ result.enemy_name }} when three-actor combat is activated.</div>
+  {% endif %}
+  <a class="auth-btn" href="{{ url_for('scenes.index') }}">Return to Scene Lobby</a>
+</article></section>
+{% endblock %}

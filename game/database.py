@@ -135,6 +135,8 @@ def init_db():
             ("NPC_RANDOM_WAKE_CHANCE", "0.003", "Chance per scheduler minute that an NPC takes an unscheduled action."),
             ("PERK_EFFECT_SCALE", "0.65", "Global multiplier applied to scalable perk bonuses; 0.65 reduces imported values by 35%."),
             ("AP_COST_WORLD_BOSS", "4", "AP required to begin one world-boss attempt."),
+            ("AP_COST_SCENE", "2", "Fallback AP charge for a cinematic scene when its row does not specify one."),
+            ("SCENES_PLAYER_ENABLED", "FALSE", "Feature gate for the cinematic scene player routes and navigation."),
             ("AP_COST_AUCTION", "1", "AP required to enter the player auction house."),
             ("WORLD_BOSS_HP_MULTIPLIER", "1.0", "Multiplier applied to imported world-boss HP."),
             ("WORLD_BOSS_ATTEMPT_XP", "10", "XP granted after a completed world-boss attempt."),

@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 REQUIRED_SHEETS = {
     "Master", "Bosses", "Minions", "Weapons",
     "Armor", "SpecialItems", "Classes", "RandomEvents", "Settings"
-    , "WorldBosses", "Perks", "Contracts"
+    , "WorldBosses", "Perks", "Contracts", "Scenes", "SceneChoices"
 }
 
 DAMAGE_TYPES = ("Blade", "Blunt", "Ballistic", "Energy", "Arcane", "Explosive", "Venom")
@@ -145,7 +145,65 @@ def validate(raw_data: dict) -> list[str]:
     _validate_perks(raw_data.get("Perks", []), errors)
     _validate_random_events(raw_data.get("RandomEvents", []), errors)
     _validate_master(raw_data, errors)
+    _validate_scenes(raw_data, errors)
     return errors
+
+
+def _validate_scenes(raw_data: dict, errors: list):
+    """Validate scenario definitions, movie/enemy links, and five-choice sets."""
+    scenes = raw_data.get("Scenes", [])
+    choices = raw_data.get("SceneChoices", [])
+    movies = {str(row.get("MovieName", "")).strip(): row
+              for row in raw_data.get("Master", [])}
+    scene_keys = set()
+    choice_keys = set()
+    attributes = {}
+    for row in scenes:
+        key = _s(row.get("SceneKey"))
+        _require(row, ["SceneKey", "MovieName", "SceneName", "SetupText",
+                       "ProtagonistName", "EnemyType", "EnemyName", "AP_Cost",
+                       "MinLevel", "Weight"], "Scenes", errors, key)
+        if key in scene_keys:
+            errors.append(f"[Scenes] Duplicate SceneKey: '{key}'")
+        scene_keys.add(key)
+        movie = _s(row.get("MovieName"))
+        enemy_type = _s(row.get("EnemyType")).upper()
+        if movie not in movies:
+            errors.append(f"[Scenes] '{key}': MovieName '{movie}' is not in Master")
+        elif enemy_type == "BOSS" and _s(row.get("EnemyName")) != _s(movies[movie].get("BossName")):
+            errors.append(f"[Scenes] '{key}': boss does not match the Master row for '{movie}'")
+        elif enemy_type == "MINION" and _s(row.get("EnemyName")) != _s(movies[movie].get("MinionName")):
+            errors.append(f"[Scenes] '{key}': minion does not match the Master row for '{movie}'")
+        if enemy_type not in ("BOSS", "MINION"):
+            errors.append(f"[Scenes] '{key}': EnemyType must be BOSS or MINION")
+        if _i(row.get("AP_Cost"), -1) < 0 or _i(row.get("MinLevel"), 0) < 1:
+            errors.append(f"[Scenes] '{key}': AP_Cost and MinLevel are invalid")
+        if _i(row.get("Weight"), 0) < 1:
+            errors.append(f"[Scenes] '{key}': Weight must be at least 1")
+        attributes[key] = []
+    for row in choices:
+        scene_key = _s(row.get("SceneKey"))
+        choice_key = _s(row.get("ChoiceKey"))
+        _require(row, ["SceneKey", "ChoiceKey", "Attribute", "ChoiceText",
+                       "Difficulty", "SuccessText", "FailureText"],
+                 "SceneChoices", errors, choice_key)
+        compound_key = (scene_key, choice_key)
+        if compound_key in choice_keys:
+            errors.append(f"[SceneChoices] Duplicate ChoiceKey '{choice_key}' within '{scene_key}'")
+        choice_keys.add(compound_key)
+        if scene_key not in scene_keys:
+            errors.append(f"[SceneChoices] '{choice_key}': unknown SceneKey '{scene_key}'")
+            continue
+        attribute = _s(row.get("Attribute")).upper()
+        attributes[scene_key].append(attribute)
+        if attribute not in ("STR", "END", "AGI", "LCK", "PER"):
+            errors.append(f"[SceneChoices] '{choice_key}': invalid Attribute '{attribute}'")
+        if not 1 <= _i(row.get("Difficulty"), 0) <= 40:
+            errors.append(f"[SceneChoices] '{choice_key}': Difficulty must be between 1 and 40")
+    required = {"STR", "END", "AGI", "LCK", "PER"}
+    for scene_key, found in attributes.items():
+        if len(found) != 5 or set(found) != required:
+            errors.append(f"[SceneChoices] '{scene_key}' must have exactly one choice for each base attribute")
 
 
 def _require(row: dict, fields: list, sheet: str, errors: list, row_name: str = ""):
@@ -363,6 +421,8 @@ def diff_content(raw_data: dict, full_reset: bool = False) -> dict:
     changes["settings"]      = _diff_settings(raw_data.get("Settings", []))
     changes["master_rows"]   = raw_data.get("Master", [])  # always reprocess
     changes["world_boss_rows"] = raw_data.get("WorldBosses", [])
+    changes["scene_rows"]      = raw_data.get("Scenes", [])
+    changes["scene_choice_rows"] = raw_data.get("SceneChoices", [])
     return changes
 
 
@@ -597,6 +657,40 @@ def _map_contract(r: dict) -> dict:
     }
 
 
+def _map_scene(r: dict) -> dict:
+    """Map one cinematic scenario while preserving its authored mechanics."""
+    return {
+        "movie_name": _s(r.get("MovieName")), "scene_name": _s(r.get("SceneName")),
+        "setup_text": _s(r.get("SetupText")), "protagonist_name": _s(r.get("ProtagonistName")),
+        "enemy_type": _s(r.get("EnemyType")).upper(), "enemy_name": _s(r.get("EnemyName")),
+        "ap_cost": max(0, _i(r.get("AP_Cost"), 2)), "min_level": max(1, _i(r.get("MinLevel"), 1)),
+        "weight": max(1, _i(r.get("Weight"), 1)), "combat_objective": _s(r.get("CombatObjective"), "DEFEAT_ENEMY"),
+        "protagonist_behavior": _s(r.get("ProtagonistBehavior"), "ATTACK_ONLY"),
+        "enemy_targeting": _s(r.get("EnemyTargeting"), "THREAT_WEIGHTED"),
+        "protagonist_ko_fails_scene": _b(r.get("ProtagonistKO_FailsScene")),
+        "enemy_gear_reward_chance": _f(r.get("EnemyGearRewardChance")),
+        "protagonist_gear_reward_chance": _f(r.get("ProtagonistGearRewardChance")),
+        "first_completion_xp": max(0, _i(r.get("FirstCompletionXP"))),
+        "first_completion_credits": max(0, _i(r.get("FirstCompletionCredits"))),
+        "is_active": _b(r.get("IsActive")), "notes": _s(r.get("Notes")),
+    }
+
+
+def _map_scene_choice(r: dict) -> dict:
+    """Map one attribute response belonging to a cinematic scenario."""
+    return {
+        "choice_key": _s(r.get("ChoiceKey")), "attribute": _s(r.get("Attribute")).upper(),
+        "choice_text": _s(r.get("ChoiceText")), "difficulty": _i(r.get("Difficulty")),
+        "success_text": _s(r.get("SuccessText")), "failure_text": _s(r.get("FailureText")),
+        "success_xp": max(0, _i(r.get("SuccessXP"))),
+        "success_credits": max(0, _i(r.get("SuccessCredits"))),
+        "success_effect": _s(r.get("SuccessEffect")), "success_value": _f(r.get("SuccessValue")),
+        "failure_effect": _s(r.get("FailureEffect")), "failure_value": _f(r.get("FailureValue")),
+        "combat_on_failure": _b(r.get("CombatOnFailure")),
+        "reward_chance_modifier": _f(r.get("RewardChanceModifier")), "notes": _s(r.get("Notes")),
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # APPLY CHANGES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -659,8 +753,60 @@ def apply_changes(changes: dict, full_reset: bool = False) -> dict:
     summary["master"] = {"processed": len(changes.get("master_rows", []))}
     _apply_world_boss_loot()
     summary["world_boss_loot"] = {"processed": len(changes.get("world_boss_rows", []))}
+    _apply_scenes(changes.get("scene_rows", []), changes.get("scene_choice_rows", []))
+    summary["scenes"] = {"processed": len(changes.get("scene_rows", [])),
+                         "choices": len(changes.get("scene_choice_rows", []))}
 
     return summary
+
+
+def _apply_scenes(scene_rows: list, choice_rows: list):
+    """Upsert scenario content by stable workbook keys and retire omitted scenes."""
+    incoming = {_s(row.get("SceneKey")) for row in scene_rows}
+    for existing in execute("SELECT id,scene_key FROM scenes"):
+        if existing["scene_key"] not in incoming:
+            execute_write("UPDATE scenes SET is_active=0 WHERE id=?", (existing["id"],))
+    now = datetime.utcnow().isoformat()
+    for row in scene_rows:
+        key = _s(row.get("SceneKey"))
+        mapped = _map_scene(row)
+        existing = execute_one("SELECT id FROM scenes WHERE scene_key=?", (key,))
+        if existing:
+            sets = ", ".join(f"{column}=?" for column in mapped)
+            execute_write(f"UPDATE scenes SET {sets},imported_at=? WHERE id=?",
+                          tuple(mapped.values()) + (now, existing["id"]))
+        else:
+            columns = ["scene_key", *mapped.keys(), "imported_at"]
+            execute_write(
+                f"INSERT INTO scenes ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                (key, *mapped.values(), now),
+            )
+    incoming_choices = set()
+    for row in choice_rows:
+        scene = execute_one("SELECT id FROM scenes WHERE scene_key=?", (_s(row.get("SceneKey")),))
+        if not scene:
+            continue
+        mapped = _map_scene_choice(row)
+        choice_key = mapped.pop("choice_key")
+        incoming_choices.add((scene["id"], choice_key))
+        existing = execute_one(
+            "SELECT id FROM scene_choices WHERE scene_id=? AND choice_key=?",
+            (scene["id"], choice_key),
+        )
+        mapped = {"scene_id": scene["id"], **mapped}
+        if existing:
+            sets = ", ".join(f"{column}=?" for column in mapped)
+            execute_write(f"UPDATE scene_choices SET {sets},imported_at=? WHERE id=?",
+                          tuple(mapped.values()) + (now, existing["id"]))
+        else:
+            columns = ["choice_key", *mapped.keys(), "imported_at"]
+            execute_write(
+                f"INSERT INTO scene_choices ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
+                (choice_key, *mapped.values(), now),
+            )
+    for existing in execute("SELECT id,scene_id,choice_key FROM scene_choices"):
+        if (existing["scene_id"], existing["choice_key"]) not in incoming_choices:
+            execute_write("DELETE FROM scene_choices WHERE id=?", (existing["id"],))
 
 
 def _upsert_row(table: str, data: dict, existing_id: int | None):

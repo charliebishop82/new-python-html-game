@@ -788,6 +788,99 @@ CREATE TABLE IF NOT EXISTS master (
     imported_at             TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Excel-authored cinematic scenarios. Version one resolves the opening
+-- attribute challenge and records any combat consequence; protagonist turns
+-- are deliberately reserved for the later three-actor combat integration.
+CREATE TABLE IF NOT EXISTS scenes (
+    id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_key                  TEXT UNIQUE NOT NULL,
+    movie_name                 TEXT NOT NULL,
+    scene_name                 TEXT NOT NULL,
+    setup_text                 TEXT NOT NULL,
+    protagonist_name           TEXT NOT NULL,
+    enemy_type                 TEXT NOT NULL CHECK(enemy_type IN ('BOSS','MINION')),
+    enemy_name                 TEXT NOT NULL,
+    ap_cost                    INTEGER NOT NULL DEFAULT 2,
+    min_level                  INTEGER NOT NULL DEFAULT 1,
+    weight                     INTEGER NOT NULL DEFAULT 1,
+    combat_objective           TEXT NOT NULL DEFAULT 'DEFEAT_ENEMY',
+    protagonist_behavior       TEXT NOT NULL DEFAULT 'ATTACK_ONLY',
+    enemy_targeting            TEXT NOT NULL DEFAULT 'THREAT_WEIGHTED',
+    protagonist_ko_fails_scene INTEGER NOT NULL DEFAULT 0,
+    enemy_gear_reward_chance   REAL NOT NULL DEFAULT 0,
+    protagonist_gear_reward_chance REAL NOT NULL DEFAULT 0,
+    first_completion_xp        INTEGER NOT NULL DEFAULT 0,
+    first_completion_credits   INTEGER NOT NULL DEFAULT 0,
+    is_active                  INTEGER NOT NULL DEFAULT 1,
+    notes                      TEXT NOT NULL DEFAULT '',
+    imported_at                TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS scene_choices (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_id               INTEGER NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    choice_key             TEXT NOT NULL,
+    attribute              TEXT NOT NULL CHECK(attribute IN ('STR','END','AGI','LCK','PER')),
+    choice_text            TEXT NOT NULL,
+    difficulty             INTEGER NOT NULL,
+    success_text           TEXT NOT NULL,
+    failure_text           TEXT NOT NULL,
+    success_xp             INTEGER NOT NULL DEFAULT 0,
+    success_credits        INTEGER NOT NULL DEFAULT 0,
+    success_effect         TEXT NOT NULL DEFAULT '',
+    success_value          REAL NOT NULL DEFAULT 0,
+    failure_effect         TEXT NOT NULL DEFAULT '',
+    failure_value          REAL NOT NULL DEFAULT 0,
+    combat_on_failure      INTEGER NOT NULL DEFAULT 1,
+    reward_chance_modifier REAL NOT NULL DEFAULT 0,
+    notes                  TEXT NOT NULL DEFAULT '',
+    imported_at            TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(scene_id, choice_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_scene_choices_scene ON scene_choices(scene_id);
+CREATE INDEX IF NOT EXISTS idx_scenes_active_level ON scenes(is_active,min_level);
+
+-- Durable player scene history. It is created before the public feature is
+-- enabled so previews and later balancing remain fully auditable.
+CREATE TABLE IF NOT EXISTS scene_attempts (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id           INTEGER NOT NULL REFERENCES players(id),
+    scene_id            INTEGER NOT NULL REFERENCES scenes(id),
+    choice_id           INTEGER REFERENCES scene_choices(id),
+    status              TEXT NOT NULL DEFAULT 'CHOICE_PENDING',
+    roll                 INTEGER,
+    attribute_bonus     INTEGER,
+    total_roll          INTEGER,
+    difficulty          INTEGER,
+    succeeded           INTEGER,
+    xp_awarded          INTEGER NOT NULL DEFAULT 0,
+    credits_awarded     INTEGER NOT NULL DEFAULT 0,
+    first_completion    INTEGER NOT NULL DEFAULT 0,
+    combat_session_id   INTEGER REFERENCES combat_sessions(id),
+    outcome_text        TEXT,
+    started_at          TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at         TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_scene_attempts_player ON scene_attempts(player_id,started_at);
+
+-- Scene effects are staged separately from ordinary midnight effects. The
+-- combat integration can atomically consume one row when three-actor combat
+-- is activated without losing what the player earned during the challenge.
+CREATE TABLE IF NOT EXISTS scene_effects (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id   INTEGER NOT NULL REFERENCES players(id),
+    attempt_id  INTEGER NOT NULL REFERENCES scene_attempts(id),
+    effect_type TEXT NOT NULL,
+    value       REAL NOT NULL DEFAULT 0,
+    status      TEXT NOT NULL DEFAULT 'PENDING',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    consumed_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_scene_effects_pending ON scene_effects(player_id,status);
+
 -- Database overrides for typed gameplay defaults in config_defaults.py.
 CREATE TABLE IF NOT EXISTS settings (
     constant_name TEXT PRIMARY KEY,

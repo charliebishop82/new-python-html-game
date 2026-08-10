@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="scene-page">
+  <header class="scene-marquee">
+    <span>CINEMATIC SCENES</span>
+    <h1>Choose Your Next Scene</h1>
+    <p>Enter a moment from the Movie Multiverse. Choose how your strongest attribute changes the story.</p>
+  </header>
+  {% if request.args.get('error') %}<div class="scene-notice scene-failure">{{ request.args.get('error') }}</div>{% endif %}
+  <div class="scene-catalog">
+    {% for scene in scenes %}
+    <article class="scene-poster">
+      <small>{{ scene.movie_name }}</small>
+      <h2>{{ scene.scene_name }}</h2>
+      <p>{{ scene.setup_text }}</p>
+      <dl><dt>Co-star</dt><dd>{{ scene.protagonist_name }}</dd><dt>Threat</dt><dd>{{ scene.enemy_name }}</dd><dt>Entry</dt><dd>{{ scene.ap_cost }} AP</dd></dl>
+      <form method="POST" action="{{ url_for('scenes.begin') }}">
+        <input type="hidden" name="scene_id" value="{{ scene.id }}">
+        <button class="auth-btn" type="submit">Enter Scene</button>
+      </form>
+      {% if scene.completed %}<span class="scene-completed">Previously completed</span>{% endif %}
+    </article>
+    {% else %}<p>No scenes are available at your current level.</p>{% endfor %}
+  </div>
+</section>
+{% endblock %}

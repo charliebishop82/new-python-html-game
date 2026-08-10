@@ -71,6 +71,7 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/contracts",              "admin_contracts", admin_contracts)
     app.add_url_rule("/admin/contracts/<int:assignment_id>/complete", "admin_contract_complete", admin_contract_complete, methods=["POST"])
     app.add_url_rule("/admin/perks",                  "admin_perks", admin_perks)
+    app.add_url_rule("/admin/scenes",                 "admin_scenes", admin_scenes)
     app.add_url_rule("/admin/reputation",             "admin_reputation", admin_reputation)
     app.add_url_rule("/admin/operations",             "admin_operations", admin_operations)
     app.add_url_rule("/admin/queue/<int:queue_id>/acknowledge", "admin_queue_acknowledge", admin_queue_acknowledge, methods=["POST"])
@@ -218,6 +219,27 @@ def admin_perks():
     pending = execute("SELECT id,character_name,level,pending_perk FROM players WHERE pending_perk>0 ORDER BY pending_perk DESC")
     return render_template("admin/perks.html", perks=perks, pending=pending,
                            scale=get_all_settings().get("PERK_EFFECT_SCALE", cfg.PERK_EFFECT_SCALE))
+
+
+def admin_scenes():
+    """Inspect imported cinematic content while its player feature gate is off."""
+    from scenes import scene_catalog
+    scenes = scene_catalog()
+    selected_id = request.args.get("scene_id", type=int)
+    selected = next((scene for scene in scenes if scene["id"] == selected_id), None)
+    choices = execute(
+        "SELECT * FROM scene_choices WHERE scene_id=? ORDER BY attribute", (selected_id,)
+    ) if selected_id else []
+    attempts = execute(
+        """SELECT sa.*,p.character_name,s.scene_name,sc.attribute
+           FROM scene_attempts sa JOIN players p ON p.id=sa.player_id
+           JOIN scenes s ON s.id=sa.scene_id
+           LEFT JOIN scene_choices sc ON sc.id=sa.choice_id
+           ORDER BY sa.id DESC LIMIT 50"""
+    )
+    return render_template("admin/scenes.html", scenes=scenes, selected=selected,
+                           choices=choices, attempts=attempts,
+                           enabled=bool(get_all_settings().get("SCENES_PLAYER_ENABLED", False)))
 
 
 def admin_reputation():
@@ -1572,6 +1594,7 @@ def admin_full_reset():
     operational = [
         "world_boss_event_log", "world_boss_rewards", "world_boss_contributions",
         "world_boss_events",
+        "scene_effects", "scene_attempts",
         "pending_interrupted_actions", "auction_listings",
         "npc_action_log", "npc_profiles", "player_activity_log",
         "combat_buffs", "combat_logs", "combat_sessions",

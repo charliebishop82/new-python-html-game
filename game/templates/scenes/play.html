@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="scene-page">
+  <article class="scene-stage">
+    <header><small>{{ scene.movie_name }}</small><h1>{{ scene.scene_name }}</h1></header>
+    <p class="scene-setup">{{ scene.setup_text }}</p>
+    <div class="scene-cast"><span><b>ALLY</b>{{ scene.protagonist_name }}</span><span><b>{{ scene.enemy_type }}</b>{{ scene.enemy_name }}</span><span><b>OBJECTIVE</b>{{ scene.combat_objective|replace('_',' ')|title }}</span></div>
+    {% if preview_only %}<div class="scene-notice">ADMINISTRATIVE PREVIEW — choices cannot be submitted.</div>{% endif %}
+    <h2>How do you proceed?</h2>
+    <div class="scene-choices">
+      {% for choice in scene.choices %}
+      <form method="POST" action="{{ url_for('scenes.choose', attempt_id=attempt_id or 0) }}">
+        <input type="hidden" name="choice_id" value="{{ choice.id }}">
+        <button type="submit" class="scene-choice" {% if preview_only %}disabled{% endif %}>
+          <span class="scene-attribute">{{ choice.attribute }}</span>
+          <span>{{ choice.choice_text }}</span>
+          <small>Challenge {{ 'Low' if choice.difficulty <= 12 else 'Moderate' if choice.difficulty <= 16 else 'High' }}</small>
+        </button>
+      </form>
+      {% endfor %}
+    </div>
+    <p class="scene-rules">Roll d20 + the selected attribute, including equipment and perk bonuses. Failure may begin combat with {{ scene.protagonist_name }} fighting beside you.</p>
+  </article>
+</section>
+{% endblock %}

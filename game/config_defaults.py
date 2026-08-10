@@ -98,6 +98,8 @@ NPC_OBSERVE_MAX_ATTEMPTS               = 1
 NPC_RANDOM_WAKE_CHANCE                 = 0.003
 PERK_EFFECT_SCALE                      = 0.65
 AP_COST_WORLD_BOSS                     = 4
+AP_COST_SCENE                          = 2
+SCENES_PLAYER_ENABLED                  = False
 WORLD_BOSS_HP_MULTIPLIER               = 1.0
 WORLD_BOSS_ATTEMPT_XP                  = 10
 WORLD_BOSS_ATTEMPT_CREDITS             = 5
@@ -170,6 +172,7 @@ SETTING_TYPES = {
     "NPC_RANDOM_WAKE_CHANCE": float,
     "PERK_EFFECT_SCALE": float,
     "AP_COST_WORLD_BOSS": int, "WORLD_BOSS_HP_MULTIPLIER": float,
+    "AP_COST_SCENE": int, "SCENES_PLAYER_ENABLED": bool,
     "WORLD_BOSS_ATTEMPT_XP": int, "WORLD_BOSS_ATTEMPT_CREDITS": int,
     "WORLD_BOSS_REWARD_HOURS": int,
     "NPC_UPGRADE_MIN_IMPROVEMENT": float,

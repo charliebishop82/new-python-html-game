@@ -82,10 +82,11 @@ def _register_blueprints(app: Flask):
     from routes.auction     import bp as auction_bp
     from routes.community   import bp as community_bp
     from routes.crews       import bp as crews_bp
+    from routes.scenes      import bp as scenes_bp
 
     for bp in [auth_bp, dashboard_bp, actions_bp, combat_bp, shop_bp,
                blacksmith_bp, character_bp, scoreboards_bp, feeds_bp, world_boss_bp,
-               auction_bp, community_bp, crews_bp]:
+               auction_bp, community_bp, crews_bp, scenes_bp]:
         app.register_blueprint(bp)
 
 
