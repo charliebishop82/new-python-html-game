@@ -4,6 +4,8 @@ from flask import Blueprint, abort, g, redirect, render_template, request, url_f
 
 from scenes import (eligible_scenes, player_scenes_enabled, resolve_choice,
                     scene_with_choices, start_scene)
+from scene_combat import (begin_scene_combat, scene_combat_state,
+                          take_scene_combat_turn)
 
 bp = Blueprint("scenes", __name__, url_prefix="/scenes")
 
@@ -42,9 +44,38 @@ def choose(attempt_id: int):
         return redirect(url_for("scenes.index", error="Choose an approach first."))
     try:
         result = resolve_choice(g.player["id"], attempt_id, choice_id)
+        if result["combat_pending"]:
+            combat = begin_scene_combat(g.player["id"], attempt_id)
+            return render_template("scenes/combat.html", combat=combat)
     except ValueError as exc:
         return redirect(url_for("scenes.index", error=str(exc)))
     return render_template("scenes/result.html", result=result)
+
+
+@bp.route("/combat/<int:session_id>")
+def combat(session_id: int):
+    """Resume only the player's independent cinematic combat session."""
+    _require_enabled()
+    try:
+        state = scene_combat_state(session_id, g.player["id"])
+    except ValueError:
+        abort(404)
+    return render_template("scenes/combat.html", combat=state)
+
+
+@bp.route("/combat/<int:session_id>/act", methods=["POST"])
+def combat_act(session_id: int):
+    """Resolve one complete player/protagonist/enemy scene round."""
+    _require_enabled()
+    try:
+        state = take_scene_combat_turn(
+            g.player["id"], session_id, request.form.get("action", ""),
+            request.form.get("version", type=int),
+        )
+    except ValueError as exc:
+        return redirect(url_for("scenes.combat", session_id=session_id,
+                                error=str(exc)))
+    return render_template("scenes/combat.html", combat=state)
 
 
 @bp.route("/<int:scene_id>/preview")

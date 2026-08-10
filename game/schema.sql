@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS players (
     equipped_armor_id   INTEGER REFERENCES inventory_items(id),
     equipped_special_id INTEGER REFERENCES inventory_items(id),
     in_combat           INTEGER NOT NULL DEFAULT 0,
+    in_scene_combat     INTEGER NOT NULL DEFAULT 0,
     pending_levelup     INTEGER NOT NULL DEFAULT 0,
     pending_perk        INTEGER NOT NULL DEFAULT 0,
     combat_preference   TEXT    NOT NULL DEFAULT "Balanced",
@@ -832,6 +833,7 @@ CREATE TABLE IF NOT EXISTS scene_choices (
     failure_effect         TEXT NOT NULL DEFAULT '',
     failure_value          REAL NOT NULL DEFAULT 0,
     combat_on_failure      INTEGER NOT NULL DEFAULT 1,
+    is_active              INTEGER NOT NULL DEFAULT 1,
     reward_chance_modifier REAL NOT NULL DEFAULT 0,
     notes                  TEXT NOT NULL DEFAULT '',
     imported_at            TEXT NOT NULL DEFAULT (datetime('now')),
@@ -857,7 +859,7 @@ CREATE TABLE IF NOT EXISTS scene_attempts (
     xp_awarded          INTEGER NOT NULL DEFAULT 0,
     credits_awarded     INTEGER NOT NULL DEFAULT 0,
     first_completion    INTEGER NOT NULL DEFAULT 0,
-    combat_session_id   INTEGER REFERENCES combat_sessions(id),
+    scene_combat_session_id INTEGER REFERENCES scene_combat_sessions(id),
     outcome_text        TEXT,
     started_at          TEXT NOT NULL DEFAULT (datetime('now')),
     resolved_at         TEXT
@@ -880,6 +882,62 @@ CREATE TABLE IF NOT EXISTS scene_effects (
 );
 
 CREATE INDEX IF NOT EXISTS idx_scene_effects_pending ON scene_effects(player_id,status);
+
+-- Scene combat is intentionally isolated from combat_sessions/combat_logs.
+-- Snapshots freeze all three participants at entry so content re-imports cannot
+-- alter a fight already underway.
+CREATE TABLE IF NOT EXISTS scene_combat_sessions (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    attempt_id               INTEGER UNIQUE NOT NULL REFERENCES scene_attempts(id),
+    player_id                INTEGER NOT NULL REFERENCES players(id),
+    status                   TEXT NOT NULL DEFAULT 'ACTIVE',
+    result                   TEXT,
+    round_number             INTEGER NOT NULL DEFAULT 1,
+    version                  INTEGER NOT NULL DEFAULT 0,
+    player_hp                INTEGER NOT NULL,
+    player_max_hp            INTEGER NOT NULL,
+    protagonist_hp           INTEGER NOT NULL,
+    protagonist_max_hp       INTEGER NOT NULL,
+    enemy_hp                 INTEGER NOT NULL,
+    enemy_max_hp             INTEGER NOT NULL,
+    player_threat            INTEGER NOT NULL DEFAULT 1,
+    protagonist_threat       INTEGER NOT NULL DEFAULT 1,
+    player_guard             INTEGER NOT NULL DEFAULT 0,
+    protagonist_guard        INTEGER NOT NULL DEFAULT 0,
+    player_attack_bonus      INTEGER NOT NULL DEFAULT 0,
+    protagonist_attack_bonus INTEGER NOT NULL DEFAULT 0,
+    enemy_attack_penalty     INTEGER NOT NULL DEFAULT 0,
+    enemy_special_used       INTEGER NOT NULL DEFAULT 0,
+    player_damage_dealt      INTEGER NOT NULL DEFAULT 0,
+    protagonist_damage_dealt INTEGER NOT NULL DEFAULT 0,
+    enemy_damage_dealt       INTEGER NOT NULL DEFAULT 0,
+    player_snapshot_json     TEXT NOT NULL,
+    protagonist_snapshot_json TEXT NOT NULL,
+    enemy_snapshot_json      TEXT NOT NULL,
+    started_at               TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at               TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at              TEXT
+);
+
+CREATE TABLE IF NOT EXISTS scene_combat_logs (
+    id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+    scene_combat_session_id  INTEGER NOT NULL REFERENCES scene_combat_sessions(id),
+    round_number             INTEGER NOT NULL,
+    sequence_number          INTEGER NOT NULL,
+    actor                    TEXT NOT NULL,
+    action                   TEXT NOT NULL,
+    target                   TEXT,
+    roll_detail              TEXT,
+    outcome_detail           TEXT NOT NULL,
+    damage                   INTEGER NOT NULL DEFAULT 0,
+    player_hp                INTEGER NOT NULL,
+    protagonist_hp           INTEGER NOT NULL,
+    enemy_hp                 INTEGER NOT NULL,
+    created_at               TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_scene_combat_active ON scene_combat_sessions(player_id,status);
+CREATE INDEX IF NOT EXISTS idx_scene_combat_logs_session ON scene_combat_logs(scene_combat_session_id,id);
 
 -- Database overrides for typed gameplay defaults in config_defaults.py.
 CREATE TABLE IF NOT EXISTS settings (

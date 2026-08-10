@@ -687,6 +687,7 @@ def _map_scene_choice(r: dict) -> dict:
         "success_effect": _s(r.get("SuccessEffect")), "success_value": _f(r.get("SuccessValue")),
         "failure_effect": _s(r.get("FailureEffect")), "failure_value": _f(r.get("FailureValue")),
         "combat_on_failure": _b(r.get("CombatOnFailure")),
+        "is_active": 1,
         "reward_chance_modifier": _f(r.get("RewardChanceModifier")), "notes": _s(r.get("Notes")),
     }
 
@@ -781,14 +782,13 @@ def _apply_scenes(scene_rows: list, choice_rows: list):
                 f"INSERT INTO scenes ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
                 (key, *mapped.values(), now),
             )
-    incoming_choices = set()
+    execute_write("UPDATE scene_choices SET is_active=0")
     for row in choice_rows:
         scene = execute_one("SELECT id FROM scenes WHERE scene_key=?", (_s(row.get("SceneKey")),))
         if not scene:
             continue
         mapped = _map_scene_choice(row)
         choice_key = mapped.pop("choice_key")
-        incoming_choices.add((scene["id"], choice_key))
         existing = execute_one(
             "SELECT id FROM scene_choices WHERE scene_id=? AND choice_key=?",
             (scene["id"], choice_key),
@@ -804,9 +804,9 @@ def _apply_scenes(scene_rows: list, choice_rows: list):
                 f"INSERT INTO scene_choices ({','.join(columns)}) VALUES ({','.join('?' for _ in columns)})",
                 (choice_key, *mapped.values(), now),
             )
-    for existing in execute("SELECT id,scene_id,choice_key FROM scene_choices"):
-        if (existing["scene_id"], existing["choice_key"]) not in incoming_choices:
-            execute_write("DELETE FROM scene_choices WHERE id=?", (existing["id"],))
+    # Omitted choices remain as inactive historical definitions because old
+    # scene attempts may still reference them. They can never be selected by a
+    # new attempt, but the administrator can still reconstruct the old result.
 
 
 def _upsert_row(table: str, data: dict, existing_id: int | None):

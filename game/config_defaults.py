@@ -100,6 +100,9 @@ PERK_EFFECT_SCALE                      = 0.65
 AP_COST_WORLD_BOSS                     = 4
 AP_COST_SCENE                          = 2
 SCENES_PLAYER_ENABLED                  = False
+SCENE_ENEMY_HP_SCALE                   = 0.70
+SCENE_ENEMY_DAMAGE_SCALE               = 0.85
+SCENE_COMBAT_MAX_ROUNDS                = 20
 WORLD_BOSS_HP_MULTIPLIER               = 1.0
 WORLD_BOSS_ATTEMPT_XP                  = 10
 WORLD_BOSS_ATTEMPT_CREDITS             = 5
@@ -173,6 +176,8 @@ SETTING_TYPES = {
     "PERK_EFFECT_SCALE": float,
     "AP_COST_WORLD_BOSS": int, "WORLD_BOSS_HP_MULTIPLIER": float,
     "AP_COST_SCENE": int, "SCENES_PLAYER_ENABLED": bool,
+    "SCENE_ENEMY_HP_SCALE": float, "SCENE_ENEMY_DAMAGE_SCALE": float,
+    "SCENE_COMBAT_MAX_ROUNDS": int,
     "WORLD_BOSS_ATTEMPT_XP": int, "WORLD_BOSS_ATTEMPT_CREDITS": int,
     "WORLD_BOSS_REWARD_HOURS": int,
     "NPC_UPGRADE_MIN_IMPROVEMENT": float,

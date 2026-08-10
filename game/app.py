@@ -36,6 +36,10 @@ def create_app() -> Flask:
     _register_blueprints(app)
     with app.app_context():
         reconcile_combat_state()
+        # Scene combat has separate state and recovery. Never fold it into the
+        # ordinary combat reconciler, which protects established game modes.
+        from scene_combat import recover_scene_combat
+        recover_scene_combat()
     app.context_processor(_context_processor)
     app.before_request(_check_auth)
     app.before_request(_load_player)

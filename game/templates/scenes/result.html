@@ -8,7 +8,6 @@
   </div>
   <p class="scene-setup">{{ result.outcome_text }}</p>
   {% if result.xp or result.credits %}<p class="scene-reward">+{{ result.xp }} XP · +{{ result.credits }} credits{% if result.first_completion %} · First completion bonus{% endif %}</p>{% endif %}
-  {% if result.effect %}<p>Staged effect: <b>{{ result.effect|replace('_',' ')|title }}</b> {{ result.effect_value }}</p>{% endif %}
   {% if result.combat_pending %}
   <div class="scene-notice scene-failure"><b>COMBAT FOLLOWS</b><br>{{ result.protagonist_name }} will join you against {{ result.enemy_name }} when three-actor combat is activated.</div>
   {% endif %}

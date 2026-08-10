@@ -72,6 +72,17 @@ def init_db():
             conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
         if "pending_perk" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN pending_perk INTEGER NOT NULL DEFAULT 0")
+        if "in_scene_combat" not in player_columns:
+            conn.execute("ALTER TABLE players ADD COLUMN in_scene_combat INTEGER NOT NULL DEFAULT 0")
+        scene_choice_columns = {row[1] for row in conn.execute("PRAGMA table_info(scene_choices)")}
+        if scene_choice_columns and "is_active" not in scene_choice_columns:
+            conn.execute("ALTER TABLE scene_choices ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
+        scene_attempt_columns = {row[1] for row in conn.execute("PRAGMA table_info(scene_attempts)")}
+        if scene_attempt_columns and "scene_combat_session_id" not in scene_attempt_columns:
+            conn.execute("ALTER TABLE scene_attempts ADD COLUMN scene_combat_session_id INTEGER")
+        scene_combat_columns = {row[1] for row in conn.execute("PRAGMA table_info(scene_combat_sessions)")}
+        if scene_combat_columns and "version" not in scene_combat_columns:
+            conn.execute("ALTER TABLE scene_combat_sessions ADD COLUMN version INTEGER NOT NULL DEFAULT 0")
         for table in ("boss_instances", "minion_instances"):
             columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
             if "encounter_max_hp" not in columns:
@@ -137,6 +148,9 @@ def init_db():
             ("AP_COST_WORLD_BOSS", "4", "AP required to begin one world-boss attempt."),
             ("AP_COST_SCENE", "2", "Fallback AP charge for a cinematic scene when its row does not specify one."),
             ("SCENES_PLAYER_ENABLED", "FALSE", "Feature gate for the cinematic scene player routes and navigation."),
+            ("SCENE_ENEMY_HP_SCALE", "0.70", "HP multiplier used only by isolated cinematic scene enemies."),
+            ("SCENE_ENEMY_DAMAGE_SCALE", "0.85", "Damage multiplier used only by isolated cinematic scene enemies."),
+            ("SCENE_COMBAT_MAX_ROUNDS", "20", "Hard round cap used only by cinematic three-actor combat."),
             ("AP_COST_AUCTION", "1", "AP required to enter the player auction house."),
             ("WORLD_BOSS_HP_MULTIPLIER", "1.0", "Multiplier applied to imported world-boss HP."),
             ("WORLD_BOSS_ATTEMPT_XP", "10", "XP granted after a completed world-boss attempt."),
@@ -328,14 +342,14 @@ def reconcile_combat_state(player_id: int | None = None) -> dict:
                 )
         if player_id is None:
             execute_write(
-                """UPDATE players SET in_combat=CASE WHEN EXISTS(
+                """UPDATE players SET in_combat=CASE WHEN in_scene_combat=1 OR EXISTS(
                        SELECT 1 FROM combat_sessions cs WHERE cs.status='ACTIVE'
                        AND (cs.attacker_player_id=players.id OR cs.defender_player_id=players.id)
                    ) THEN 1 ELSE 0 END"""
             )
         else:
             execute_write(
-                """UPDATE players SET in_combat=CASE WHEN EXISTS(
+                """UPDATE players SET in_combat=CASE WHEN in_scene_combat=1 OR EXISTS(
                        SELECT 1 FROM combat_sessions cs WHERE cs.status='ACTIVE'
                        AND (cs.attacker_player_id=players.id OR cs.defender_player_id=players.id)
                    ) THEN 1 ELSE 0 END WHERE id=?""", (player_id,)

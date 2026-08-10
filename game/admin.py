@@ -71,7 +71,7 @@ def _register_routes(app: Flask):
     app.add_url_rule("/admin/contracts",              "admin_contracts", admin_contracts)
     app.add_url_rule("/admin/contracts/<int:assignment_id>/complete", "admin_contract_complete", admin_contract_complete, methods=["POST"])
     app.add_url_rule("/admin/perks",                  "admin_perks", admin_perks)
-    app.add_url_rule("/admin/scenes",                 "admin_scenes", admin_scenes)
+    app.add_url_rule("/admin/scenes",                 "admin_scenes", admin_scenes, methods=["GET", "POST"])
     app.add_url_rule("/admin/reputation",             "admin_reputation", admin_reputation)
     app.add_url_rule("/admin/operations",             "admin_operations", admin_operations)
     app.add_url_rule("/admin/queue/<int:queue_id>/acknowledge", "admin_queue_acknowledge", admin_queue_acknowledge, methods=["POST"])
@@ -222,10 +222,12 @@ def admin_perks():
 
 
 def admin_scenes():
-    """Inspect imported cinematic content while its player feature gate is off."""
+    """Inspect content and run rollback-only scene simulations."""
     from scenes import scene_catalog
+    from scene_testing import TEST_STRATEGIES, simulate_scene
     scenes = scene_catalog()
-    selected_id = request.args.get("scene_id", type=int)
+    selected_id = (request.form.get("scene_id", type=int) if request.method == "POST"
+                   else request.args.get("scene_id", type=int))
     selected = next((scene for scene in scenes if scene["id"] == selected_id), None)
     choices = execute(
         "SELECT * FROM scene_choices WHERE scene_id=? ORDER BY attribute", (selected_id,)
@@ -237,8 +239,37 @@ def admin_scenes():
            LEFT JOIN scene_choices sc ON sc.id=sa.choice_id
            ORDER BY sa.id DESC LIMIT 50"""
     )
+    combats = execute(
+        """SELECT scs.*,p.character_name,s.scene_name
+           FROM scene_combat_sessions scs
+           JOIN players p ON p.id=scs.player_id
+           JOIN scene_attempts sa ON sa.id=scs.attempt_id
+           JOIN scenes s ON s.id=sa.scene_id
+           ORDER BY scs.id DESC LIMIT 50"""
+    )
+    players = execute(
+        """SELECT id,character_name,level FROM players
+           WHERE is_banned=0 AND retired_at IS NULL ORDER BY character_name"""
+    )
+    simulation = None
+    simulation_error = None
+    if request.method == "POST":
+        try:
+            roll = request.form.get("forced_roll", type=int)
+            if roll is not None and not 1 <= roll <= 20:
+                raise ValueError("Forced roll must be between 1 and 20.")
+            simulation = simulate_scene(
+                request.form.get("player_id", type=int), selected_id,
+                request.form.get("choice_id", type=int), roll,
+                request.form.get("strategy", "ATTACK"),
+                request.form.get("full_health") == "1",
+            )
+        except (TypeError, ValueError) as exc:
+            simulation_error = str(exc)
     return render_template("admin/scenes.html", scenes=scenes, selected=selected,
-                           choices=choices, attempts=attempts,
+                           choices=choices, attempts=attempts, combats=combats,
+                           players=players, strategies=TEST_STRATEGIES,
+                           simulation=simulation, simulation_error=simulation_error,
                            enabled=bool(get_all_settings().get("SCENES_PLAYER_ENABLED", False)))
 
 
@@ -1594,7 +1625,7 @@ def admin_full_reset():
     operational = [
         "world_boss_event_log", "world_boss_rewards", "world_boss_contributions",
         "world_boss_events",
-        "scene_effects", "scene_attempts",
+        "scene_combat_logs", "scene_combat_sessions", "scene_effects", "scene_attempts",
         "pending_interrupted_actions", "auction_listings",
         "npc_action_log", "npc_profiles", "player_activity_log",
         "combat_buffs", "combat_logs", "combat_sessions",

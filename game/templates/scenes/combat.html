@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="scene-page"><article class="scene-stage">
+  <header><small>CINEMATIC COMBAT · THREE-ACTOR ENCOUNTER</small><h1>{{ combat.scene_name }}</h1><p>{{ combat.setup_text }}</p></header>
+  <div class="scene-combat-cast">
+    <div><small>YOU</small><b>{{ combat.player_snapshot.name }}</b><meter min="0" max="{{ combat.player_max_hp }}" value="{{ combat.player_hp }}"></meter><span>{{ combat.player_hp }} / {{ combat.player_max_hp }} HP</span></div>
+    <div><small>ALLY</small><b>{{ combat.protagonist_snapshot.name }}</b><meter min="0" max="{{ combat.protagonist_max_hp }}" value="{{ combat.protagonist_hp }}"></meter><span>{{ combat.protagonist_hp }} / {{ combat.protagonist_max_hp }} HP</span></div>
+    <div><small>ENEMY</small><b>{{ combat.enemy_snapshot.name }}</b><meter min="0" max="{{ combat.enemy_max_hp }}" value="{{ combat.enemy_hp }}"></meter><span>{{ combat.enemy_hp }} / {{ combat.enemy_max_hp }} HP</span></div>
+  </div>
+  {% if combat.status == 'ACTIVE' %}
+  <form method="post" action="{{ url_for('scenes.combat_act',session_id=combat.id) }}" class="scene-actions">
+    <input type="hidden" name="version" value="{{ combat.version }}">
+    <button name="action" value="ATTACK">Attack</button><button name="action" value="PROTECT">Protect Ally</button><button name="action" value="ASSIST">Assist Ally</button><button name="action" value="OBSERVE">Observe</button><button name="action" value="ESCAPE">Escape</button>
+  </form>
+  {% else %}<div class="scene-notice"><b>SCENE {{ combat.result }}</b></div>{% endif %}
+  <div class="scene-combat-log">{% for entry in combat.logs %}<p><small>ROUND {{ entry.round_number }} · {{ entry.actor }}</small><b>{{ entry.action }}{% if entry.target %} → {{ entry.target }}{% endif %}</b><span>{{ entry.outcome_detail }}</span>{% if entry.roll_detail %}<em>{{ entry.roll_detail }}</em>{% endif %}</p>{% else %}<p>The enemy closes in. Your ally waits for your move.</p>{% endfor %}</div>
+  {% if combat.status != 'ACTIVE' %}<a class="auth-btn" href="{{ url_for('scenes.index') }}">Return to Scene Lobby</a>{% endif %}
+</article></section>
+{% endblock %}

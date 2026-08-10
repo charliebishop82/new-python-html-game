@@ -51,10 +51,11 @@ sheets. Player access is intentionally disabled by the
 - Success grants the choice reward plus the scene's first-completion reward the
   first time that player succeeds. The complete roll and reward are written to
   the player's activity history and daily feed.
-- Authored success or failure effects are stored in `scene_effects` for later
-  combat consumption.
-- A failed choice marked `CombatOnFailure` becomes `COMBAT_PENDING`. Version 1
-  records the enemy, protagonist, targeting, and protagonist behavior but does
-  not start combat. Version 2 will add a true allied protagonist turn to the
-  combat engine; it must not be approximated as a hidden buff.
+- Scene successes use the existing XP and credit reward systems. Scene combat
+  does not introduce a parallel temporary buff or debuff vocabulary.
+- A failed choice marked `CombatOnFailure` becomes `COMBAT_PENDING` and starts
+  an isolated three-actor fight with a visible automated protagonist ally.
 - Administrators can inspect definitions and attempts at `/admin/scenes`.
+- The same page provides a consequence-free tester. It clones a selected
+  character inside a database savepoint, runs the real challenge and scene
+  combat functions, displays the complete report, and always rolls back.
