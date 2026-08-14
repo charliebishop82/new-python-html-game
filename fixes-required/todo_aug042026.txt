@@ -1,16 +1,45 @@
 fixes for game:
 
-when actions taken against a player, I was notified on the screen that combat was against me, but the npc stole an item, I dont believe I was notified of that, I should. Also the global log should say something like "player a stole from player b!" or something like that. Also, confirm that when an item is stolen, its removed from the target inventory.
+npc took an action and this happened:
 
-lets examine how NPCs do combat, when a player encoutners something of a much higher level, they have the option to back away - are we presenting the npc's with this choice? if not, they should always back away from any contact greater than 4 levels above them.
+127.0.0.1 - - [09/Aug/2026 22:51:52] "POST /admin/npcs/4/run HTTP/1.1" 302 -
+127.0.0.1 - - [09/Aug/2026 22:51:52] "GET /admin/npcs?feedback=NPC+turn:+BOSS+-+{'summary':+'Mr+Random+defeated+The+Thing.',+'note':+'Combat+completed',+'combat_id':+409,+'combat_type':+'BOSS',+'opponent':+'The+Thing',+'status':+'RESOLVED',+'result_type':+'1HP_WIN',+'winner':+'Mr+Random',+'loser':+'The+Thing',+'rounds':+4,+'damage_dealt':+139,+'damage_received':+11,+'npc_hp_after':+91,+'npc_ap_after':+15,+'xp_earned':+455,+'credits_won_or_stolen':+0,+'item_stolen_on_victory':+None,+'combat_steals':+[],+'drop_credits':+696,+'items_dropped':+[],+'feed_result':+'Mr+Random+has+defeated+The+Thing!'} HTTP/1.1" 200 -
+127.0.0.1 - - [09/Aug/2026 22:51:52] "GET /static/help.js HTTP/1.1" 304 -
+Action 'combat_action' FAILED for player 8 (queue_id=2815)
+Traceback (most recent call last):
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\queue_handler.py", line 129, in enqueue_and_process
+    result = ACTION_HANDLERS[action_type](player_id, payload)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\routes\combat.py", line 99, in handle_combat_action
+    raise ValueError("Combat session is not active.")
+ValueError: Combat session is not active.
+Manual NPC turn failed for 8
+Traceback (most recent call last):
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\queue_handler.py", line 129, in enqueue_and_process
+    result = ACTION_HANDLERS[action_type](player_id, payload)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\routes\combat.py", line 99, in handle_combat_action
+    raise ValueError("Combat session is not active.")
+ValueError: Combat session is not active.
 
-in the player log, I do see all the days log now, well the major events anyway, but I Dont see the individual turns of combat, if we are not storing that info , we should be, because I want to be able to scroll back and see how combat played out turn by turn.
+The above exception was the direct cause of the following exception:
 
-we need to examine how XP is awarded in combat, as some NPC level up very quickly, need to scale that better.
-
-on the left hand menu screen, there should always be a link to return to dashboard in the player options, maybe before logout? (in case we forget to include it on other menus)
-
-the shop should auto populate on game run if its empty.
-
-for discussion: some sort of group boss/weekly global boss all players can attack?
-
+Traceback (most recent call last):
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\admin.py", line 1331, in admin_npc_run
+    result = run_npc_turn(pid)
+             ^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 259, in run_npc_turn
+    interruption = _run_npc_minion_interruption(player, profile, settings)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 1278, in _run_npc_minion_interruption
+    combat = _finish_active_combat(player["id"], result["session_id"], profile)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 406, in _finish_active_combat
+    final = enqueue_and_process(
+            ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\queue_handler.py", line 164, in enqueue_and_process
+    raise RuntimeError(f"Action '{action_type}' failed: {exc}") from exc
+RuntimeError: Action 'combat_action' failed: Combat session is not active.
+127.0.0.1 - - [09/Aug/2026 22:52:03] "POST /admin/npcs/8/run HTTP/1.1" 302 -
+127.0.0.1 - - [09/Aug/2026 22:52:03] "GET /admin/npcs?error=Action+'combat_action'+failed:+Combat+session+is+not+active. HTTP/1.1" 200 -
+127.0.0.1 - - [09/Aug/2026 22:52:03] "GET /static/help.js HTTP/1.1" 304 -

@@ -384,6 +384,7 @@ def retire_npc(player_id: int):
                    inventory_item_id=NULL,last_released_method='NPC_RETIRED',updated_at=?
                    WHERE special_item_id=?""", (now, item["item_id"])
             )
+        execute_write("UPDATE players SET equipped_special_id=NULL WHERE id=?", (player_id,))
         execute_write("DELETE FROM inventory_items WHERE player_id=? AND item_type='SPECIAL'", (player_id,))
         execute_write("UPDATE npc_profiles SET enabled=0,retired=1 WHERE player_id=?", (player_id,))
         execute_write("UPDATE players SET in_combat=0,is_banned=1 WHERE id=?", (player_id,))

@@ -1131,6 +1131,7 @@ def admin_retire_player(pid: int):
                    inventory_item_id=NULL,last_released_method='PLAYER_RETIRED',updated_at=?
                    WHERE special_item_id=?""", (now, item["item_id"])
             )
+        execute_write("UPDATE players SET equipped_special_id=NULL WHERE id=?", (pid,))
         execute_write("DELETE FROM inventory_items WHERE player_id=? AND item_type='SPECIAL'", (pid,))
         execute_write(
             """UPDATE players SET retired_at=?,is_banned=1,in_combat=0,equipped_special_id=NULL
@@ -1432,13 +1433,13 @@ def admin_npc_remove(pid: int, inv_id: int):
                equipped_special_id=CASE WHEN equipped_special_id=? THEN NULL ELSE equipped_special_id END WHERE id=?""",
             (inv_id, inv_id, inv_id, pid)
         )
-        execute_write("DELETE FROM inventory_items WHERE id=?", (inv_id,))
         if item["item_type"] == "SPECIAL":
             execute_write(
                 """UPDATE special_item_registry SET status='IN_POOL',current_owner_player_id=NULL,
                    inventory_item_id=NULL,last_released_method='ADMIN_REMOVED',updated_at=? WHERE special_item_id=?""",
                 (datetime.utcnow().isoformat(), item["item_id"])
             )
+        execute_write("DELETE FROM inventory_items WHERE id=?", (inv_id,))
         _audit("REMOVE_ITEM", "PLAYER", pid, details={"inventory_id": inv_id})
     return redirect(url_for("admin_npcs", feedback="Inventory item removed."))
 

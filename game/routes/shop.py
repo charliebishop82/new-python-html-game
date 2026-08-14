@@ -328,6 +328,17 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
     _unused_xp, net_sell_price = contribute_earnings(player_id, 0, sell_price, "SHOP_SALE")
 
     with exclusive_transaction():
+        # Release the unique-item registry foreign key before deleting its
+        # inventory copy. SQLite rejects the inverse ordering.
+        if inv["item_type"] == "SPECIAL":
+            execute_write(
+                """UPDATE special_item_registry
+                   SET status = 'IN_SHOP', current_owner_player_id = NULL,
+                       inventory_item_id = NULL, shop_listing_price = ?,
+                       last_released_method = 'SOLD', updated_at = ?
+                   WHERE special_item_id = ?""",
+                (sell_price, datetime.utcnow().isoformat(), inv["item_id"])
+            )
         # Delete from inventory
         execute_write("DELETE FROM inventory_items WHERE id = ?", (inv_id,))
         # Credit player
@@ -352,17 +363,6 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
             (player_id, inv["item_type"], inv["item_id"],
              detail["name"], sell_price)
         )
-        # If special item: update registry to IN_SHOP
-        if inv["item_type"] == "SPECIAL":
-            execute_write(
-                """UPDATE special_item_registry
-                   SET status = 'IN_SHOP', current_owner_player_id = NULL,
-                       inventory_item_id = NULL, shop_listing_price = ?,
-                       last_released_method = 'SOLD', updated_at = ?
-                   WHERE special_item_id = ?""",
-                (sell_price, datetime.utcnow().isoformat(), inv["item_id"])
-            )
-
     logger.info("Player %d sold item %s/%d for %d credits",
                 player_id, inv["item_type"], inv["item_id"], sell_price)
     return {"success": True, "sell_price": sell_price, "ap_spent": 0}

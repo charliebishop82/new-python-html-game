@@ -486,14 +486,7 @@ def handle_drop_item(player_id: int, payload: dict) -> dict:
     item_name = detail["name"] if detail else "Unknown Item"
 
     with exclusive_transaction():
-        execute_write("DELETE FROM inventory_items WHERE id = ?", (inv_id,))
-        execute_write(
-            """INSERT INTO item_history
-               (player_id, item_type, item_id, item_name, event_type)
-               VALUES (?, ?, ?, ?, 'DROPPED')""",
-            (player_id, inv["item_type"], inv["item_id"], item_name)
-        )
-        # If special: return to pool
+        # Release the unique-item registry's inventory foreign key first.
         if inv["item_type"] == "SPECIAL":
             execute_write(
                 """UPDATE special_item_registry
@@ -503,6 +496,15 @@ def handle_drop_item(player_id: int, payload: dict) -> dict:
                    WHERE special_item_id = ?""",
                 (datetime.utcnow().isoformat(), inv["item_id"])
             )
+        execute_write("DELETE FROM inventory_items WHERE id = ?", (inv_id,))
+        execute_write(
+            """INSERT INTO item_history
+               (player_id, item_type, item_id, item_name, event_type)
+               VALUES (?, ?, ?, ?, 'DROPPED')""",
+            (player_id, inv["item_type"], inv["item_id"], item_name)
+        )
+        # If special: announce that it returned to the pool.
+        if inv["item_type"] == "SPECIAL":
             # Global feed: special item returned to pool
             execute_write(
                 """INSERT INTO daily_feed
