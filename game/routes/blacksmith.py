@@ -9,7 +9,8 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, redirect, url_for, session, g
 from database import (execute, execute_one, execute_write,
-                      exclusive_transaction, get_all_settings, get_player)
+                      exclusive_transaction, get_all_settings, get_player,
+                      encumbered_ap_cost)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 import config_defaults as cfg
@@ -127,7 +128,8 @@ def handle_blacksmith_repair(player_id: int, payload: dict) -> dict:
     cost_pct    = settings.get("REPAIR_COST_PERCENT",    cfg.REPAIR_COST_PERCENT)
     ap_cost     = settings.get("AP_COST_BLACKSMITH",     cfg.AP_COST_BLACKSMITH)
 
-    player  = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
+    player  = get_player(player_id)
+    ap_cost = encumbered_ap_cost(player, ap_cost, settings)
     if player["credits"] == 0:
         raise ValueError("You have no credits.")
     if player["current_ap"] < ap_cost:

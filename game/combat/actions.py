@@ -12,7 +12,8 @@ from datetime import datetime
 
 from database import (execute, execute_one, execute_write, get_player,
                       exclusive_transaction, get_all_settings,
-                      get_player_bonus_profile, get_player_perk_bonuses)
+                      get_player_bonus_profile, get_player_perk_bonuses,
+                      encumbered_ap_cost)
 from combat import engine
 from combat import flavour
 import config_defaults as cfg
@@ -259,7 +260,8 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
         boss=creature_defender,
         brace_dodge_bonus=0,
         active_buffs=def_buffs,
-        is_player_attacker=is_attacker,
+        is_player_attacker=(is_attacker or session["combat_type"] == "PVP"),
+        is_player_defender=(creature_defender is None),
     )
 
     # Extra attack (special item)
@@ -275,7 +277,8 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
             boss=creature_defender,
             brace_dodge_bonus=0,
             active_buffs=def_buffs,
-            is_player_attacker=is_attacker,
+            is_player_attacker=(is_attacker or session["combat_type"] == "PVP"),
+            is_player_defender=(creature_defender is None),
         )
 
     # --- Write to DB ---
@@ -750,6 +753,7 @@ def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
     attacker = state["attacker"]
     settings = get_all_settings()
     ap_cost  = settings.get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE)
+    ap_cost  = encumbered_ap_cost(attacker, ap_cost, settings)
     cr_drop  = settings.get("ESCAPE_CREDIT_DROP_CHANCE", cfg.ESCAPE_CREDIT_DROP_CHANCE)
 
     if attacker["current_ap"] < ap_cost:
@@ -1040,6 +1044,7 @@ def _minion_action(session_id: int, state: dict) -> dict:
         brace_dodge_bonus=0,
         active_buffs=player_buffs,
         is_player_attacker=False,
+        is_player_defender=True,
     )
     result = _apply_enemy_damage_scale(result)
 
@@ -2124,6 +2129,7 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
         brace_dodge_bonus=0,
         active_buffs=att_buffs,
         is_player_attacker=False,
+        is_player_defender=True,
     )
     result = _apply_enemy_damage_scale(result)
 

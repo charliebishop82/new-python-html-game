@@ -37,6 +37,21 @@ def close_db(e=None):
         db.close()
 
 
+def encumbered_ap_cost(player: dict, base_cost: int, settings: dict | None = None) -> int:
+    """Return an action's AP cost after the shared encumbrance penalty."""
+    if not player or int(base_cost or 0) <= 0:
+        return int(base_cost or 0)
+    if "is_overencumbered" not in player:
+        player = get_player(player["id"])
+    if not player or not player.get("is_overencumbered"):
+        return int(base_cost)
+    settings = settings or get_all_settings()
+    multiplier = max(1, int(settings.get(
+        "OVERENCUMBERED_AP_MULTIPLIER", cfg.OVERENCUMBERED_AP_MULTIPLIER
+    )))
+    return int(base_cost) * multiplier
+
+
 def dict_factory(cursor: sqlite3.Cursor, row: tuple) -> dict:
     """sqlite3 row_factory: rows as dicts keyed by column name."""
     return {col[0]: val for col, val in zip(cursor.description, row)}
@@ -312,6 +327,23 @@ def reconcile_combat_state(player_id: int | None = None) -> dict:
             valid_ids.append(combat["id"])
             claimed_players.update(participants)
 
+    # This runs before every authenticated request, including frequent feed
+    # polls. Avoid an exclusive SQLite lock just to rewrite a correct flag;
+    # long NPC turns may legitimately hold the single writer lock.
+    flag_needs_update = True
+    if player_id is not None:
+        flag_row = execute_one(
+            "SELECT in_combat,in_scene_combat FROM players WHERE id=?", (player_id,)
+        )
+        desired_flag = bool(
+            flag_row and (flag_row.get("in_scene_combat") or player_id in claimed_players)
+        )
+        flag_needs_update = bool(
+            flag_row and bool(flag_row.get("in_combat")) != desired_flag
+        )
+        if not abandoned and not flag_needs_update:
+            return {"valid_active": len(valid_ids), "abandoned": 0}
+
     now = datetime.utcnow().isoformat()
     with exclusive_transaction():
         for combat, reason in abandoned:
@@ -347,7 +379,7 @@ def reconcile_combat_state(player_id: int | None = None) -> dict:
                        AND (cs.attacker_player_id=players.id OR cs.defender_player_id=players.id)
                    ) THEN 1 ELSE 0 END"""
             )
-        else:
+        elif flag_needs_update:
             execute_write(
                 """UPDATE players SET in_combat=CASE WHEN in_scene_combat=1 OR EXISTS(
                        SELECT 1 FROM combat_sessions cs WHERE cs.status='ACTIVE'

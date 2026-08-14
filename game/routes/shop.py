@@ -10,7 +10,8 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings,
-                      get_player_bonus_profile, get_player_equipped, get_player)
+                      get_player_bonus_profile, get_player_equipped, get_player,
+                      encumbered_ap_cost)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -50,11 +51,12 @@ def handle_shop_enter(player_id: int, payload: dict) -> dict:
     """Spend the configured Shop AP once; purchases and sales are then free."""
     settings = get_all_settings()
     ap_cost = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
-    player = execute_one("SELECT current_ap,in_combat FROM players WHERE id=?", (player_id,))
+    player = get_player(player_id)
     if not player:
         raise ValueError("Player not found.")
     if player["in_combat"]:
         raise ValueError("The shop is unavailable during combat.")
+    ap_cost = encumbered_ap_cost(player, ap_cost, settings)
     if player["current_ap"] < ap_cost:
         raise ValueError(f"Not enough AP. Need {ap_cost}.")
     with exclusive_transaction():

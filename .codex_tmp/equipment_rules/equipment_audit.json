@@ -1,0 +1,101 @@
+{
+  "counts": {
+    "weapon": 82,
+    "armor": 82,
+    "special": 82
+  },
+  "violations": [],
+  "warnings": [],
+  "loadouts": [
+    {
+      "character": "Mini Mouse",
+      "level": 13,
+      "ac_without_perks": 23,
+      "effective_agi_without_perks": 10,
+      "weapon": "Titanstone Reaper",
+      "armor": "Dormammu's Mantle",
+      "special": "HAL 9000 Logic Core"
+    },
+    {
+      "character": "Charlie the Magnificent",
+      "level": 11,
+      "ac_without_perks": 21,
+      "effective_agi_without_perks": 12,
+      "weapon": "Cohaagen's Sidearm",
+      "armor": "HAL Composite Exosuit",
+      "special": "Evenstar Pendant"
+    },
+    {
+      "character": "Mr Wonderful",
+      "level": 11,
+      "ac_without_perks": 20,
+      "effective_agi_without_perks": 12,
+      "weapon": "Emperor's Gladius",
+      "armor": "Biomass Carapace",
+      "special": "Horus Cartouche"
+    },
+    {
+      "character": "Boss Hunter",
+      "level": 12,
+      "ac_without_perks": 18,
+      "effective_agi_without_perks": 9,
+      "weapon": "Tigris's War Sword",
+      "armor": "Sith Armor",
+      "special": "Quickening Shard"
+    },
+    {
+      "character": "Mr Random",
+      "level": 13,
+      "ac_without_perks": 18,
+      "effective_agi_without_perks": 8,
+      "weapon": "Sauron's Mace",
+      "armor": "Biomass Carapace",
+      "special": "Thing Imitation Sample"
+    },
+    {
+      "character": "CatWoman",
+      "level": 8,
+      "ac_without_perks": 17,
+      "effective_agi_without_perks": 7,
+      "weapon": "Mimetic Poly-Alloy Blade",
+      "armor": "Imperial Plate",
+      "special": "Black Knight's Oath"
+    },
+    {
+      "character": "Mr Glory",
+      "level": 11,
+      "ac_without_perks": 17,
+      "effective_agi_without_perks": 9,
+      "weapon": "Tigris's War Sword",
+      "armor": "Deadite Bone Armor",
+      "special": "Imperial Rank Badge"
+    },
+    {
+      "character": "Mr Nippy",
+      "level": 7,
+      "ac_without_perks": 16,
+      "effective_agi_without_perks": 7,
+      "weapon": "Emperor's Gladius",
+      "armor": "Chitinous Exoskeleton",
+      "special": "CPU Core Fragment"
+    },
+    {
+      "character": "Donald Duck",
+      "level": 5,
+      "ac_without_perks": 14,
+      "effective_agi_without_perks": 7,
+      "weapon": "Sardaukar Blade",
+      "armor": "Valeris's Starfleet Uniform",
+      "special": null
+    },
+    {
+      "character": "Mr Big",
+      "level": 4,
+      "ac_without_perks": 14,
+      "effective_agi_without_perks": 7,
+      "weapon": "Feyd's Poison Blade",
+      "armor": "Death Queen's Robes",
+      "special": null
+    }
+  ]
+}

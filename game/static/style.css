@@ -623,6 +623,7 @@ body.auth-page #main {
     display: inline-block;
     margin-bottom: 16px;
 }
+.main-actions-return{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:12px;padding:9px 14px;margin:0 0 12px;border:1px solid var(--blue);background:color-mix(in srgb,var(--bg) 94%,var(--blue));box-shadow:0 4px 12px color-mix(in srgb,var(--bg) 70%,transparent)}.main-actions-return a{color:var(--blue);font-weight:bold;text-decoration:none;letter-spacing:.06em}.main-actions-return a:hover,.main-actions-return a:focus{text-decoration:underline}.main-actions-return span{color:var(--grey);font-size:11px}@media(max-width:650px){.main-actions-return{align-items:flex-start;flex-direction:column;gap:3px}}
 
 table {
     width: 100%;
@@ -821,6 +822,7 @@ tr:nth-child(even) td { background: #0d0d0d; }
 .intel-card h2,.intel-card h3 { margin:.1rem 0 .65rem; color:var(--accent, #ffb000); }
 .intel-facts { display:flex; gap:.55rem; flex-wrap:wrap; }
 .intel-facts span,.reputation-strip span { border:1px solid var(--border, #444); padding:.35rem .55rem; }
+.player-directory{border:1px solid var(--border);background:var(--bg-panel);margin-bottom:1.6rem}.player-directory-head,.player-directory-row{display:grid;grid-template-columns:70px minmax(190px,1.7fr) 80px minmax(140px,1fr) 120px 120px;align-items:center;gap:12px;padding:11px 14px}.player-directory-head{color:var(--grey);font-size:10px;text-transform:uppercase;letter-spacing:.08em;border-bottom:1px solid var(--border)}.player-directory-row{min-height:58px;border-bottom:1px solid var(--border)}.player-directory-row:last-child{border-bottom:0}.player-directory-row:hover{background:color-mix(in srgb,var(--blue) 7%,transparent)}.player-directory-row.is-current-player{box-shadow:inset 3px 0 var(--blue);background:color-mix(in srgb,var(--blue) 5%,transparent)}.player-directory-row h2{font-size:16px;margin:0;color:var(--amber)}.player-directory-row h2 small{display:inline-block;color:var(--blue);font-size:9px;text-transform:uppercase;border:1px solid var(--blue);padding:2px 4px;margin-left:5px;vertical-align:middle}.directory-rank{font-size:18px;color:var(--blue)}.player-directory-row span{line-height:1.35}.player-directory-row span b{color:var(--amber);font-size:17px}@media(max-width:850px){.player-directory-head{display:none}.player-directory-row{grid-template-columns:54px 1fr 1fr;gap:8px 12px}.player-directory-row h2{grid-column:2/4}.player-directory-row span::before{content:attr(data-label) ': ';color:var(--grey);font-size:9px;text-transform:uppercase}.directory-rank{grid-row:1/3}.player-directory-row span{font-size:12px}}
 .contract-card { max-width:720px; border-color:var(--accent, #ffb000); }
 .contract-status { float:right; letter-spacing:.12em; color:var(--accent, #ffb000); }
 .contract-progress { height:14px; border:1px solid var(--border, #555); margin:1rem 0 .35rem; }

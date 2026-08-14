@@ -19,9 +19,11 @@ def players():
                ELSE 'Away' END activity
           FROM players p LEFT JOIN player_stats ps ON ps.player_id=p.id
           WHERE p.is_banned=0 AND p.retired_at IS NULL
-          ORDER BY p.level DESC,p.character_name"""
+          ORDER BY p.level DESC,COALESCE(ps.pvp_kills,0) DESC,p.character_name COLLATE NOCASE"""
     )
-    for row in rows:
+    for rank, row in enumerate(rows, 1):
+        row["rank"] = rank
+        row["is_current_player"] = row["id"] == g.player["id"]
         row["reputation"] = reputation_profile(row["id"])["primary"]
     return render_template("community/players.html", players=rows)
 

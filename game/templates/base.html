@@ -180,6 +180,12 @@
 <!-- MAIN CONTENT AREA                                             -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <div id="main">
+    {% if player and request.endpoint != 'dashboard.index' %}
+    <nav class="main-actions-return" aria-label="Return to game actions">
+        <a href="{{ url_for('dashboard.index') }}">← MAIN ACTIONS</a>
+        <span>Return to the dashboard and action menu</span>
+    </nav>
+    {% endif %}
     {% block content %}{% endblock %}
 </div>
 

@@ -73,6 +73,36 @@ def activate_next_event(now=None, forced_boss_id=None):
     return get_active_event()
 
 
+def activate_missed_successor(now=None):
+    """Catch up a successor whose required midnight passed while offline.
+
+    Normal rotation remains the midnight scheduler's responsibility. Startup
+    calls this narrowly scoped recovery so a completed reward workflow cannot
+    leave the game without a world boss indefinitely after a server outage.
+    """
+    now = now or _utcnow()
+    if get_active_event() or execute_one(
+        "SELECT 1 FROM world_boss_events WHERE status='REWARDS_PENDING' LIMIT 1"
+    ):
+        return None
+    latest = execute_one(
+        """SELECT status,rewards_completed_at FROM world_boss_events
+           ORDER BY id DESC LIMIT 1"""
+    )
+    if not latest:
+        return activate_next_event(now)
+    completed_at = latest.get("rewards_completed_at")
+    if latest.get("status") != "COMPLETED" or not completed_at:
+        return None
+    completed = datetime.fromisoformat(completed_at)
+    required_midnight = (completed + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    if now < required_midnight:
+        return None
+    return activate_next_event(now)
+
+
 def rescale_active_event(multiplier):
     """Adjust an active pool while preserving every point of damage already dealt."""
     multiplier = float(multiplier)

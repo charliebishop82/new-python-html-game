@@ -131,8 +131,16 @@ def calc_attack_roll(attacker: dict, weapon: dict) -> tuple[int, int, bool]:
     return total, raw_d20, modifier
 
 
-def hits_ac(attack_total: int, target_ac: int) -> bool:
-    """Handle the hits ac workflow."""
+def hits_ac(attack_total: int, target_ac: int, raw_d20: int | None = None) -> bool:
+    """Resolve an attack against AC with universal natural-roll rules.
+
+    A natural 20 always hits and a natural 1 always misses for players, NPCs,
+    bosses, minions, and world bosses alike.
+    """
+    if raw_d20 == 20:
+        return True
+    if raw_d20 == 1:
+        return False
     return attack_total >= target_ac
 
 
@@ -251,7 +259,8 @@ def resolve_full_attack(attacker: dict, defender: dict,
                         boss: dict | None = None,
                         brace_dodge_bonus: int = 0,
                         active_buffs: list | None = None,
-                        is_player_attacker: bool = True) -> dict:
+                        is_player_attacker: bool = True,
+                        is_player_defender: bool = False) -> dict:
     """Run the full attack sequence for one attack action.
     Returns a result dict with all details for combat log rendering.
 
@@ -287,6 +296,10 @@ def resolve_full_attack(attacker: dict, defender: dict,
     attack_total, raw_d20, attack_mod = calc_attack_roll(attacker, attacker_weapon)
     attack_total += attack_bonus
     defender_ac   = calc_ac(defender, defender_armor)
+    if is_player_defender and defender.get("is_overencumbered"):
+        defender_ac -= settings.get(
+            "OVERENCUMBERED_AC_PENALTY", cfg.OVERENCUMBERED_AC_PENALTY
+        )
     if active_buffs:
         defender_ac += sum(
             int(buff.get("value", 0)) for buff in active_buffs
@@ -310,7 +323,7 @@ def resolve_full_attack(attacker: dict, defender: dict,
                 swap_penalty = int(buff.get("value", 0))
     attack_total -= swap_penalty
 
-    hit = hits_ac(attack_total, defender_ac)
+    hit = hits_ac(attack_total, defender_ac, raw_d20)
     attack_detail = (f"Attack: d20({raw_d20})+{attack_mod}"
                      f"{'−'+str(swap_penalty) if swap_penalty else ''}"
                      f"={attack_total} vs AC {defender_ac} → {'HIT' if hit else 'MISS'}")

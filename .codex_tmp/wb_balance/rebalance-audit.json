@@ -1,0 +1,1832 @@
+[
+  {
+    "sheet": "Weapons",
+    "item": "Palpatine's Lightsaber",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 90,
+        "after": 12
+      },
+      {
+        "column": "STR",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 6,
+        "after": 1
+      },
+      {
+        "column": "AGI",
+        "before": 15,
+        "after": 3
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 12,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "Dark Dimension Blade",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 110,
+        "after": 14
+      },
+      {
+        "column": "STR",
+        "before": 14,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 15,
+        "after": 3
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "Sauron's Mace",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 100,
+        "after": 13
+      },
+      {
+        "column": "STR",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 15,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 6,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 10,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "Dragonclaw Dagger",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 90,
+        "after": 12
+      },
+      {
+        "column": "STR",
+        "before": 15,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 10,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "HAL Circuit Blade",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 85,
+        "after": 12
+      },
+      {
+        "column": "STR",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "END",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 14,
+        "after": 3
+      },
+      {
+        "column": "PER",
+        "before": 16,
+        "after": 3
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "Titanstone Reaper",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 115,
+        "after": 15
+      },
+      {
+        "column": "STR",
+        "before": 20,
+        "after": 4
+      },
+      {
+        "column": "END",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 4,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 6,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 10,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "Gozerian Maul",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 80,
+        "after": 11
+      },
+      {
+        "column": "STR",
+        "before": 16,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 15,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 5,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 7,
+        "after": 1
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "Megatron's Fusion Cannon",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 100,
+        "after": 13
+      },
+      {
+        "column": "STR",
+        "before": 14,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 14,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 16,
+        "after": 3
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "Maker's Crysknife",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 95,
+        "after": 13
+      },
+      {
+        "column": "STR",
+        "before": 14,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 13,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 9,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 14,
+        "after": 3
+      }
+    ]
+  },
+  {
+    "sheet": "Weapons",
+    "item": "Atomic Dorsal Blade",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 120,
+        "after": 15
+      },
+      {
+        "column": "STR",
+        "before": 20,
+        "after": 4
+      },
+      {
+        "column": "END",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 12,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Palpatine's Imperial Robes",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 90,
+        "after": 12
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 12,
+        "after": 5
+      },
+      {
+        "column": "STR",
+        "before": 4,
+        "after": 1
+      },
+      {
+        "column": "END",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 15,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Dormammu's Mantle",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 110,
+        "after": 14
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 15,
+        "after": 5
+      },
+      {
+        "column": "STR",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 16,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 6,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 14,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Sauron's Armor",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 100,
+        "after": 13
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 16,
+        "after": 6
+      },
+      {
+        "column": "STR",
+        "before": 15,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 4,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 6,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 10,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Smaugscale Armor",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 90,
+        "after": 12
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 15,
+        "after": 5
+      },
+      {
+        "column": "STR",
+        "before": 14,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 17,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 7,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 9,
+        "after": 1
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "HAL Composite Exosuit",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 85,
+        "after": 12
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 13,
+        "after": 5
+      },
+      {
+        "column": "STR",
+        "before": 7,
+        "after": 1
+      },
+      {
+        "column": "END",
+        "before": 14,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 9,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 16,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Kronos's Molten Carapace",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 115,
+        "after": 15
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 18,
+        "after": 6
+      },
+      {
+        "column": "STR",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 20,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 3,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 6,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 10,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Stay Puft Sailor Regalia",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 80,
+        "after": 11
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 14,
+        "after": 5
+      },
+      {
+        "column": "STR",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 5,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 8,
+        "after": 1
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Decepticon Command Armor",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 100,
+        "after": 13
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 17,
+        "after": 6
+      },
+      {
+        "column": "STR",
+        "before": 17,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 7,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 13,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Maker Hide Stillsuit",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 95,
+        "after": 13
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 16,
+        "after": 6
+      },
+      {
+        "column": "STR",
+        "before": 15,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 17,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 9,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 14,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "Armor",
+    "item": "Titan Scale Armor",
+    "changes": [
+      {
+        "column": "Level",
+        "before": 120,
+        "after": 15
+      },
+      {
+        "column": "AC_Bonus",
+        "before": 19,
+        "after": 7
+      },
+      {
+        "column": "STR",
+        "before": 20,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 20,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 5,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 7,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 11,
+        "after": 2
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "Sith Wayfinder",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 6,
+        "after": 1
+      },
+      {
+        "column": "END",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "AGI",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 15,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 10,
+        "after": 3
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.75,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 8,
+        "after": 2
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 10,
+        "after": 5
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 5,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.3,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.3,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.25,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.3,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "Shard of the Dark Dimension",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 15,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 16,
+        "after": 2
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 8,
+        "after": 2
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.12,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.6,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 10,
+        "after": 3
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 12,
+        "after": 6
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.35,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.35,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 5,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.35,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.35,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.2,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.25,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "The One Ring",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 14,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 14,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 16,
+        "after": 2
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 9,
+        "after": 2
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.75,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 10,
+        "after": 3
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 12,
+        "after": 6
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.45,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.45,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.2,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 6,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.25,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.3,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.2,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.3,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.25,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "Heart of Smaug",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 15,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 16,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 9,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 7,
+        "after": 2
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.5,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 9,
+        "after": 2
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 12,
+        "after": 6
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.35,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 5,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.4,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.35,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.2,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.2,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "HAL 9000 Logic Core",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 5,
+        "after": 1
+      },
+      {
+        "column": "END",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 16,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 20,
+        "after": 3
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 12,
+        "after": 3
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.18,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.65,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 10,
+        "after": 3
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 10,
+        "after": 5
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.5,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.25,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 6,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.3,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.2,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.3,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.35,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "Ember of Tartarus",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 16,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 5,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "PER",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 6,
+        "after": 2
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.5,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 12,
+        "after": 3
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 14,
+        "after": 7
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 5,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.35,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.2,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.25,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "Gozerian Destructor Sigil",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 16,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 7,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 14,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 8,
+        "after": 2
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.12,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.6,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 8,
+        "after": 2
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 10,
+        "after": 5
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.35,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.45,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 5,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.4,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.3,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.25,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.25,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "AllSpark Fragment",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 14,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 15,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 16,
+        "after": 2
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 10,
+        "after": 3
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.7,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 10,
+        "after": 3
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 14,
+        "after": 7
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 6,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.3,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.35,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.25,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.3,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "Water of Life",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "END",
+        "before": 14,
+        "after": 2
+      },
+      {
+        "column": "AGI",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "LCK",
+        "before": 12,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 9,
+        "after": 2
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.12,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.6,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 9,
+        "after": 2
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 12,
+        "after": 6
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.45,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.35,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.2,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 5,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.4,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.3,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.25,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.35,
+        "after": 0.1
+      }
+    ]
+  },
+  {
+    "sheet": "SpecialItems",
+    "item": "G-Cell Reactor",
+    "changes": [
+      {
+        "column": "STR",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "END",
+        "before": 18,
+        "after": 3
+      },
+      {
+        "column": "AGI",
+        "before": 8,
+        "after": 1
+      },
+      {
+        "column": "LCK",
+        "before": 10,
+        "after": 2
+      },
+      {
+        "column": "PER",
+        "before": 14,
+        "after": 2
+      },
+      {
+        "column": "InitiativeBonus",
+        "before": 8,
+        "after": 2
+      },
+      {
+        "column": "ExtraAttack",
+        "before": true,
+        "after": false
+      },
+      {
+        "column": "CritChanceBonus",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "CritDmgMultiplier",
+        "before": 0.75,
+        "after": 0.25
+      },
+      {
+        "column": "ACBonus",
+        "before": 12,
+        "after": 3
+      },
+      {
+        "column": "BonusDamageAmount",
+        "before": 16,
+        "after": 7
+      },
+      {
+        "column": "XPMultiplier",
+        "before": 0.45,
+        "after": 0.1
+      },
+      {
+        "column": "CreditMultiplier",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "StealBonus",
+        "before": 0.15,
+        "after": 0.05
+      },
+      {
+        "column": "BonusAP",
+        "before": 6,
+        "after": 2
+      },
+      {
+        "column": "HPRegenBonus",
+        "before": 0.45,
+        "after": 1
+      },
+      {
+        "column": "DurabilityReduction",
+        "before": 0.4,
+        "after": 0.1
+      },
+      {
+        "column": "ShopDiscount",
+        "before": 0.1,
+        "after": 0.05
+      },
+      {
+        "column": "SellBonus",
+        "before": 0.2,
+        "after": 0.1
+      },
+      {
+        "column": "EncounterBonus",
+        "before": 0.3,
+        "after": 0.1
+      }
+    ]
+  }
+]

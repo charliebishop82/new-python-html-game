@@ -3,7 +3,7 @@
 from flask import Blueprint, render_template, jsonify, g, request, redirect, url_for, session
 
 from database import (execute, execute_one, execute_write, exclusive_transaction,
-                      get_all_settings, get_player)
+                      get_all_settings, get_player, encumbered_ap_cost)
 from queue_handler import enqueue_and_process, register_handler
 from routes.actions import _deduct_ap_and_regen
 import config_defaults as cfg
@@ -36,6 +36,7 @@ def index():
     logs = _logs(event["id"], 0) if event else []
     settings = get_all_settings()
     cost = int(settings.get("AP_COST_WORLD_BOSS", cfg.AP_COST_WORLD_BOSS))
+    cost = encumbered_ap_cost(g.player, cost, settings)
     reward_blocked = bool(reward_event and execute_one(
         """SELECT 1 FROM world_boss_rewards WHERE event_id=? AND place<?
            AND status!='AWARDED' LIMIT 1""", (reward_event["id"], reward_event["place"])
@@ -136,12 +137,13 @@ def handle_start_world_boss_fight(player_id, payload):
                         (payload["event_id"],))
     settings = get_all_settings()
     cost = int(settings.get("AP_COST_WORLD_BOSS", cfg.AP_COST_WORLD_BOSS))
+    effective_cost = encumbered_ap_cost(player, cost, settings)
     if not event:
         return {"error": "That world-boss event has ended."}
     if player["in_combat"]:
         return {"error": "You are already in combat."}
-    if player["current_ap"] < cost:
-        return {"error": f"Not enough AP (need {cost})."}
+    if player["current_ap"] < effective_cost:
+        return {"error": f"Not enough AP (need {effective_cost})."}
     with exclusive_transaction():
         _, new_hp = _deduct_ap_and_regen(player_id, player, cost, settings)
         execute_write("UPDATE players SET in_combat=1 WHERE id=?", (player_id,))

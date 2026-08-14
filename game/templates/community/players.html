@@ -1,7 +1,13 @@
 {% extends "base.html" %}{% block title %}Player Directory{% endblock %}
 {% block content %}<section class="intel-page"><h1>Player Directory</h1>
 <p class="page-deck">Public signals only. Equipment, wealth, health, exact attributes, and player type remain private.</p>
-<div class="intel-grid">{% for p in players %}<article class="intel-card">
-<h2>{{ p.character_name }}</h2><div class="intel-facts"><span>Level <b>{{ p.level }}</b></span>
-<span>Reputation <b>{{ p.reputation }}</b></span><span>PvP victories <b>{{ p.pvp_wins }}</b></span>
-<span class="activity-{{ p.activity|lower|replace(' ','-') }}">{{ p.activity }}</span></div></article>{% else %}<p>No active characters.</p>{% endfor %}</div></section>{% endblock %}
+<div class="player-directory" role="table" aria-label="Players ranked by level">
+<div class="player-directory-head" role="row"><span>Rank</span><span>Player</span><span>Level</span><span>Reputation</span><span>PvP victories</span><span>Activity</span></div>
+{% for p in players %}<article class="player-directory-row{% if p.is_current_player %} is-current-player{% endif %}" role="row">
+<strong class="directory-rank" aria-label="Rank {{ p.rank }}">#{{ p.rank }}</strong>
+<h2>{{ p.character_name }}{% if p.is_current_player %} <small>You</small>{% endif %}</h2>
+<span data-label="Level"><b>{{ p.level }}</b></span>
+<span data-label="Reputation">{{ p.reputation }}</span>
+<span data-label="PvP victories">{{ p.pvp_wins }}</span>
+<span data-label="Activity" class="activity-{{ p.activity|lower|replace(' ','-') }}">{{ p.activity }}</span>
+</article>{% else %}<p>No active characters.</p>{% endfor %}</div></section>{% endblock %}

@@ -11,7 +11,8 @@ from datetime import datetime, timedelta
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player, get_player_equipped,
-                      get_player_bonus_profile, reconcile_combat_state)
+                      get_player_bonus_profile, reconcile_combat_state,
+                      encumbered_ap_cost)
 from queue_handler import enqueue_and_process, register_handler
 
 logger = logging.getLogger(__name__)
@@ -167,6 +168,14 @@ def run_npc_turn(player_id: int) -> dict:
     player = get_player(player_id)
     settings = get_all_settings()
 
+    # Clear encumbrance before maintenance or another encounter. Otherwise an
+    # NPC can keep fighting under penalties and accumulate still more loot.
+    if player.get("is_overencumbered"):
+        shop_result = _maybe_manage_inventory(player, profile, settings)
+        if shop_result:
+            return _finish_turn(profile, "SHOP", "Encumbered; inventory cleanup took priority",
+                                shop_result[1])
+
     # NPCs live under the same rules as human players, including random
     # events. An event modifies the turn but does not replace the chosen action.
     from routes.actions import check_random_event
@@ -190,8 +199,8 @@ def run_npc_turn(player_id: int) -> dict:
     pvp_cost = settings.get("AP_COST_PVP", cfg.AP_COST_PVP)
     boss_cost = settings.get("AP_COST_BOSS", cfg.AP_COST_BOSS)
     world_cost = settings.get("AP_COST_WORLD_BOSS", cfg.AP_COST_WORLD_BOSS)
-    can_pvp = player["current_ap"] >= pvp_cost
-    can_boss = player["current_ap"] >= boss_cost
+    can_pvp = player["current_ap"] >= encumbered_ap_cost(player, pvp_cost, settings)
+    can_boss = player["current_ap"] >= encumbered_ap_cost(player, boss_cost, settings)
     pvp_targets = _eligible_pvp_targets(player) if can_pvp else []
     # Every archetype occasionally joins the shared event. Boss killers lead;
     # thieves use it for growth, hoarders value its unique prize, and hunters
@@ -215,7 +224,9 @@ def run_npc_turn(player_id: int) -> dict:
     # crossover chance for compatibility with profiles created before this trait.
     world_chance = min(85, 5 + profile["world_boss_hunter"] * .70
                        + profile["boss_killer"] * .10)
-    if world_event and player["current_ap"] >= world_cost and random.random() * 100 < world_chance:
+    if (world_event and
+            player["current_ap"] >= encumbered_ap_cost(player, world_cost, settings) and
+            random.random() * 100 < world_chance):
         interruption = _run_npc_minion_interruption(player, profile, settings)
         if interruption and not interruption["survived"]:
             return _finish_turn(profile, "MINION", "Minion interrupted the weekly fight",
@@ -424,7 +435,8 @@ def _finish_active_combat(player_id: int, session_id: int | None = None,
     player = get_player(player_id)
     settings = get_all_settings()
     escape_cost = settings.get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE)
-    if session_row and session_row["status"] == "ACTIVE" and player and player["current_ap"] >= escape_cost:
+    if (session_row and session_row["status"] == "ACTIVE" and player and
+            player["current_ap"] >= encumbered_ap_cost(player, escape_cost, settings)):
         escaped = enqueue_and_process(
             player_id, "combat_action", {"session_id": session_id, "action_type": "escape"}
         )
@@ -589,7 +601,8 @@ def _finish_thief_combat(player_id: int, session_id: int | None = None) -> dict 
             # queue entry. The active fight can resume after AP is restored.
             player = get_player(player_id)
             escape_cost = get_all_settings().get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE)
-            if not player or player["current_ap"] < escape_cost:
+            if (not player or player["current_ap"] <
+                    encumbered_ap_cost(player, escape_cost, get_all_settings())):
                 # An NPC may not pause safely inside combat. Attack is the same
                 # zero-AP fallback available to a human, so fight toward a
                 # normal victory/defeat/round-limit resolution until Escape
@@ -774,7 +787,8 @@ def _maybe_repair(player: dict, profile: dict):
     unique special by unequipping it when no repair can be funded.
     """
     settings = get_all_settings()
-    if (player["current_ap"] < settings.get("AP_COST_BLACKSMITH", cfg.AP_COST_BLACKSMITH)
+    if (player["current_ap"] < encumbered_ap_cost(
+            player, settings.get("AP_COST_BLACKSMITH", cfg.AP_COST_BLACKSMITH), settings)
             or player["credits"] <= 0):
         return None
     threshold = 40 + profile["repair_tendency"] // 2
@@ -857,7 +871,8 @@ def _maybe_heal(player: dict, profile: dict, settings: dict):
         return None
     cost_ap = settings.get("AP_COST_TAVERN", cfg.AP_COST_TAVERN)
     cost_cr = settings.get("TAVERN_HEAL_COST", cfg.TAVERN_HEAL_COST)
-    if player["current_ap"] < cost_ap or player["credits"] < cost_cr:
+    if (player["current_ap"] < encumbered_ap_cost(player, cost_ap, settings)
+            or player["credits"] < cost_cr):
         return None
     try:
         result = enqueue_and_process(player["id"], "tavern_heal", {
@@ -875,7 +890,7 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
     human player. It pays the same admission AP immediately before trading.
     """
     ap_cost = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
-    if player["current_ap"] < ap_cost:
+    if player["current_ap"] < encumbered_ap_cost(player, ap_cost, settings):
         return None
 
     owned = _load_scored_inventory(player, profile)

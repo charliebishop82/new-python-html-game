@@ -3,7 +3,8 @@
 import logging
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, g, session
-from database import execute, execute_write, exclusive_transaction, get_all_settings
+from database import (execute, execute_write, exclusive_transaction, get_all_settings,
+                      encumbered_ap_cost)
 import config_defaults as cfg
 
 bp = Blueprint('dashboard', __name__)
@@ -188,6 +189,13 @@ def _get_button_states(player: dict, settings: dict) -> dict:
     ap_blacksmith = settings.get('AP_COST_BLACKSMITH', cfg.AP_COST_BLACKSMITH)
     ap_shop       = settings.get('AP_COST_SHOP',       cfg.AP_COST_SHOP)
     ap_auction    = settings.get('AP_COST_AUCTION',    cfg.AP_COST_AUCTION)
+    ap_boss       = encumbered_ap_cost(player, ap_boss, settings)
+    ap_pvp        = encumbered_ap_cost(player, ap_pvp, settings)
+    ap_world      = encumbered_ap_cost(player, ap_world, settings)
+    ap_tavern     = encumbered_ap_cost(player, ap_tavern, settings)
+    ap_blacksmith = encumbered_ap_cost(player, ap_blacksmith, settings)
+    ap_shop       = encumbered_ap_cost(player, ap_shop, settings)
+    ap_auction    = encumbered_ap_cost(player, ap_auction, settings)
     tavern_cost   = settings.get('TAVERN_HEAL_COST',   cfg.TAVERN_HEAL_COST)
 
     from world_boss import get_active_event

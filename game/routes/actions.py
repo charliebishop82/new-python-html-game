@@ -12,7 +12,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings, get_player,
-                      get_player_bonus_profile)
+                      get_player_bonus_profile, encumbered_ap_cost)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 from combat import engine, flavour
@@ -42,6 +42,7 @@ def _with_random_event(event: dict | None, player: dict, content: str) -> str:
 
 def _check_ap(player: dict, cost: int) -> str | None:
     """Provide the internal check ap operation used by this module."""
+    cost = encumbered_ap_cost(player, cost)
     if player["current_ap"] < cost:
         return _error_fragment(f"Not enough AP. Need {cost}, have {player['current_ap']}.")
     return None
@@ -49,6 +50,7 @@ def _check_ap(player: dict, cost: int) -> str | None:
 
 def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict):
     """Deduct AP cost and apply passive HP regen. Must be inside exclusive_transaction."""
+    cost = encumbered_ap_cost(player, cost, settings)
     # AP-triggered healing and its HP cap use the same effective END as combat.
     player = combat_actions.apply_equipped_stat_bonuses(player)
     ap_regen    = settings.get("AP_PASSIVE_HP_REGEN",   cfg.AP_PASSIVE_HP_REGEN)
@@ -361,6 +363,9 @@ def handle_tavern_heal(player_id: int, payload: dict) -> dict:
     cost_cr   = payload["cost_cr"]
     heal_pct  = settings.get("TAVERN_HEAL_PERCENT", cfg.TAVERN_HEAL_PERCENT)
     player    = combat_actions.apply_equipped_stat_bonuses(get_player(player_id))
+    effective_cost_ap = encumbered_ap_cost(player, cost_ap, settings)
+    if player["current_ap"] < effective_cost_ap:
+        raise ValueError(f"Not enough AP. Need {effective_cost_ap}.")
     max_hp    = engine.calc_max_hp(player)
     missing   = max_hp - player["current_hp"]
     if missing <= 0:
@@ -573,11 +578,12 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
 
     player   = get_player(player_id)
     settings = get_all_settings()
+    effective_cost_ap = encumbered_ap_cost(player, cost_ap, settings)
 
     if player["in_combat"]:
         return {"error": "Already in combat."}
-    if player["current_ap"] < cost_ap:
-        return {"error": "Not enough AP."}
+    if player["current_ap"] < effective_cost_ap:
+        return {"error": f"Not enough AP. Need {effective_cost_ap}."}
 
     tbl = "bosses" if encounter_type == "BOSS" else "minions"
     opponent = execute_one(f"SELECT * FROM {tbl} WHERE id = ?", (opponent_id,))
@@ -900,6 +906,7 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
 
     player  = get_player(player_id)
     target  = combat_actions.apply_equipped_stat_bonuses(get_player(target_id))
+    effective_cost_ap = encumbered_ap_cost(player, cost_ap, settings)
 
     from crews import are_pvp_protected
     if are_pvp_protected(player_id, target_id):
@@ -907,8 +914,8 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
 
     if player["in_combat"] or target["in_combat"]:
         return {"error": "A player is already in combat."}
-    if player["current_ap"] < cost_ap:
-        return {"error": "Not enough AP."}
+    if player["current_ap"] < effective_cost_ap:
+        return {"error": f"Not enough AP. Need {effective_cost_ap}."}
 
     with exclusive_transaction():
         new_ap, new_hp = _deduct_ap_and_regen(player_id, player, cost_ap, settings)

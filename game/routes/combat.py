@@ -9,7 +9,7 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, session, g, has_request_context
 from database import (execute, execute_one, execute_write, get_player,
-                      exclusive_transaction, get_all_settings)
+                      exclusive_transaction, get_all_settings, encumbered_ap_cost)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 from combat import engine, flavour
@@ -197,7 +197,9 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
 
     # Boss and minion fights normally continue until someone falls, but a hard
     # cap prevents corrupted balance or modifiers from creating endless combat.
-    hard_cap = settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP)
+    hard_cap = (settings.get("WORLD_BOSS_ROUNDS_MAX", cfg.WORLD_BOSS_ROUNDS_MAX)
+                if sess["combat_type"] == "WORLD_BOSS" else
+                settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP))
     forced_stalemate = (not combat_ended and sess["combat_type"] in ("BOSS", "MINION", "WORLD_BOSS")
                         and reload_sess["current_round"] > hard_cap)
 
@@ -495,7 +497,9 @@ def handle_combat_steal(player_id: int, payload: dict) -> dict:
         )
         at_round_limit = (sess["combat_type"] == "PVP"
                           and reload_sess["current_round"] > max_rounds)
-        hard_cap = settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP)
+        hard_cap = (settings.get("WORLD_BOSS_ROUNDS_MAX", cfg.WORLD_BOSS_ROUNDS_MAX)
+                    if sess["combat_type"] == "WORLD_BOSS" else
+                    settings.get("COMBAT_ROUNDS_HARD_CAP", cfg.COMBAT_ROUNDS_HARD_CAP))
         forced_stalemate = (sess["combat_type"] in ("BOSS", "MINION", "WORLD_BOSS")
                             and reload_sess["current_round"] > hard_cap)
         state = combat_actions.get_combat_state(session_id)
@@ -553,7 +557,8 @@ def handle_combat_extend(player_id: int, payload: dict) -> dict:
     settings   = get_all_settings()
     ap_cost = settings.get("AP_COST_COMBAT_EXTENSION", cfg.AP_COST_COMBAT_EXTENSION)
 
-    player = execute_one("SELECT * FROM players WHERE id = ?", (player_id,))
+    player = get_player(player_id)
+    ap_cost = encumbered_ap_cost(player, ap_cost, settings)
     if player["current_ap"] < ap_cost:
         return {"error": f"Not enough AP to extend. Need {ap_cost}."}
 

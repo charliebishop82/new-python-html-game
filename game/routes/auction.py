@@ -5,7 +5,8 @@ from datetime import datetime, timedelta
 from flask import Blueprint, g, redirect, render_template, request, session, url_for
 
 import config_defaults as cfg
-from database import execute, execute_one, execute_write, exclusive_transaction, get_all_settings
+from database import (execute, execute_one, execute_write, exclusive_transaction,
+                      get_all_settings, get_player, encumbered_ap_cost)
 from queue_handler import enqueue_and_process, register_handler
 
 bp = Blueprint("auction", __name__)
@@ -27,11 +28,12 @@ def handle_enter(player_id: int, payload: dict) -> dict:
     """Validate auction admission and deduct its one-time AP cost."""
     settings = get_all_settings()
     cost = settings.get("AP_COST_AUCTION", cfg.AP_COST_AUCTION)
-    player = execute_one("SELECT current_ap,in_combat FROM players WHERE id=?", (player_id,))
+    player = get_player(player_id)
     if not player:
         raise ValueError("Player not found.")
     if player["in_combat"]:
         raise ValueError("The auction house is unavailable during combat.")
+    cost = encumbered_ap_cost(player, cost, settings)
     if player["current_ap"] < cost:
         raise ValueError(f"Not enough AP. Need {cost}.")
     with exclusive_transaction():

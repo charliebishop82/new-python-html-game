@@ -40,6 +40,11 @@ def create_app() -> Flask:
         # ordinary combat reconciler, which protects established game modes.
         from scene_combat import recover_scene_combat
         recover_scene_combat()
+        from world_boss import activate_missed_successor
+        recovered_world_boss = activate_missed_successor()
+        if recovered_world_boss:
+            logger.info("Activated missed world-boss successor: %s",
+                        recovered_world_boss["name"])
     app.context_processor(_context_processor)
     app.before_request(_check_auth)
     app.before_request(_load_player)
