@@ -12,7 +12,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings, get_player,
-                      get_player_bonus_profile, encumbered_ap_cost)
+                      get_player_bonus_profile, encumbered_ap_cost, tavern_quote)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 from combat import engine, flavour
@@ -340,7 +340,8 @@ def action_tavern():
     player   = combat_actions.apply_equipped_stat_bonuses(g.player)
     settings = get_all_settings()
     cost_ap  = settings.get("AP_COST_TAVERN",   cfg.AP_COST_TAVERN)
-    cost_cr  = settings.get("TAVERN_HEAL_COST", cfg.TAVERN_HEAL_COST)
+    quote = tavern_quote(player, settings)
+    cost_cr = quote["credit_cost"]
 
     if player["current_hp"] >= player["max_hp"]:
         return _error_fragment("You are already at full health.")
@@ -350,7 +351,7 @@ def action_tavern():
         return _error_fragment(f"Not enough credits. Need {cost_cr}.")
 
     result = enqueue_and_process(
-        player["id"], "tavern_heal", {"cost_ap": cost_ap, "cost_cr": cost_cr}
+        player["id"], "tavern_heal", {"cost_ap": cost_ap}
     )
     return render_template("fragments/tavern_result.html", **result, player=player)
 
@@ -360,9 +361,9 @@ def handle_tavern_heal(player_id: int, payload: dict) -> dict:
     """Process the queued tavern heal action against validated game state."""
     settings  = get_all_settings()
     cost_ap   = payload["cost_ap"]
-    cost_cr   = payload["cost_cr"]
-    heal_pct  = settings.get("TAVERN_HEAL_PERCENT", cfg.TAVERN_HEAL_PERCENT)
     player    = combat_actions.apply_equipped_stat_bonuses(get_player(player_id))
+    quote     = tavern_quote(player, settings)
+    cost_cr   = quote["credit_cost"]
     effective_cost_ap = encumbered_ap_cost(player, cost_ap, settings)
     if player["current_ap"] < effective_cost_ap:
         raise ValueError(f"Not enough AP. Need {effective_cost_ap}.")
@@ -370,7 +371,9 @@ def handle_tavern_heal(player_id: int, payload: dict) -> dict:
     missing   = max_hp - player["current_hp"]
     if missing <= 0:
         raise ValueError("Already at full health.")
-    heal_amount = max(1, int(missing * heal_pct))
+    heal_amount = quote["heal_amount"]
+    if player["credits"] < cost_cr:
+        raise ValueError(f"Not enough credits. Need {cost_cr}.")
     with exclusive_transaction():
         new_ap, new_hp_regen = _deduct_ap_and_regen(player_id, player, cost_ap, settings)
         final_hp = min(new_hp_regen + heal_amount, max_hp)

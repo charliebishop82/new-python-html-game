@@ -39,6 +39,41 @@
 </section>
 
 <section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
+    <h2 style="margin-top:0;">Healing &amp; Carrying Capacity</h2>
+    <p style="color:#777;margin-bottom:12px;">Tavern treatment scales with HP restored. Inventory capacity is the base plus one slot per configured amount of effective STR.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">
+        {% for name,label,minimum,fallback,help_text in [
+            ('TAVERN_CREDITS_PER_HP','Tavern credits per HP',0,2,'Price for every HP included in a Tavern treatment.'),
+            ('TAVERN_MIN_COST','Minimum Tavern price',0,5,'Lowest possible credit price for treatment.'),
+            ('INVENTORY_LIMIT','Base inventory slots',3,6,'Slots before effective STR adds capacity.'),
+            ('INVENTORY_STR_DIVISOR','STR per extra slot',1,3,'Every full group of this much effective STR adds one slot.')
+        ] %}
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="{{ name }}">
+            <label title="{{ help_text }}">{{ label }}</label><br>
+            <input type="number" name="value" min="{{ minimum }}" step="1"
+                   value="{{ settings_map.get(name, fallback) }}" style="width:95px;">
+            <button type="submit" class="btn">Save</button>
+            <div style="color:#777;font-size:11px;margin-top:5px;">{{ help_text }}</div>
+        </form>
+        {% endfor %}
+    </div>
+</section>
+
+<section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
+    <h2 style="margin-top:0;">Shop Economy</h2>
+    <p style="color:#777;margin-bottom:12px;">Each character has a separate vendor-credit allowance. It limits direct Shop sales only and resets at midnight UTC.</p>
+    <form method="POST">
+        <input type="hidden" name="constant_name" value="SHOP_DAILY_VENDOR_CREDITS">
+        <label title="Maximum credits the Shop can pay each player or NPC per UTC day.">Daily vendor credits per character</label><br>
+        <input type="number" name="value" min="0" step="25"
+               value="{{ settings_map.get('SHOP_DAILY_VENDOR_CREDITS', 500) }}" style="width:110px;">
+        <button type="submit" class="btn">Save</button>
+        <div style="color:#777;font-size:11px;margin-top:5px;">Recommended starting value: 500. A changed value takes full effect at the next midnight reset.</div>
+    </form>
+</section>
+
+<section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
     <h2 style="margin-top:0;">Player Interface Defaults</h2>
     <p style="color:#777;margin-bottom:12px;">Interface style and color mode are independent. Players may override them only when allowed below.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">

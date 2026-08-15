@@ -169,10 +169,29 @@ def reevaluate_npc_crews() -> None:
                 leave_crew(npc["player_id"])
             continue
         invited = [(score,crew,req) for score,crew in ranked for req in invitations if req["crew_id"]==crew["id"]]
+        accepted_request_id = None
         if invited and invited[0][0] >= 30:
-            try: join_crew(npc["player_id"],invited[0][1]["id"])
-            except ValueError: pass
-        elif ranked and ranked[0][0] >= 35:
+            try:
+                join_crew(npc["player_id"], invited[0][1]["id"])
+                accepted_request_id = invited[0][2]["id"]
+            except ValueError:
+                # Capacity or membership may have changed during evaluation;
+                # the request is still resolved below instead of lingering.
+                pass
+        # An automated character should visibly answer every invitation at its
+        # daily crew review.  Previously, invitations below the fit threshold
+        # remained PENDING forever, making it appear that NPC crew behavior was
+        # not running at all.
+        declined = [request["id"] for request in invitations
+                    if request["id"] != accepted_request_id]
+        if declined:
+            placeholders = ",".join("?" for _ in declined)
+            execute_write(
+                f"""UPDATE crew_requests SET status='DECLINED',resolved_at=datetime('now')
+                    WHERE id IN ({placeholders}) AND status='PENDING'""",
+                tuple(declined),
+            )
+        if accepted_request_id is None and ranked and ranked[0][0] >= 35:
             crew=ranked[0][1]
             execute_write("""INSERT INTO crew_requests(crew_id,player_id,request_type,created_by_player_id)
               SELECT ?,?,'APPLICATION',? WHERE NOT EXISTS(SELECT 1 FROM crew_requests WHERE crew_id=? AND player_id=? AND status='PENDING')""",

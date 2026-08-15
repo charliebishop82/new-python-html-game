@@ -39,7 +39,9 @@
 <tr><td>Combat record</td><td>Each action writes a permanent combat log; readable rounds also enter the daily player feed, which is archived at midnight.</td></tr>
 <tr><td>PvP theft</td><td>Inventory ownership is transferred atomically, both item histories are written, the victim is alerted, and a WORLD entry is published.</td></tr>
 <tr><td>NPC encounter safety</td><td>NPC target selection excludes contacts more than four levels above the NPC.</td></tr>
-<tr><td>Shop</td><td>Admission costs {{ settings.get('AP_COST_SHOP',1) }} AP once per visit. An empty shop is populated at game startup.</td></tr>
+<tr><td>Shop</td><td>Admission costs {{ settings.get('AP_COST_SHOP',1) }} AP once per visit. Buying and selling inside is free. Each character's vendor can pay at most {{ settings.get('SHOP_DAILY_VENDOR_CREDITS',500) }} credits for direct sales per UTC day; purchases do not replenish it. An empty shop is populated at game startup.</td></tr>
+<tr><td>Tavern</td><td>Treatment restores {{ (settings.get('TAVERN_HEAL_PERCENT',0.5) * 100)|int }}% of missing HP and costs {{ settings.get('TAVERN_CREDITS_PER_HP',2) }} credits per HP restored, with a {{ settings.get('TAVERN_MIN_COST',5) }} credit minimum.</td></tr>
+<tr><td>Inventory</td><td>Capacity is {{ settings.get('INVENTORY_LIMIT',6) }} base slots plus one slot per {{ settings.get('INVENTORY_STR_DIVISOR',3) }} effective STR. Equipped items count. Exceeding capacity applies the configured encumbrance penalties without deleting anything.</td></tr>
 <tr><td>Midnight</td><td>Archive feed, reset daily state/AP and events, rotate the shop, and schedule the next NPC actions.</td></tr></table>
 
 <p style="margin-top:18px;"><a class="btn" href="/admin/config">Open Config</a> <a class="btn" href="http://127.0.0.1:5000/help" target="_blank">Open Player Guide</a></p>

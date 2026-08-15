@@ -1541,6 +1541,27 @@ def admin_config():
             except ValueError:
                 error = "Enemy balance values must be between 0.10 (10%) and 2.00 (200%)."
                 constant = ""
+        if constant == "SHOP_DAILY_VENDOR_CREDITS":
+            try:
+                numeric_value = int(value)
+                if numeric_value < 0:
+                    raise ValueError
+                value = str(numeric_value)
+            except ValueError:
+                error = "Daily vendor credits must be a whole number of zero or more."
+                constant = ""
+        if constant in {"TAVERN_CREDITS_PER_HP", "TAVERN_MIN_COST",
+                        "INVENTORY_LIMIT", "INVENTORY_STR_DIVISOR"}:
+            minimums = {"TAVERN_CREDITS_PER_HP": 0, "TAVERN_MIN_COST": 0,
+                        "INVENTORY_LIMIT": 3, "INVENTORY_STR_DIVISOR": 1}
+            try:
+                numeric_value = int(value)
+                if numeric_value < minimums[constant]:
+                    raise ValueError
+                value = str(numeric_value)
+            except ValueError:
+                error = f"{constant} must be a whole number of at least {minimums[constant]}."
+                constant = ""
         if constant and value:
             with exclusive_transaction():
                 execute_write(

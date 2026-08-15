@@ -12,7 +12,8 @@ from flask import (Blueprint, render_template, request, redirect,
                    url_for, session, g, jsonify)
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings,
-                      get_player_bonus_profile, get_player_perks)
+                      get_player_bonus_profile, get_player_perks,
+                      inventory_capacity)
 from queue_handler import enqueue_and_process, register_handler
 from combat import engine
 import config_defaults as cfg
@@ -190,8 +191,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     ac_bonus     = (a.get("ac_bonus", 0) if a else 0) + int(b.get("ac_bonus", 0) or 0)
     ac           = 10 + math.floor(agi_total / 2) + ac_bonus
     max_hp       = 10 + end_total + (5 * player["level"])
-    inv_limit    = settings.get("INVENTORY_LIMIT", cfg.INVENTORY_LIMIT) + \
-                   math.floor(str_total / 2)
+    inv_limit    = inventory_capacity(str_total, settings)
     crit_thresh  = max(
         settings.get("CRIT_MIN_THRESHOLD", cfg.CRIT_MIN_THRESHOLD),
         settings.get("CRIT_BASE_THRESHOLD", cfg.CRIT_BASE_THRESHOLD) -
@@ -268,6 +268,8 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     encounter_bonus_pct = int(float(b.get("encounter_bonus", 0) or 0) * 100)
     brace_heal_pct = int(settings.get("BRACE_HEAL_PERCENT", cfg.BRACE_HEAL_PERCENT) * 100)
     tavern_heal_pct = int(settings.get("TAVERN_HEAL_PERCENT", cfg.TAVERN_HEAL_PERCENT) * 100)
+    tavern_per_hp = int(settings.get("TAVERN_CREDITS_PER_HP", cfg.TAVERN_CREDITS_PER_HP))
+    tavern_min_cost = int(settings.get("TAVERN_MIN_COST", cfg.TAVERN_MIN_COST))
     inventory_count = int(player.get("inventory_count", 0) or 0)
     special_effects = []
     if b:
@@ -307,6 +309,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         "durability_reduction_pct": durability_reduction_pct,
         "encounter_bonus_pct": encounter_bonus_pct,
         "brace_heal_pct": brace_heal_pct, "tavern_heal_pct": tavern_heal_pct,
+        "tavern_per_hp": tavern_per_hp, "tavern_min_cost": tavern_min_cost,
         "inventory_count": inventory_count, "is_overencumbered": inventory_count > inv_limit,
         "overencumbered_ap_multiplier": settings.get("OVERENCUMBERED_AP_MULTIPLIER", cfg.OVERENCUMBERED_AP_MULTIPLIER),
         "overencumbered_ac_penalty": settings.get("OVERENCUMBERED_AC_PENALTY", cfg.OVERENCUMBERED_AC_PENALTY),

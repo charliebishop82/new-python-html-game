@@ -2,44 +2,52 @@ fixes for game:
 
 npc took an action and this happened:
 
-127.0.0.1 - - [09/Aug/2026 22:51:52] "POST /admin/npcs/4/run HTTP/1.1" 302 -
-127.0.0.1 - - [09/Aug/2026 22:51:52] "GET /admin/npcs?feedback=NPC+turn:+BOSS+-+{'summary':+'Mr+Random+defeated+The+Thing.',+'note':+'Combat+completed',+'combat_id':+409,+'combat_type':+'BOSS',+'opponent':+'The+Thing',+'status':+'RESOLVED',+'result_type':+'1HP_WIN',+'winner':+'Mr+Random',+'loser':+'The+Thing',+'rounds':+4,+'damage_dealt':+139,+'damage_received':+11,+'npc_hp_after':+91,+'npc_ap_after':+15,+'xp_earned':+455,+'credits_won_or_stolen':+0,+'item_stolen_on_victory':+None,+'combat_steals':+[],+'drop_credits':+696,+'items_dropped':+[],+'feed_result':+'Mr+Random+has+defeated+The+Thing!'} HTTP/1.1" 200 -
-127.0.0.1 - - [09/Aug/2026 22:51:52] "GET /static/help.js HTTP/1.1" 304 -
-Action 'combat_action' FAILED for player 8 (queue_id=2815)
+2026-08-14 21:12:00,006 INFO apscheduler.executors.default: Running job "NPC Turns (trigger: cron[minute='*'], next run at: 2026-08-14 23:43:00 UTC)" (scheduled at 2026-08-14 23:42:00+00:00)
+2026-08-14 21:12:01,435 INFO routes.blacksmith: Player 2 repaired 3 items for 100 credits
+2026-08-14 21:12:01,442 INFO routes.auth: Player 3 assigned level-up stat point to AGI (now 6)
+2026-08-14 21:12:01,452 INFO routes.blacksmith: Player 3 repaired 3 items for 85 credits
+2026-08-14 21:12:01,709 INFO routes.shop: Player 10 bought item SPECIAL/11 for 568 credits
+2026-08-14 21:12:01,724 INFO routes.blacksmith: Player 10 repaired 2 items for 68 credits
+2026-08-14 21:12:01,771 INFO routes.shop: Player 4 sold item WEAPON/12 for 97 credits
+2026-08-14 21:12:01,771 INFO routes.auth: Player 4 assigned level-up stat point to END (now 9)
+2026-08-14 21:12:01,803 ERROR queue_handler: Action 'shop_enter' FAILED for player 4 (queue_id=3220)
 Traceback (most recent call last):
   File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\queue_handler.py", line 129, in enqueue_and_process
     result = ACTION_HANDLERS[action_type](player_id, payload)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\routes\combat.py", line 99, in handle_combat_action
-    raise ValueError("Combat session is not active.")
-ValueError: Combat session is not active.
-Manual NPC turn failed for 8
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\routes\shop.py", line 61, in handle_shop_enter
+    raise ValueError(f"Not enough AP. Need {ap_cost}.")
+ValueError: Not enough AP. Need 2.
+2026-08-14 21:12:01,881 ERROR npc: NPC turn failed for player 4
 Traceback (most recent call last):
   File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\queue_handler.py", line 129, in enqueue_and_process
     result = ACTION_HANDLERS[action_type](player_id, payload)
              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\routes\combat.py", line 99, in handle_combat_action
-    raise ValueError("Combat session is not active.")
-ValueError: Combat session is not active.
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\routes\shop.py", line 61, in handle_shop_enter
+    raise ValueError(f"Not enough AP. Need {ap_cost}.")
+ValueError: Not enough AP. Need 2.
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\admin.py", line 1331, in admin_npc_run
-    result = run_npc_turn(pid)
-             ^^^^^^^^^^^^^^^^^
-  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 259, in run_npc_turn
-    interruption = _run_npc_minion_interruption(player, profile, settings)
-                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 1278, in _run_npc_minion_interruption
-    combat = _finish_active_combat(player["id"], result["session_id"], profile)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 406, in _finish_active_combat
-    final = enqueue_and_process(
-            ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 86, in run_due_npc_turns
+    result = run_npc_turn(profile["player_id"])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 174, in run_npc_turn
+    shop_result = _maybe_manage_inventory(player, profile, settings)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 914, in _maybe_manage_inventory
+    result = _npc_shop_transaction(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\npc.py", line 1176, in _npc_shop_transaction
+    admission = enqueue_and_process(player_id, "shop_enter", {})
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "C:\Users\charl\OneDrive\Desktop\bbsgame\game\queue_handler.py", line 164, in enqueue_and_process
     raise RuntimeError(f"Action '{action_type}' failed: {exc}") from exc
-RuntimeError: Action 'combat_action' failed: Combat session is not active.
-127.0.0.1 - - [09/Aug/2026 22:52:03] "POST /admin/npcs/8/run HTTP/1.1" 302 -
-127.0.0.1 - - [09/Aug/2026 22:52:03] "GET /admin/npcs?error=Action+'combat_action'+failed:+Combat+session+is+not+active. HTTP/1.1" 200 -
-127.0.0.1 - - [09/Aug/2026 22:52:03] "GET /static/help.js HTTP/1.1" 304 -
+RuntimeError: Action 'shop_enter' failed: Not enough AP. Need 2.
+2026-08-14 21:12:01,943 INFO routes.shop: Player 8 sold item ARMOR/64 for 111 credits
+2026-08-14 21:12:01,959 INFO routes.shop: Player 8 sold item WEAPON/2 for 10 credits
+2026-08-14 21:12:01,974 INFO routes.blacksmith: Player 7 repaired 1 items for 0 credits
+2026-08-14 21:12:01,974 INFO routes.blacksmith: Player 7 repaired 1 items for 0 credits
+2026-08-14 21:12:02,146 INFO routes.blacksmith: Player 1 repaired 3 items for 79 credits
+2026-08-14 21:12:02,162 INFO routes.blacksmith: Player 5 repaired 3 items for 87 credits

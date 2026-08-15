@@ -52,6 +52,32 @@ def encumbered_ap_cost(player: dict, base_cost: int, settings: dict | None = Non
     return int(base_cost) * multiplier
 
 
+def inventory_capacity(effective_str: int, settings: dict | None = None) -> int:
+    """Return carried-item capacity from the restrictive base plus STR scaling."""
+    settings = settings or get_all_settings()
+    base = max(3, int(settings.get("INVENTORY_LIMIT", cfg.INVENTORY_LIMIT)))
+    divisor = max(1, int(settings.get(
+        "INVENTORY_STR_DIVISOR", cfg.INVENTORY_STR_DIVISOR
+    )))
+    return base + math.floor(max(0, int(effective_str)) / divisor)
+
+
+def tavern_quote(player: dict, settings: dict | None = None) -> dict:
+    """Return proportional Tavern healing and its credit price."""
+    settings = settings or get_all_settings()
+    missing = max(0, int(player["max_hp"]) - int(player["current_hp"]))
+    if missing <= 0:
+        return {"missing_hp": 0, "heal_amount": 0, "credit_cost": 0}
+    heal_pct = float(settings.get("TAVERN_HEAL_PERCENT", cfg.TAVERN_HEAL_PERCENT))
+    heal_amount = min(missing, max(1, int(missing * heal_pct)))
+    per_hp = max(0, int(settings.get(
+        "TAVERN_CREDITS_PER_HP", cfg.TAVERN_CREDITS_PER_HP
+    )))
+    minimum = max(0, int(settings.get("TAVERN_MIN_COST", cfg.TAVERN_MIN_COST)))
+    return {"missing_hp": missing, "heal_amount": heal_amount,
+            "credit_cost": max(minimum, heal_amount * per_hp)}
+
+
 def dict_factory(cursor: sqlite3.Cursor, row: tuple) -> dict:
     """sqlite3 row_factory: rows as dicts keyed by column name."""
     return {col[0]: val for col, val in zip(cursor.description, row)}
@@ -87,6 +113,19 @@ def init_db():
             conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
         if "pending_perk" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN pending_perk INTEGER NOT NULL DEFAULT 0")
+        board_position_columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(board_positions)")
+        }
+        if board_position_columns and "layer" not in board_position_columns:
+            conn.execute(
+                "ALTER TABLE board_positions ADD COLUMN layer INTEGER NOT NULL DEFAULT 1"
+            )
+        if board_position_columns:
+            conn.execute("DROP INDEX IF EXISTS idx_board_positions_hex")
+            conn.execute(
+                """CREATE INDEX IF NOT EXISTS idx_board_positions_hex
+                   ON board_positions(board_id,layer,q,r)"""
+            )
         if "in_scene_combat" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN in_scene_combat INTEGER NOT NULL DEFAULT 0")
         scene_choice_columns = {row[1] for row in conn.execute("PRAGMA table_info(scene_choices)")}
@@ -171,11 +210,23 @@ def init_db():
             ("WORLD_BOSS_ATTEMPT_XP", "10", "XP granted after a completed world-boss attempt."),
             ("WORLD_BOSS_ATTEMPT_CREDITS", "5", "Credits granted after a completed world-boss attempt."),
             ("WORLD_BOSS_REWARD_HOURS", "12", "Hours each placed player has to choose a prize."),
+            ("SHOP_DAILY_VENDOR_CREDITS", "500", "Credits each character's shop vendor can spend on their direct sales per UTC day."),
+            ("TAVERN_CREDITS_PER_HP", "2", "Credits charged for each HP purchased from the Tavern."),
+            ("TAVERN_MIN_COST", "5", "Minimum credit price for any Tavern treatment."),
+            ("INVENTORY_STR_DIVISOR", "3", "Effective STR required for each additional inventory slot."),
+            ("BOARD_FEATURE_ENABLED", "FALSE", "Dormant feature gate for the future hex game board."),
         ):
             conn.execute(
                 "INSERT OR IGNORE INTO settings(constant_name,value,description) VALUES(?,?,?)",
                 (name, value, description)
             )
+        # Adopt the approved restrictive baseline only when the installation
+        # still carries the former stock value.
+        conn.execute(
+            """UPDATE settings SET value='6',
+                   description='Base inventory slots before effective STR scaling.'
+               WHERE constant_name='INVENTORY_LIMIT' AND CAST(value AS INTEGER)=10"""
+        )
         # Older builds recorded permanent level choices in level_up_history but
         # did not publish them to the player's dashboard feed. Backfill each
         # historical choice once, keyed by player and original timestamp.
@@ -420,7 +471,6 @@ def get_player(player_id: int) -> dict | None:
 
     base_daily_ap  = settings.get("BASE_DAILY_AP",            cfg.BASE_DAILY_AP)
     ap_cap         = settings.get("AP_CARRYOVER_CAP",         cfg.AP_CARRYOVER_CAP)
-    inv_limit_base = settings.get("INVENTORY_LIMIT",          cfg.INVENTORY_LIMIT)
     inactive_days  = settings.get("INACTIVE_DAYS_THRESHOLD",  cfg.INACTIVE_DAYS_THRESHOLD)
     ap_regen       = settings.get("AP_PASSIVE_HP_REGEN",      cfg.AP_PASSIVE_HP_REGEN)
     end_divisor    = settings.get("END_HP_REGEN_DIVISOR",     cfg.END_HP_REGEN_DIVISOR)
@@ -439,7 +489,7 @@ def get_player(player_id: int) -> dict | None:
     raw_max_ap = base_daily_ap + math.floor(end / 2) + int(special.get("bonus_ap", 0) or 0)
     max_ap     = int(raw_max_ap * (1 - curse_red)) if is_cursed else raw_max_ap
     max_ap     = min(max_ap, ap_cap)
-    inv_limit  = inv_limit_base + math.floor(effective_str / 2)
+    inv_limit  = inventory_capacity(effective_str, settings)
     passive_regen = (ap_regen + math.floor(end / end_divisor) +
                      int(special.get("hp_regen_bonus", 0) or 0))
 

@@ -9,7 +9,7 @@
         ═══ TAVERN ════════════════════════════════════════════════
     </div>
     <div class="term-line term-good">
-        The barkeep patches you up. +{{ heal_amount }} HP restored.
+        The barkeep patches you up. <strong>+{{ heal_amount }} HP</strong> restored at {{ (cost_cr / heal_amount)|round(1) if heal_amount else 0 }} credits per HP.
     </div>
     <div class="term-line term-system">
         HP: {{ new_hp }}/{{ max_hp }} &nbsp;|&nbsp;

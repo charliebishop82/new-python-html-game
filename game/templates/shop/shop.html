@@ -17,6 +17,16 @@
     </p>
     {% endif %}
 
+    <div style="border:1px solid var(--blue);padding:10px 12px;margin-bottom:16px;">
+        <strong style="color:var(--blue);" data-help-key="vendor credits">YOUR VENDOR CREDITS:</strong>
+        <strong>{{ vendor_credits }} / {{ vendor_credit_limit }}</strong>
+        <div style="color:var(--grey);font-size:12px;margin-top:4px;">
+            This is how much the shop can still pay you today. Your allowance is
+            separate from every other player and resets at midnight UTC. Buying
+            items does not replenish it.
+        </div>
+    </div>
+
     <!-- BUY PANEL -->
     <h3 style="color:var(--amber);margin-bottom:8px;">Available Items</h3>
     {% if listings %}
@@ -113,8 +123,10 @@
                       onsubmit="return confirm('Sell {{ item.name }} for 0 credits?');"
                       {% endif %}>
                     <input type="hidden" name="inv_id" value="{{ item.inv_id }}">
-                    <button type="submit" class="btn-small {% if item.sell_price == 0 %}danger{% endif %}">
-                        Sell
+                    <button type="submit" class="btn-small {% if item.sell_price == 0 %}danger{% endif %}"
+                            {% if item.sell_price > vendor_credits %}disabled
+                            title="Your vendor cannot afford this item today."{% endif %}>
+                        {% if item.sell_price > vendor_credits %}Vendor Short{% else %}Sell{% endif %}
                     </button>
                 </form>
             </td>

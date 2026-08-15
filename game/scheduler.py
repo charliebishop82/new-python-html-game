@@ -51,6 +51,7 @@ def midnight_reset():
     _step_world_boss_cycle()             # weekly shared event lifecycle
     _step3_archive_and_clear_feeds()     # step 3
     _step4_5_award_daily_ap()            # steps 4+5
+    _step_reset_shop_vendor_credits()    # independent daily seller allowances
     _step6_restore_midnight_hp()         # step 6
     _step7_midnight_encounters()         # step 7
     _step8_9_10_shop_rotation()          # steps 8-10
@@ -63,6 +64,13 @@ def midnight_reset():
     midnight_contract_turnover()
 
     logger.info("=== MIDNIGHT RESET COMPLETE %s ===", datetime.utcnow().isoformat())
+
+
+def _step_reset_shop_vendor_credits():
+    """Restore every character's personal Shop vendor allowance."""
+    from shop_budget import reset_all_vendor_credits
+    allowance = reset_all_vendor_credits()
+    logger.info("shop vendor credits reset to %d per player", allowance)
 
 
 def _step_world_boss_cycle():

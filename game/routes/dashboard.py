@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, g, session
 from database import (execute, execute_write, exclusive_transaction, get_all_settings,
-                      encumbered_ap_cost)
+                      encumbered_ap_cost, tavern_quote)
 import config_defaults as cfg
 
 bp = Blueprint('dashboard', __name__)
@@ -196,7 +196,8 @@ def _get_button_states(player: dict, settings: dict) -> dict:
     ap_blacksmith = encumbered_ap_cost(player, ap_blacksmith, settings)
     ap_shop       = encumbered_ap_cost(player, ap_shop, settings)
     ap_auction    = encumbered_ap_cost(player, ap_auction, settings)
-    tavern_cost   = settings.get('TAVERN_HEAL_COST',   cfg.TAVERN_HEAL_COST)
+    tavern_quote_now = tavern_quote(player, settings)
+    tavern_cost = tavern_quote_now['credit_cost']
 
     from world_boss import get_active_event
     world_event = get_active_event()
@@ -267,7 +268,8 @@ def _get_button_states(player: dict, settings: dict) -> dict:
         'boss':       {'enabled': boss_ok,   'reason': boss_reason,   'ap_cost': ap_boss},
         'pvp':        {'enabled': pvp_ok,    'reason': pvp_reason,    'ap_cost': ap_pvp},
         'world_boss': {'enabled': world_ok,  'reason': world_reason,  'ap_cost': ap_world},
-        'tavern':     {'enabled': tavern_ok, 'reason': tavern_reason, 'ap_cost': ap_tavern},
+        'tavern':     {'enabled': tavern_ok, 'reason': tavern_reason, 'ap_cost': ap_tavern,
+                       'credit_cost': tavern_cost, 'heal_amount': tavern_quote_now['heal_amount']},
         'blacksmith': {'enabled': bs_ok,     'reason': bs_reason,     'ap_cost': ap_blacksmith},
         'shop':       {'enabled': shop_ok,   'reason': shop_reason,   'ap_cost': ap_shop},
         'auction':    {'enabled': auction_ok,'reason': auction_reason,'ap_cost': ap_auction},

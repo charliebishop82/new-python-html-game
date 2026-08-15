@@ -402,6 +402,8 @@ async function pollPlayerStatus() {
         const state = await response.json();
         setEl('status-hp', state.hp); setEl('status-maxhp', state.max_hp);
         setEl('status-ap', state.ap); setEl('status-maxap', state.max_ap);
+        setEl('mobile-status-hp', state.hp); setEl('mobile-status-maxhp', state.max_hp);
+        setEl('mobile-status-ap', state.ap); setEl('mobile-status-maxap', state.max_ap);
         setEl('status-level', state.level); setEl('status-xp', state.xp);
         setEl('status-xp-threshold', state.xp_threshold == null ? '' : `/${state.xp_threshold}`);
         setEl('status-xp-next', state.xp_next == null ? 'MAX' :
@@ -448,6 +450,10 @@ function updateStatusFromFragment(container) {
     if (maxHp !== undefined) setEl('status-maxhp',   maxHp);
     if (ap    !== undefined) setEl('status-ap',       ap);
     if (maxAp !== undefined) setEl('status-maxap',    maxAp);
+    if (hp    !== undefined) setEl('mobile-status-hp', hp);
+    if (maxHp !== undefined) setEl('mobile-status-maxhp', maxHp);
+    if (ap    !== undefined) setEl('mobile-status-ap', ap);
+    if (maxAp !== undefined) setEl('mobile-status-maxap', maxAp);
     if (level !== undefined) setEl('status-level',    level);
     if (xp !== undefined) setEl('status-xp',          xp);
     if (xpThreshold !== undefined) setEl('status-xp-threshold', xpThreshold);
@@ -533,3 +539,27 @@ function startExtensionTimer(seconds, resolveUrl, container) {
 
 // Expose so combat fragments can call it after injection
 window.startExtensionTimer = startExtensionTimer;
+
+// Mobile uses the same authoritative sidebar in an off-canvas drawer. Keeping
+// one navigation tree prevents mobile and desktop game actions from drifting.
+(() => {
+    const toggle = document.getElementById('mobile-menu-toggle');
+    const sidebar = document.getElementById('left-col');
+    const scrim = document.getElementById('mobile-nav-scrim');
+    if (!toggle || !sidebar || !scrim) return;
+    const setOpen = open => {
+        document.body.classList.toggle('mobile-nav-open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+        if (open) sidebar.querySelector('a,button')?.focus({preventScroll:true});
+        else toggle.focus({preventScroll:true});
+    };
+    toggle.addEventListener('click', () => setOpen(!document.body.classList.contains('mobile-nav-open')));
+    scrim.addEventListener('click', () => setOpen(false));
+    sidebar.addEventListener('click', event => {
+        if (window.matchMedia('(max-width: 720px)').matches &&
+                event.target.closest('a,button[type="submit"]')) setOpen(false);
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && document.body.classList.contains('mobile-nav-open')) setOpen(false);
+    });
+})();

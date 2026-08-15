@@ -102,6 +102,32 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
     att_eq   = state["attacker_equipped"]
     att_special = att_eq.get("bonuses")
 
+    # AP can change between an automated character choosing Escape and this
+    # queued round acquiring the database lock (for example a simultaneous
+    # scheduled/manual NPC action). NPCs follow the established zero-AP rule:
+    # if Escape is no longer legal, fight with Attack instead. Human requests
+    # still receive the normal validation error rather than having their choice
+    # silently changed.
+    requested_action = action_type
+    action_fallback = None
+    if action_type == "escape":
+        escape_cost = encumbered_ap_cost(
+            attacker, settings.get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE), settings
+        )
+        if attacker["current_ap"] < escape_cost:
+            is_npc = bool(execute_one(
+                "SELECT 1 FROM npc_profiles WHERE player_id=? AND enabled=1 AND retired=0",
+                (player_id,),
+            ))
+            if is_npc:
+                action_type = "attack"
+                action_fallback = (
+                    f"Escape became unaffordable ({attacker['current_ap']} AP; "
+                    f"{escape_cost} needed), so the NPC fought instead."
+                )
+            else:
+                raise ValueError(f"Not enough AP to attempt escape (need {escape_cost}).")
+
     # Determine opponent for initiative
     if sess["combat_type"] == "PVP":
         defender = state["defender"]
@@ -235,6 +261,9 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
         "att_init":        att_init,
         "def_init":        def_init,
         "opponent_health": opponent_health,
+        "requested_action": requested_action,
+        "resolved_action": action_type,
+        "action_fallback": action_fallback,
     }
     _record_round_history(result)
     return result

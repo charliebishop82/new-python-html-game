@@ -44,6 +44,8 @@
     <span>Ends <time datetime="{{ event.scheduled_end_at }}">{{ event.scheduled_end_at[:16] }} UTC</time></span>
   </div>
 
+  <details class="wb-details">
+  <summary>Boss Intelligence &amp; Combat Profile</summary>
   <div class="wb-stat-grid" aria-label="World boss statistics">
     {% for label, value in [('Level',event.level),('STR',event.str_stat),('END',event.end_stat),('AGI',event.agi_stat),('LCK',event.lck_stat),('PER',event.per_stat)] %}
     <div><span>{{ label }}</span><strong>{{ value }}</strong></div>
@@ -61,6 +63,7 @@
     </section>
     <section><h3>Signature Effect</h3><strong>{{ event.special_buff_name }}</strong><p>{{ event.special_buff_flavor }}</p></section>
   </div>
+  </details>
 
   {# Resolve the viewer from the authoritative standings as well as the route
      value. This keeps the panel correct during Flask's partial dev reloads. #}
@@ -89,15 +92,15 @@
     <section><h3>Damage Standings</h3><ol id="wb-standings">{% for row in standings %}<li><strong>#{{ loop.index }} {{ row.character_name }}</strong><span>{{ row.damage }} damage &middot; {{ row.attempts }} attempts</span></li>{% else %}<li class="muted">No one has challenged this boss yet.</li>{% endfor %}</ol></section>
     <section><h3>Live Boss Log</h3><div id="wb-log">{% for row in logs %}<div data-log-id="{{ row.id }}">[{{ row.occurred_at[11:19] }}] {{ row.message }}</div>{% else %}<div class="muted">The event is quiet.</div>{% endfor %}</div></section>
   </div>
-  <section class="wb-rewards"><div class="sheet-kicker">CREW RAID STANDINGS</div>
+  <details class="wb-details wb-rewards"><summary>Crew Raid Standings</summary><section><div class="sheet-kicker">CREW RAID STANDINGS</div>
     <h3>Ensemble Damage</h3><ol>{% for crew in crew_standings %}<li><strong>#{{ loop.index }} {{ crew.name }} [{{ crew.tag }}]</strong> — {{ crew.damage|int }} damage from {{ crew.contributors }} contributor{{ '' if crew.contributors == 1 else 's' }}</li>{% else %}<li class="muted">No crew has dealt damage yet. Free Agents remain eligible for individual placement.</li>{% endfor %}</ol>
     <p class="muted">The top two crews earn weekly credit bonuses for members who personally participated. NPCs contribute to placement but do not receive that separate bonus.</p>
-  </section>
+  </section></details>
 
-  {% if event_loot %}<section class="wb-rewards"><div class="sheet-kicker">PLACEMENT REWARDS</div><h3>Weekly Prize Vault</h3>
+  {% if event_loot %}<details class="wb-details wb-rewards"><summary>Weekly Prize Vault &amp; Placement Rules</summary><section><div class="sheet-kicker">PLACEMENT REWARDS</div><h3>Weekly Prize Vault</h3>
     <p>First place chooses first, second chooses from the remaining two, and third receives the final item. All three also gain one full level.</p>
     <div class="wb-prize-grid">{% for item in event_loot %}<article class="wb-prize-card"><span>{{ item.item_type }}</span><strong>{{ item.name }}</strong><p>{{ item.description }}</p><small>{{ item.credit_cost }} credit value</small></article>{% endfor %}</div>
-  </section>{% endif %}
+  </section></details>{% endif %}
   {% else %}<h2>No world boss is active.</h2><p>The next unused boss appears after the prior rewards are complete.</p>{% endif %}
 </div>
 

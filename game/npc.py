@@ -12,7 +12,7 @@ import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player, get_player_equipped,
                       get_player_bonus_profile, reconcile_combat_state,
-                      encumbered_ap_cost)
+                      encumbered_ap_cost, tavern_quote)
 from queue_handler import enqueue_and_process, register_handler
 
 logger = logging.getLogger(__name__)
@@ -414,10 +414,34 @@ def _finish_active_combat(player_id: int, session_id: int | None = None,
         session_id = row["id"]
     final = None
     for _ in range(20):
-        action = _choose_combat_action(player_id, session_id, profile)
-        final = enqueue_and_process(
-            player_id, "combat_action", {"session_id": session_id, "action_type": action}
+        # A combat action can finalize the database session even when an older
+        # handler result does not carry ``combat_ended`` (for example an item-
+        # granted extra attack).  Scheduled/manual NPC runs can also overlap.
+        # Re-read the authoritative session before every submission so neither
+        # case creates a stray action against an already completed fight.
+        session_row = execute_one(
+            "SELECT status FROM combat_sessions WHERE id=?", (session_id,)
         )
+        if not session_row or session_row["status"] != "ACTIVE":
+            return _combat_decision_summary(
+                session_id, player_id, final, "Combat completed"
+            )
+        action = _choose_combat_action(player_id, session_id, profile)
+        try:
+            final = enqueue_and_process(
+                player_id, "combat_action", {"session_id": session_id, "action_type": action}
+            )
+        except RuntimeError:
+            # Close the small race between the status check and queue handling.
+            # Unexpected action failures still surface for diagnosis.
+            session_row = execute_one(
+                "SELECT status FROM combat_sessions WHERE id=?", (session_id,)
+            )
+            if session_row and session_row["status"] != "ACTIVE":
+                return _combat_decision_summary(
+                    session_id, player_id, final, "Combat completed concurrently"
+                )
+            raise
         if any(entry.get("escaped") for entry in final.get("round_log", [])):
             return _combat_decision_summary(session_id, player_id, final,
                                             "NPC escaped combat")
@@ -545,7 +569,8 @@ def _choose_combat_action(player_id: int, session_id: int, profile: dict | None)
         weights["escape"] += (0.30 - hp_ratio) * safety * 5
         weights["attack"] = max(5, weights["attack"] - safety * 0.35)
     settings = get_all_settings()
-    if player["current_ap"] < settings.get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE):
+    if player["current_ap"] < encumbered_ap_cost(
+            player, settings.get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE), settings):
         weights["escape"] = 0
 
     choices = [(action, max(0, weight + random.uniform(-8, 8)))
@@ -870,13 +895,14 @@ def _maybe_heal(player: dict, profile: dict, settings: dict):
     if hp_ratio >= threshold:
         return None
     cost_ap = settings.get("AP_COST_TAVERN", cfg.AP_COST_TAVERN)
-    cost_cr = settings.get("TAVERN_HEAL_COST", cfg.TAVERN_HEAL_COST)
+    quote = tavern_quote(player, settings)
+    cost_cr = quote["credit_cost"]
     if (player["current_ap"] < encumbered_ap_cost(player, cost_ap, settings)
             or player["credits"] < cost_cr):
         return None
     try:
         result = enqueue_and_process(player["id"], "tavern_heal", {
-            "cost_ap": cost_ap, "cost_cr": cost_cr,
+            "cost_ap": cost_ap,
         })
         return (f"HP was below {int(threshold * 100)}% safety threshold", str(result))
     except RuntimeError as exc:
@@ -895,9 +921,16 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
 
     owned = _load_scored_inventory(player, profile)
     inv_count = len(owned)
+    from shop_budget import get_vendor_credit_balance
+    vendor_balance = get_vendor_credit_balance(player["id"], settings)
     # Make space when full. Hoarders protect specials; other personalities sell
     # the least useful unequipped item regardless of category.
     if inv_count >= player["inventory_limit"]:
+        # A player sees this balance before choosing Sell, so automated
+        # characters do too. Wait for midnight instead of repeatedly planning
+        # a sale when this NPC's personal vendor pool is exhausted.
+        if vendor_balance <= 0:
+            return None
         equipped = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
                     player.get("equipped_special_id")} - {None}
         candidates = [item for item in owned if item["inv_id"] not in equipped]
@@ -908,17 +941,23 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
             elif candidates:
                 victim = min(candidates, key=lambda item: item["credit_cost"])
                 result = _npc_shop_transaction(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+                if result.get("cancelled"):
+                    return ("Inventory was full, but the shop visit was postponed", str(result))
                 return (f"Inventory was full; sold cheapest special {victim['name']}", str(result))
         if candidates:
             victim = min(candidates, key=lambda item: (item["score"], item["credit_cost"]))
             result = _npc_shop_transaction(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+            if result.get("cancelled"):
+                return ("Inventory was full, but the shop visit was postponed", str(result))
             return (f"Inventory was full; sold obsolete {victim['name']}", str(result))
         return None
 
     # Near capacity, occasionally clear a duplicate weapon or armor that is
     # materially worse than the equipped one. This is deliberately infrequent
     # so the NPC does not burn all of its AP merely reorganizing inventory.
-    if inv_count >= max(3, player["inventory_limit"] - 2) and random.random() < 0.20:
+    if (vendor_balance > 0 and
+            inv_count >= max(3, player["inventory_limit"] - 2) and
+            random.random() < 0.20):
         equipped = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
                     player.get("equipped_special_id")} - {None}
         obsolete = []
@@ -930,6 +969,8 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
         if obsolete:
             victim = min(obsolete, key=lambda item: (item["score"], item["credit_cost"]))
             result = _npc_shop_transaction(player["id"], "shop_sell", {"inv_id": victim["inv_id"]})
+            if result.get("cancelled"):
+                return ("Inventory cleanup was postponed after conditions changed", str(result))
             return (f"Sold obsolete {victim['name']} to keep inventory useful", str(result))
 
     # Temperament creates stable differences between otherwise identical NPCs,
@@ -953,7 +994,10 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
 
     # Preserve enough money for one heal and a modest repair reserve. More
     # self-preserving NPCs keep a larger cushion; hoarders accept more risk.
-    heal_reserve = settings.get("TAVERN_HEAL_COST", cfg.TAVERN_HEAL_COST)
+    heal_reserve = max(
+        settings.get("TAVERN_MIN_COST", cfg.TAVERN_MIN_COST),
+        tavern_quote(player, settings)["credit_cost"],
+    )
     reserve_pct = max(0.10, 0.35 + profile["self_preservation"] / 400
                       - profile["hoarder"] / 500)
     # Keep a concrete maintenance cushion before optional shopping. This is
@@ -986,7 +1030,6 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
     # make room and no other legal item is available.
     liquidation_pool = [item for item in unequipped if item["item_type"] in ("WEAPON", "ARMOR")]
     liquidation_enabled = len(unequipped) >= minimum_spares
-
     def sale_value(item: dict) -> int:
         """Estimate ordinary resale proceeds using the active bonus profile."""
         sell_pct = settings.get("SELL_PRICE_PERCENT", cfg.SELL_PRICE_PERCENT)
@@ -1025,6 +1068,10 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
                         break
                 if raised < needed:
                     continue
+                # The system vendor has a separate daily allowance for this
+                # NPC. Never queue a combined liquidation it cannot fund.
+                if raised > vendor_balance:
+                    continue
             value = (score - baseline) / max(1, price)
             if collectible:
                 value += profile["hoarder"] / 25
@@ -1044,6 +1091,8 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
         })
     else:
         result = _npc_shop_transaction(player["id"], "shop_buy", {"listing_id": listing["id"]})
+        if result.get("cancelled"):
+            return ("A planned equipment upgrade was postponed", str(result))
     _equip_best_items(player["id"], profile)
     sold_note = (" after selling " + ", ".join(item["name"] for item in liquidation_plan)
                  if liquidation_plan else "")
@@ -1112,10 +1161,19 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
         amount = max(0, int(detail["credit_cost"] * final_sell_pct))
         proceeds += amount
         sale_details.append((inv, detail, amount))
+    from shop_budget import get_vendor_credit_balance
+    vendor_balance = get_vendor_credit_balance(player_id, settings)
+    if proceeds > vendor_balance:
+        raise ValueError(
+            f"The NPC's shop vendor has only {vendor_balance} credits left today; "
+            f"the liquidation requires {proceeds}."
+        )
     if player["credits"] + proceeds < price + reserve:
         raise ValueError("Liquidation no longer funds the upgrade and required reserve.")
 
     with exclusive_transaction():
+        from shop_budget import debit_vendor_credits
+        vendor_remaining = debit_vendor_credits(player_id, proceeds, settings)
         # Recheck the unique listing inside the same write lock before changing inventory.
         if not execute_one("SELECT id FROM shop_listings WHERE id=?", (listing["id"],)):
             raise ValueError("Planned upgrade was purchased by another player.")
@@ -1158,22 +1216,79 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
         execute_write(f"UPDATE players SET {slot}=? WHERE id=?", (new_inv_id, player_id))
     return {"success": True, "bought": target["name"], "credits_spent": price,
             "sale_proceeds": proceeds,
+            "vendor_credits_remaining": vendor_remaining,
             "items_sold": [detail["name"] for _, detail, _ in sale_details],
             "ap_spent": ap_cost, "inventory_item_id": new_inv_id}
 
 
 def _npc_shop_transaction(player_id: int, action_type: str, payload: dict) -> dict:
-    """Pay shop admission once, then perform one NPC trading visit."""
+    """Pay shop admission once, then perform one NPC trading visit.
+
+    A minion interruption can change HP, AP, encumbrance, or combat state after
+    inventory planning. Reload and revalidate the NPC before shop admission so
+    that a legitimate post-interruption AP shortage becomes a postponed visit,
+    not a failed queue action or a misleading completed-transaction log.
+    """
     # The separate admin Flask process does not register player blueprints, so
     # load the Shop module here to make its queued handlers available to NPCs.
     from routes import shop as _shop_handlers  # noqa: F401
     player = get_player(player_id)
+    # NPCs can see the same personal vendor balance displayed to players. Do
+    # not spend admission AP or roll an interruption for a sale that the shop
+    # is already known to be unable to afford.
+    if action_type == "shop_sell" and player:
+        inv = execute_one(
+            "SELECT * FROM inventory_items WHERE id=? AND player_id=?",
+            (payload.get("inv_id"), player_id),
+        )
+        detail = (_load_item_detail(inv["item_type"], inv["item_id"]) if inv else None)
+        if detail:
+            sell_pct = get_all_settings().get("SELL_PRICE_PERCENT", cfg.SELL_PRICE_PERCENT)
+            sell_bonus = float(get_player_bonus_profile(player_id).get("sell_bonus", 0) or 0)
+            price = max(0, int(detail["credit_cost"] * min(1.0, sell_pct + sell_bonus)))
+            from shop_budget import get_vendor_credit_balance
+            balance = get_vendor_credit_balance(player_id)
+            if price > balance:
+                return {
+                    "cancelled": True,
+                    "reason": (f"Shop sale postponed: vendor has {balance} credits left "
+                               f"and {price} are required."),
+                }
     profile = execute_one("SELECT * FROM npc_profiles WHERE player_id=?", (player_id,))
     interruption = _run_npc_minion_interruption(player, profile, get_all_settings())
     if interruption and not interruption["survived"]:
         return {"interruption": interruption,
+                "cancelled": True,
                 "error": "The minion defeated the NPC; the shop action was cancelled."}
-    admission = enqueue_and_process(player_id, "shop_enter", {})
+    player = get_player(player_id)
+    settings = get_all_settings()
+    base_cost = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
+    ap_cost = encumbered_ap_cost(player, base_cost, settings) if player else base_cost
+    if not player or player["in_combat"] or player["current_ap"] < ap_cost:
+        return {
+            "interruption": interruption,
+            "cancelled": True,
+            "reason": ("Shop visit postponed after interruption/state refresh: "
+                       f"{(player or {}).get('current_ap', 0)} AP available; {ap_cost} required."),
+        }
+    try:
+        admission = enqueue_and_process(player_id, "shop_enter", {})
+    except RuntimeError:
+        # A concurrent action may alter AP between the refresh and the queued
+        # handler. Treat only a now-unaffordable admission as a normal deferral;
+        # unexpected shop failures must still surface for diagnosis.
+        refreshed = get_player(player_id)
+        refreshed_cost = (encumbered_ap_cost(refreshed, base_cost, settings)
+                          if refreshed else base_cost)
+        if not refreshed or refreshed["current_ap"] < refreshed_cost:
+            return {
+                "interruption": interruption,
+                "cancelled": True,
+                "reason": ("Shop visit postponed because AP changed before admission: "
+                           f"{(refreshed or {}).get('current_ap', 0)} AP available; "
+                           f"{refreshed_cost} required."),
+            }
+        raise
     result = enqueue_and_process(player_id, action_type, payload)
     return {"interruption": interruption, "admission": admission, "transaction": result}
 

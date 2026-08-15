@@ -7,7 +7,11 @@
         <div><a href="{{ url_for('character.index') }}" class="back-link">← Character Sheet</a>
         <h1 class="page-title">Equipment</h1>
         <p class="sheet-subtitle">Compare props, costumes, and artifacts before entering the next scene.</p></div>
-        <div class="loadout-summary">Inventory {{ player.inventory_count }}/{{ player.inventory_limit }}</div>
+        <div class="loadout-summary {{ 'capacity-warning' if player.is_overencumbered }}">
+            <strong>Inventory {{ player.inventory_count }}/{{ player.inventory_limit }}</strong>
+            <span class="capacity-track" aria-label="Inventory capacity"><i style="width:{{ [100, (player.inventory_count * 100 / player.inventory_limit)|round(0)|int]|min }}%"></i></span>
+            <small>{{ 'ENCUMBERED — action costs and combat readiness are penalized' if player.is_overencumbered else (player.inventory_limit - player.inventory_count)|string ~ ' slots available' }}</small>
+        </div>
     </div>
 
     {% if feedback %}<div class="ui-notice success">{{ feedback }}</div>{% endif %}

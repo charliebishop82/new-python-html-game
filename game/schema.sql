@@ -358,6 +358,15 @@ CREATE TABLE IF NOT EXISTS shop_listings (
     listed_at             TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Each character receives an independent daily pool of credits that the
+-- system Shop can spend buying their items. This prevents one seller from
+-- exhausting a global vendor while still limiting daily credit generation.
+CREATE TABLE IF NOT EXISTS player_shop_budgets (
+    player_id         INTEGER PRIMARY KEY REFERENCES players(id) ON DELETE CASCADE,
+    credits_remaining INTEGER NOT NULL CHECK(credits_remaining >= 0),
+    reset_date        TEXT NOT NULL
+);
+
 -- Player-run, timed sales. The inventory copy remains owned by the seller but
 -- is locked by this row until settlement or cancellation.
 CREATE TABLE IF NOT EXISTS auction_listings (
@@ -787,6 +796,74 @@ CREATE TABLE IF NOT EXISTS master (
     protagonist_armor_id    INTEGER REFERENCES armor(id),
     protagonist_special_item_id INTEGER REFERENCES special_items(id),
     imported_at             TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Dormant board-game infrastructure. Hexes use axial q/r coordinates; entities
+-- remain unplaced until a future board controller explicitly assigns them.
+CREATE TABLE IF NOT EXISTS game_boards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    radius INTEGER,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    CHECK (radius IS NULL OR radius >= 0)
+);
+
+-- Entity references are validated by game_board.py because one SQLite foreign
+-- key cannot target the several different tables represented here.
+CREATE TABLE IF NOT EXISTS board_positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES game_boards(id) ON DELETE CASCADE,
+    entity_type TEXT NOT NULL CHECK (entity_type IN (
+        'PLAYER','NPC','BOSS','MINION','WORLD_BOSS','PROTAGONIST',
+        'BOSS_INSTANCE','MINION_INSTANCE'
+    )),
+    entity_id INTEGER NOT NULL,
+    layer INTEGER NOT NULL DEFAULT 1 CHECK (layer >= 1),
+    q INTEGER NOT NULL,
+    r INTEGER NOT NULL,
+    placed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (board_id, entity_type, entity_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_board_positions_hex
+    ON board_positions(board_id, layer, q, r);
+CREATE INDEX IF NOT EXISTS idx_board_positions_entity
+    ON board_positions(entity_type, entity_id);
+
+-- Each layer may contain the standard 19-hex layout: one central services hub,
+-- six inner movie tiles, and twelve outer movie tiles. Movie assignment stays
+-- nullable until the content workbook is ready for board-aware ingestion.
+CREATE TABLE IF NOT EXISTS board_tiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES game_boards(id) ON DELETE CASCADE,
+    layer INTEGER NOT NULL DEFAULT 1 CHECK (layer >= 1),
+    q INTEGER NOT NULL,
+    r INTEGER NOT NULL,
+    ring INTEGER NOT NULL CHECK (ring BETWEEN 0 AND 2),
+    tile_type TEXT NOT NULL CHECK (tile_type IN ('HUB','MOVIE')),
+    name TEXT,
+    master_id INTEGER REFERENCES master(id) ON DELETE SET NULL,
+    is_enabled INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (board_id, layer, q, r),
+    UNIQUE (board_id, layer, master_id),
+    CHECK ((ring = 0 AND tile_type = 'HUB') OR
+           (ring IN (1,2) AND tile_type = 'MOVIE'))
+);
+
+-- Normal same-layer neighbors are calculated from q/r. This table is only for
+-- nonstandard links such as stairs, elevators, portals, or locked passages.
+CREATE TABLE IF NOT EXISTS board_connections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL REFERENCES game_boards(id) ON DELETE CASCADE,
+    from_tile_id INTEGER NOT NULL REFERENCES board_tiles(id) ON DELETE CASCADE,
+    to_tile_id INTEGER NOT NULL REFERENCES board_tiles(id) ON DELETE CASCADE,
+    connection_type TEXT NOT NULL DEFAULT 'VERTICAL',
+    is_bidirectional INTEGER NOT NULL DEFAULT 1,
+    is_enabled INTEGER NOT NULL DEFAULT 1,
+    UNIQUE (from_tile_id, to_tile_id),
+    CHECK (from_tile_id <> to_tile_id)
 );
 
 -- Excel-authored cinematic scenarios. Version one resolves the opening

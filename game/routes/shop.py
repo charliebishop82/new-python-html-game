@@ -84,6 +84,9 @@ def index():
 
     # Load player's unequipped inventory for the sell panel
     sellable = _get_sellable_items(player)
+    from shop_budget import daily_vendor_allowance, get_vendor_credit_balance
+    vendor_credit_limit = daily_vendor_allowance(settings)
+    vendor_credits = get_vendor_credit_balance(player["id"], settings)
 
     # Check if player spent AP to enter (AP deducted on first visit each session)
     # For simplicity: AP is deducted when the player clicks Shop from the dashboard.
@@ -94,6 +97,8 @@ def index():
         listings=listings,
         sellable=sellable,
         discount_pct=int(discount * 100),
+        vendor_credits=vendor_credits,
+        vendor_credit_limit=vendor_credit_limit,
         feedback=request.args.get("feedback"),
         error=request.args.get("error"),
     )
@@ -286,7 +291,7 @@ def sell():
 
     try:
         enqueue_and_process(session["player_id"], "shop_sell", {"inv_id": inv_id})
-        return redirect(url_for("shop.index", feedback="Item listed for sale."))
+        return redirect(url_for("shop.index", feedback="Item sold to the shop."))
     except RuntimeError as e:
         return redirect(url_for("shop.index", error=str(e)))
 
@@ -326,10 +331,19 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
     sell_bonus = _get_special_sell_bonus(player)
     final_pct  = min(sell_pct + sell_bonus, 1.0)
     sell_price = max(0, int(detail["credit_cost"] * final_pct))
+    from shop_budget import get_vendor_credit_balance
+    vendor_balance = get_vendor_credit_balance(player_id, settings)
+    if sell_price > vendor_balance:
+        raise ValueError(
+            f"Your shop vendor has only {vendor_balance} credits left today; "
+            f"this sale requires {sell_price}. The allowance resets at midnight UTC."
+        )
     from crews import contribute_earnings
     _unused_xp, net_sell_price = contribute_earnings(player_id, 0, sell_price, "SHOP_SALE")
 
     with exclusive_transaction():
+        from shop_budget import debit_vendor_credits
+        vendor_remaining = debit_vendor_credits(player_id, sell_price, settings)
         # Release the unique-item registry foreign key before deleting its
         # inventory copy. SQLite rejects the inverse ordering.
         if inv["item_type"] == "SPECIAL":
@@ -367,7 +381,8 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
         )
     logger.info("Player %d sold item %s/%d for %d credits",
                 player_id, inv["item_type"], inv["item_id"], sell_price)
-    return {"success": True, "sell_price": sell_price, "ap_spent": 0}
+    return {"success": True, "sell_price": sell_price,
+            "vendor_credits_remaining": vendor_remaining, "ap_spent": 0}
 
 
 def _get_item_name(item_type: str, item_id: int) -> str:
