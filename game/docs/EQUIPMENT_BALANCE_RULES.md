@@ -24,7 +24,10 @@ Effective attributes include base statistics plus equipped weapon, armor, specia
 
 ### Armor Class
 
-`AC = 10 + floor(effective AGI / 2) + armor AC bonus + special AC bonus`
+`AC = 10 + floor(effective AGI / 2) + authored armor AC + armor-tier AC + special AC bonus`
+
+Outfit tier is deliberately slower than weapon damage to preserve bounded
+accuracy: Levels 1–3 `+0`, 4–9 `+1`, 10–15 `+2`, and 16–18 `+3` AC.
 
 Because AGI and direct AC both increase Armor Class, an item that grants both must be budgeted more conservatively. Do not treat them as unrelated bonuses.
 
@@ -38,8 +41,9 @@ Because AGI and direct AC both increase Armor Class, an item that grants both mu
 
 ### Weapon damage
 
-- Melee: `weapon die + floor(effective STR / 2)`
-- Ranged: `weapon die + floor(effective AGI / 2)`
+- Weapon tier: Levels 1–3 `+0`, 4–6 `+1`, 7–9 `+2`, 10–12 `+3`, 13–15 `+4`, and 16–18 `+5` flat damage.
+- Melee: `weapon die + floor(effective STR / 2) + weapon-tier bonus`
+- Ranged: `weapon die + floor(effective AGI / 2) + weapon-tier bonus`
 - A critical doubles weapon damage and typed bonus damage before resistance is applied.
 
 ### Resistance
@@ -71,6 +75,7 @@ Weapons define the primary damage die, damage type, attack attribute, and suppor
 ### Ordinary weapons
 
 - Typical damage dice: d4 through d10.
+- The shared weapon-tier bonus supplies smooth level progression between die increases; do not inflate dice merely to distinguish adjacent levels.
 - Maximum recommended attribute total: 8.
 - Maximum recommended single attribute: +4.
 - A signature weapon may reach +5 in its primary attribute only if its other bonuses are reduced.
@@ -90,14 +95,14 @@ Armor contributes direct AC, attributes, and resistances.
 
 ### Ordinary armor
 
-- Direct AC bonus: +1 to +4.
+- Authored direct AC bonus: +1 to +4, before the automatic outfit-tier bonus.
 - Maximum recommended attribute total: 6.
 - Maximum recommended single attribute: +3.
 - One to three relevant resistances is normal; broader resistance should reduce other bonuses.
 
 ### World-boss armor
 
-- Direct AC bonus: +5 to +7.
+- Authored direct AC bonus: +5 to +7, before the automatic outfit-tier bonus.
 - Recommended attribute total: 7–10.
 - Maximum single attribute: +3.
 - Item level should normally equal the associated world-boss level plus 3.

@@ -72,7 +72,10 @@ def _ensure_shop_populated(app: Flask) -> None:
             player_count = execute_one(
                 "SELECT COUNT(*) AS cnt FROM players WHERE is_banned=0")["cnt"]
             if player_count:
-                _populate_special_slots(max(1, player_count // 2))
+                special_cap = int(settings.get(
+                    "SHOP_SPECIAL_COUNT", cfg.SHOP_SPECIAL_COUNT
+                ))
+                _populate_special_slots(min(special_cap, max(1, player_count // 2)))
         logger.info("Shop was empty and has been populated for the current rotation")
 
 

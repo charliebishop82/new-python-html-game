@@ -22,12 +22,14 @@
     <div class="term-line term-grey">
         ─── Round {{ result.round_number }} ────────────────────────────────────────
     </div>
-    <div class="term-line term-system" style="font-size:11px;">
+    <div class="term-line term-system round-initiative {{ 'player-first' if result.attacker_first else 'opponent-first' }}">
         Initiative: You {{ result.att_init }} vs Opponent {{ result.def_init }}
         — {{ 'You act first' if result.attacker_first else 'Opponent acts first' }}
     </div>
     {% for action_result in result.round_log %}
+    {% set is_player_action = (result.attacker_first and loop.index0 == 0) or (not result.attacker_first and loop.index0 == 1) %}
     <div class="term-line combat-result-line
+        {{ 'combat-player-action' if is_player_action else 'combat-opponent-action' }}
         {% if action_result.action in ('ATTACK', 'SPECIAL_ATTACK') %}
             {{ 'term-white' if action_result.get('hit') else 'term-grey' }}
         {% elif action_result.action in ('BRACE', 'SPECIAL_BUFF') %}term-good
@@ -35,6 +37,7 @@
             {{ 'term-good' if action_result.success else 'term-bad' }}
         {% elif action_result.action == 'OBSERVE' %}term-blue
         {% else %}term-grey{% endif %}">
+        <strong class="combat-actor">{{ 'YOU' if is_player_action else 'OPPONENT' }}</strong>
         {% if action_result.action in ('ATTACK', 'SPECIAL_ATTACK') %}
           {% if action_result.get('is_crit') %}<strong class="combat-outcome outcome-critical">CRITICAL HIT</strong>
           {% elif action_result.get('hit') %}<strong class="combat-outcome outcome-hit">HIT</strong>
@@ -49,7 +52,7 @@
         <span class="combat-flavor">{{ action_result.flavor }}</span>
     </div>
     {% if action_result.get('roll_detail') or action_result.get('outcome_detail') %}
-    <details class="combat-math"><summary>Show roll details</summary>
+    <details class="combat-math {{ 'combat-player-math' if is_player_action else 'combat-opponent-math' }}"><summary>Show roll details</summary>
       {% if action_result.get('roll_detail') %}<div>{{ action_result.roll_detail }}</div>{% endif %}
       {% if action_result.get('outcome_detail') %}<div>Damage calculation: {{ action_result.outcome_detail }}</div>{% endif %}
     </details>{% endif %}

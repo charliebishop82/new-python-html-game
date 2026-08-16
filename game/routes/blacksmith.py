@@ -1,7 +1,7 @@
 """Blacksmith display and queued durability-repair operations."""
 # routes/blacksmith.py
-# Full-page repair interface. Players select damaged items to repair,
-# pay credits per item, with a LCK bonus roll for enhanced restoration.
+# Full-page repair interface. Players pay AP once for admission, then select
+# damaged items and pay credits per repair order, with a LCK restoration roll.
 
 import math
 import logging
@@ -20,20 +20,74 @@ bp = Blueprint("blacksmith", __name__)
 logger = logging.getLogger(__name__)
 
 
+@bp.route("/blacksmith/leave", methods=["POST"])
+def leave():
+    """Explicitly close a paid Blacksmith visit before navigating elsewhere."""
+    session.pop("blacksmith_access_granted", None)
+    session.pop("blacksmith_visit_ap_spent", None)
+    return ("", 204)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /blacksmith
 # ─────────────────────────────────────────────────────────────────────────────
 
+@bp.route("/blacksmith/enter", methods=["POST"])
+def enter():
+    """Charge Blacksmith admission once and open an AP-free repair visit."""
+    player = get_player(session["player_id"])
+    settings = get_all_settings()
+    base_cost = settings.get("AP_COST_BLACKSMITH", cfg.AP_COST_BLACKSMITH)
+    admission = encumbered_ap_cost(player, base_cost, settings)
+    if player["current_ap"] < admission:
+        return redirect(url_for(
+            "dashboard.index", error=f"Not enough AP. Need {admission}."
+        ))
+    try:
+        result = enqueue_and_process(player["id"], "blacksmith_enter", {})
+    except RuntimeError as exc:
+        return redirect(url_for("dashboard.index", error=str(exc)))
+    session["blacksmith_access_granted"] = True
+    session["blacksmith_visit_ap_spent"] = result["ap_spent"]
+    return redirect(url_for("blacksmith.index"))
+
+
+@register_handler("blacksmith_enter")
+def handle_blacksmith_enter(player_id: int, payload: dict) -> dict:
+    """Spend Blacksmith admission AP; repair orders then cost credits only."""
+    settings = get_all_settings()
+    player = get_player(player_id)
+    ap_cost = encumbered_ap_cost(
+        player, settings.get("AP_COST_BLACKSMITH", cfg.AP_COST_BLACKSMITH), settings
+    )
+    if player["in_combat"]:
+        raise ValueError("The Blacksmith is unavailable during combat.")
+    if player["current_ap"] < ap_cost:
+        raise ValueError(f"Not enough AP. Need {ap_cost}.")
+    with exclusive_transaction():
+        execute_write(
+            "UPDATE players SET current_ap=current_ap-? WHERE id=?",
+            (ap_cost, player_id)
+        )
+    return {"success": True, "ap_spent": ap_cost}
+
 @bp.route("/blacksmith")
 def index():
     """Handle the index workflow."""
+    if not session.get("blacksmith_access_granted"):
+        return redirect(url_for(
+            "dashboard.index",
+            error="Enter the Blacksmith from the dashboard to spend its AP cost."
+        ))
     player   = g.player
     settings = get_all_settings()
+    ap_cost = int(session.get("blacksmith_visit_ap_spent", 0))
 
     if player["credits"] == 0:
         return render_template("blacksmith/blacksmith.html",
                                items=[], blocked=True,
                                blocked_reason="You have no credits.",
+                               ap_cost=ap_cost,
                                feedback=request.args.get("feedback"),
                                error=request.args.get("error"))
 
@@ -44,12 +98,14 @@ def index():
         return render_template("blacksmith/blacksmith.html",
                                items=[], blocked=True,
                                blocked_reason="All your items are at full durability.",
+                               ap_cost=ap_cost,
                                feedback=request.args.get("feedback"),
                                error=request.args.get("error"))
 
     return render_template("blacksmith/blacksmith.html",
                            items=items,
                            blocked=False,
+                           ap_cost=ap_cost,
                            feedback=request.args.get("feedback"),
                            error=request.args.get("error"))
 
@@ -70,9 +126,9 @@ def _get_repairable_items(player: dict, settings: dict) -> list[dict]:
         missing_dur = 100 - inv["current_durability"]
         # Cost = credit_cost * REPAIR_COST_PERCENT * (missing_dur / 100)
         # Free if credit_cost is 0
-        repair_cost = max(0, int(
-            detail["credit_cost"] * repair_cost_pct * (missing_dur / 100)
-        ))
+        repair_cost = _repair_credit_cost(
+            detail["credit_cost"], repair_cost_pct, missing_dur
+        )
         equipped = inv["id"] in {
             player.get("equipped_weapon_id"),
             player.get("equipped_armor_id"),
@@ -86,6 +142,15 @@ def _get_repairable_items(player: dict, settings: dict) -> list[dict]:
             "is_equipped": equipped,
         })
     return result
+
+
+def _repair_credit_cost(item_value, cost_pct, missing_durability) -> int:
+    """Price durability repair without rounding a positive value to zero."""
+    item_value = max(0, int(item_value or 0))
+    missing_durability = max(0, int(missing_durability or 0))
+    if not item_value or not missing_durability:
+        return 0
+    return max(1, int(item_value * float(cost_pct) * (missing_durability / 100)))
 
 
 def _get_item_detail(item_type: str, item_id: int) -> dict | None:
@@ -107,6 +172,13 @@ def repair():
     inv_ids = request.form.getlist("inv_ids", type=int)
     repair_mode = request.form.get("mode", "selected")  # selected / equipped / all
 
+    if not session.get("blacksmith_access_granted"):
+        return redirect(url_for(
+            "dashboard.index", error="Your Blacksmith visit has ended. Re-enter to make repairs."
+        ))
+    if repair_mode == "selected" and not inv_ids:
+        return redirect(url_for("blacksmith.index", error="Select at least one item to repair."))
+
     try:
         result = enqueue_and_process(
             session["player_id"], "blacksmith_repair",
@@ -126,14 +198,10 @@ def handle_blacksmith_repair(player_id: int, payload: dict) -> dict:
     lck_mult    = settings.get("REPAIR_LCK_MULTIPLIER",  cfg.REPAIR_LCK_MULTIPLIER)
     lck_cap     = settings.get("REPAIR_LCK_CAP",         cfg.REPAIR_LCK_CAP)
     cost_pct    = settings.get("REPAIR_COST_PERCENT",    cfg.REPAIR_COST_PERCENT)
-    ap_cost     = settings.get("AP_COST_BLACKSMITH",     cfg.AP_COST_BLACKSMITH)
 
     player  = get_player(player_id)
-    ap_cost = encumbered_ap_cost(player, ap_cost, settings)
     if player["credits"] == 0:
         raise ValueError("You have no credits.")
-    if player["current_ap"] < ap_cost:
-        raise ValueError(f"Not enough AP. Need {ap_cost}.")
 
     inv_ids = payload.get("inv_ids", [])
     mode    = payload.get("mode", "selected")
@@ -160,7 +228,7 @@ def handle_blacksmith_repair(player_id: int, payload: dict) -> dict:
         if detail is None:
             continue
         missing = 100 - inv["current_durability"]
-        cost    = max(0, int(detail["credit_cost"] * cost_pct * (missing / 100)))
+        cost = _repair_credit_cost(detail["credit_cost"], cost_pct, missing)
         to_repair.append({**inv, "detail": detail, "repair_cost": cost, "missing": missing})
 
     if not to_repair:
@@ -176,12 +244,7 @@ def handle_blacksmith_repair(player_id: int, payload: dict) -> dict:
     results = []
 
     with exclusive_transaction():
-        # Deduct AP (no passive regen on blacksmith entry)
-        execute_write(
-            "UPDATE players SET current_ap = current_ap - ? WHERE id = ?",
-            (ap_cost, player_id)
-        )
-        # Deduct total credit cost
+        # Admission AP was paid when this visit began; repairs cost credits only.
         execute_write(
             "UPDATE players SET credits = credits - ? WHERE id = ?",
             (total_cost, player_id)
@@ -189,7 +252,7 @@ def handle_blacksmith_repair(player_id: int, payload: dict) -> dict:
 
         for item in to_repair:
             # Base repair
-            base_restore = int(item["missing"] * repair_base)
+            base_restore = max(1, int(item["missing"] * repair_base))
 
             # LCK bonus roll
             lck_bonus_applied = False

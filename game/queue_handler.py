@@ -86,7 +86,7 @@ def _activity_message(action_type: str, details: dict) -> str:
         "combat_action": "Completed a combat round", "combat_steal": "Attempted a combat steal",
         "combat_resolve": "Resolved combat by score", "combat_extend": "Extended combat",
         "shop_buy": "Purchased an item", "shop_sell": "Sold an item",
-        "blacksmith_repair": "Repaired equipment", "tavern_heal": "Healed at the Tavern",
+        "blacksmith_enter": "Entered the Blacksmith", "blacksmith_repair": "Repaired equipment", "tavern_heal": "Healed at the Tavern",
         "assign_levelup": "Assigned a level-up point",
     }
     message = labels.get(action_type, action_type.replace("_", " ").capitalize())
@@ -230,7 +230,7 @@ def _ap_cost_for_action(action_type: str) -> int:
         "pvp_start": cfg.AP_COST_PVP, "pvp_fight": cfg.AP_COST_PVP,
         "tavern_heal": cfg.AP_COST_TAVERN,
         "shop_buy": cfg.AP_COST_SHOP, "shop_sell": cfg.AP_COST_SHOP,
-        "blacksmith_repair": cfg.AP_COST_BLACKSMITH,
+        "blacksmith_enter": cfg.AP_COST_BLACKSMITH,
     }
     return costs.get(action_type, 0)
 

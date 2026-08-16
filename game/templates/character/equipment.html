@@ -48,7 +48,7 @@
     </section>
 
     <section id="loadout-preview" class="loadout-preview" aria-live="polite">
-        <div><strong>Equipment Preview</strong><br><small>Select Preview on an item to see its effect before equipping it.</small></div>
+        <div><strong>Equipment Preview</strong><br><small>Select Preview on an item to see its effect before equipping it. Core-stat bonuses are included in every derived comparison.</small></div>
         <div id="preview-values"></div>
         <button type="button" class="btn-small" id="clear-preview" hidden>Clear Preview</button>
     </section>
@@ -139,7 +139,11 @@
                 `<span>Max HP ${numericDelta(next.max_hp, current.max_hp)}</span>` +
                 `<span>Critical ${numericDelta(next.crit_threshold, current.crit_threshold, true)}</span>` +
                 `<span>Daily AP ${numericDelta(next.daily_ap, current.daily_ap)}</span>` +
-                `<span>STR/END/AGI/LCK/PER ${next.str}/${next.end}/${next.agi}/${next.lck}/${next.per}</span>`;
+                `<span>STR ${numericDelta(next.str, current.str)}</span>` +
+                `<span>END ${numericDelta(next.end, current.end)}</span>` +
+                `<span>AGI ${numericDelta(next.agi, current.agi)}</span>` +
+                `<span>LCK ${numericDelta(next.lck, current.lck)}</span>` +
+                `<span>PER ${numericDelta(next.per, current.per)}</span>`;
             clear.hidden = false;
             panel.scrollIntoView({behavior: 'smooth', block: 'nearest'});
         });

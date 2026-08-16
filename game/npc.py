@@ -9,6 +9,7 @@ import ast
 from datetime import datetime, timedelta
 
 import config_defaults as cfg
+from combat import engine
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player, get_player_equipped,
                       get_player_bonus_profile, reconcile_combat_state,
@@ -847,7 +848,8 @@ def _maybe_repair(player: dict, profile: dict):
         detail = execute_one(f"SELECT credit_cost FROM {table} WHERE id=?", (item["item_id"],)) if table else None
         if detail:
             missing = 100 - item["current_durability"]
-            item_cost = max(0, int(detail["credit_cost"] * cost_pct * (missing / 100)))
+            from routes.blacksmith import _repair_credit_cost
+            item_cost = _repair_credit_cost(detail["credit_cost"], cost_pct, missing)
             total_cost += item_cost
             repair_options.append({**item, "repair_cost": item_cost})
 
@@ -880,10 +882,11 @@ def _maybe_repair(player: dict, profile: dict):
                  "NPC continued without service; credits must be rebuilt.")
             return None
     try:
+        admission = enqueue_and_process(player["id"], "blacksmith_enter", {})
         result = enqueue_and_process(player["id"], "blacksmith_repair",
                                      {"mode": mode, "inv_ids": inv_ids})
         scope = "targeted emergency repair" if mode == "selected" else "full equipped service"
-        return (f"Equipped gear fell below {threshold}% durability; {scope} cost {repair_cost}", str(result))
+        return (f"Equipped gear fell below {threshold}% durability; paid {admission['ap_spent']} AP admission and {repair_cost} credits for {scope}", str(result))
     except RuntimeError as exc:
         return ("Repair was desirable but unaffordable", str(exc))
 
@@ -1214,10 +1217,13 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
         slot = {"WEAPON": "equipped_weapon_id", "ARMOR": "equipped_armor_id",
                 "SPECIAL": "equipped_special_id"}[listing["item_type"]]
         execute_write(f"UPDATE players SET {slot}=? WHERE id=?", (new_inv_id, player_id))
+        from shop_stock import enforce_player_sold_listing_cap
+        expired = enforce_player_sold_listing_cap(settings)
     return {"success": True, "bought": target["name"], "credits_spent": price,
             "sale_proceeds": proceeds,
             "vendor_credits_remaining": vendor_remaining,
             "items_sold": [detail["name"] for _, detail, _ in sale_details],
+            "shop_listings_expired": len(expired),
             "ap_spent": ap_cost, "inventory_item_id": new_inv_id}
 
 
@@ -1381,25 +1387,24 @@ def _choose_level_appropriate_minion(player: dict, undiscovered_ids: list[int] |
     )
 
 
-def _roll_minion_interruption(player: dict, settings: dict) -> dict | None:
-    """Return a minion when any interruptible NPC activity is interrupted."""
-    chance = max(0.0, min(1.0, settings.get(
-        "MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE
-    )))
-    if random.random() >= chance:
-        return None
-    discovered = execute(
-        "SELECT minion_id FROM minion_instances WHERE player_id=?", (player["id"],)
-    )
-    ids = [row["minion_id"] for row in discovered]
-    return _choose_level_appropriate_minion(player, ids)
-
-
 def _run_npc_minion_interruption(player: dict, profile: dict, settings: dict) -> dict | None:
-    """Resolve a free minion interruption, then report whether activity may resume."""
-    minion = _roll_minion_interruption(player, settings)
-    if not minion:
+    """Resolve the shared Luck interruption before an NPC's intended action."""
+    from routes.actions import resolve_action_interruption
+    interruption = resolve_action_interruption(
+        player, "NPC_ACTION", settings=settings, save_pending_action=False
+    )
+    if not interruption:
         return None
+    if interruption["kind"] == "PROTAGONIST":
+        reward = interruption["reward"]
+        return {
+            "kind": "PROTAGONIST", "survived": True,
+            "protagonist": reward.get("protagonist"),
+            "item": reward.get("item_name"), "xp": reward.get("xp_awarded", 0),
+            "credits": reward.get("credits_awarded", 0),
+            "luck_check": interruption["check"],
+        }
+    minion = interruption["minion"]
     result = enqueue_and_process(
         player["id"], "start_boss_fight",
         {"opponent_id": minion["id"], "encounter_type": "MINION", "cost_ap": 0}
@@ -1409,7 +1414,8 @@ def _run_npc_minion_interruption(player: dict, profile: dict, settings: dict) ->
     combat = _finish_active_combat(player["id"], result["session_id"], profile)
     after = get_player(player["id"])
     survived = bool(after and after["current_hp"] > 1 and not after["in_combat"])
-    return {"minion": minion["name"], "survived": survived, "combat": combat}
+    return {"kind": "MINION", "minion": minion["name"], "survived": survived,
+            "combat": combat, "luck_check": interruption["check"]}
 
 
 def _equip_best_items(player_id: int, profile: dict) -> list[str]:
@@ -1496,7 +1502,8 @@ def _score_item(item_type: str, item: dict, player: dict, profile: dict,
         return (average * 4 + math.floor(combat_stat / 2) * 2 + stats
                 + item.get("level", 0) * 0.5) * condition
     if item_type == "ARMOR":
-        return (item.get("ac_bonus", 0) * 5 + resistances * 3 + stats
+        effective_ac = item.get("ac_bonus", 0) + engine.armor_tier_ac_bonus(item)
+        return (effective_ac * 5 + resistances * 3 + stats
                 + item.get("level", 0) * 0.4) * condition
     economy = (item.get("shop_discount", 0) + item.get("sell_bonus", 0)
                + item.get("credit_multiplier", 0)) * (14 if profile["hoarder"] else 8)

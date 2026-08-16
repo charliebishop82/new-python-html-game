@@ -1,0 +1,1367 @@
+{
+  "database": "C:\\Users\\charl\\OneDrive\\Desktop\\bbsgame\\game\\data\\game.db",
+  "bonus_fields": {
+    "str_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 114,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 25
+        }
+      },
+      "gameplay_source_mentions": 15
+    },
+    "end_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 105,
+          "minimum": 0,
+          "maximum": 4
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 25
+        }
+      },
+      "gameplay_source_mentions": 21
+    },
+    "agi_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 93,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 20
+        }
+      },
+      "gameplay_source_mentions": 11
+    },
+    "lck_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 115,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 25
+        }
+      },
+      "gameplay_source_mentions": 13
+    },
+    "per_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 99,
+          "minimum": 0,
+          "maximum": 4
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 30
+        }
+      },
+      "gameplay_source_mentions": 16
+    },
+    "initiative_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 34,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 20
+        }
+      },
+      "gameplay_source_mentions": 14
+    },
+    "extra_attack": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 4,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "gameplay_source_mentions": 8
+    },
+    "crit_chance_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 40,
+          "minimum": 0.0,
+          "maximum": 0.05
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0.0,
+          "maximum": 0.35
+        }
+      },
+      "gameplay_source_mentions": 8
+    },
+    "crit_dmg_multiplier": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 27,
+          "minimum": 0.0,
+          "maximum": 0.25
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        }
+      },
+      "gameplay_source_mentions": 9
+    },
+    "ac_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 29,
+          "minimum": 0,
+          "maximum": 3
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 18
+        }
+      },
+      "gameplay_source_mentions": 23
+    },
+    "res_blade": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 11,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0,
+          "maximum": 0
+        }
+      },
+      "gameplay_source_mentions": 5
+    },
+    "res_blunt": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 14,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0,
+          "maximum": 0
+        }
+      },
+      "gameplay_source_mentions": 5
+    },
+    "res_ballistic": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 20,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0,
+          "maximum": 0
+        }
+      },
+      "gameplay_source_mentions": 5
+    },
+    "res_energy": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 15,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0,
+          "maximum": 0
+        }
+      },
+      "gameplay_source_mentions": 5
+    },
+    "res_arcane": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 14,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0,
+          "maximum": 0
+        }
+      },
+      "gameplay_source_mentions": 5
+    },
+    "res_explosive": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 9,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0,
+          "maximum": 0
+        }
+      },
+      "gameplay_source_mentions": 5
+    },
+    "res_venom": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 13,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0,
+          "maximum": 0
+        }
+      },
+      "gameplay_source_mentions": 5
+    },
+    "bonus_damage_amount": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 55,
+          "minimum": 0,
+          "maximum": 7
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 7,
+          "minimum": 0,
+          "maximum": 20
+        }
+      },
+      "gameplay_source_mentions": 16
+    },
+    "xp_multiplier": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 53,
+          "minimum": 0.0,
+          "maximum": 0.15
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0.0,
+          "maximum": 0.75
+        }
+      },
+      "gameplay_source_mentions": 17
+    },
+    "credit_multiplier": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 29,
+          "minimum": 0.0,
+          "maximum": 0.1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0.0,
+          "maximum": 0.8
+        }
+      },
+      "gameplay_source_mentions": 13
+    },
+    "steal_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 28,
+          "minimum": 0.0,
+          "maximum": 0.1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0.0,
+          "maximum": 0.5
+        }
+      },
+      "gameplay_source_mentions": 23
+    },
+    "bonus_ap": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 35,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 10
+        }
+      },
+      "gameplay_source_mentions": 11
+    },
+    "hp_regen_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 38,
+          "minimum": 0,
+          "maximum": 4
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0,
+          "maximum": 8
+        }
+      },
+      "gameplay_source_mentions": 11
+    },
+    "durability_reduction": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 28,
+          "minimum": 0.0,
+          "maximum": 0.15
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        }
+      },
+      "gameplay_source_mentions": 8
+    },
+    "shop_discount": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 38,
+          "minimum": 0.0,
+          "maximum": 0.1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0.0,
+          "maximum": 0.4
+        }
+      },
+      "gameplay_source_mentions": 10
+    },
+    "sell_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 33,
+          "minimum": 0.0,
+          "maximum": 0.1
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 1,
+          "minimum": 0.0,
+          "maximum": 0.5
+        }
+      },
+      "gameplay_source_mentions": 18
+    },
+    "encounter_bonus": {
+      "storage": {
+        "special_items": {
+          "rows": 197,
+          "nonzero": 51,
+          "minimum": 0.0,
+          "maximum": 0.15
+        },
+        "perks": {
+          "rows": 23,
+          "nonzero": 0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        }
+      },
+      "gameplay_source_mentions": 8
+    }
+  },
+  "content": {
+    "weapons": {
+      "rows": 118,
+      "damage_die": {
+        "minimum": "d10",
+        "maximum": "d8",
+        "average": 0.0
+      },
+      "damage_type": {
+        "minimum": "Arcane",
+        "maximum": "Venom",
+        "average": 0.0
+      },
+      "str_bonus": {
+        "minimum": 0,
+        "maximum": 4,
+        "average": 1.4576271186440677
+      },
+      "end_bonus": {
+        "minimum": 0,
+        "maximum": 3,
+        "average": 0.7966101694915254
+      },
+      "agi_bonus": {
+        "minimum": 0,
+        "maximum": 3,
+        "average": 1.0084745762711864
+      },
+      "lck_bonus": {
+        "minimum": 0,
+        "maximum": 3,
+        "average": 0.7372881355932204
+      },
+      "per_bonus": {
+        "minimum": 0,
+        "maximum": 3,
+        "average": 0.788135593220339
+      }
+    },
+    "armor": {
+      "rows": 118,
+      "ac_bonus": {
+        "minimum": 0,
+        "maximum": 7,
+        "average": 2.6440677966101696
+      },
+      "res_blade": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.3135593220338983
+      },
+      "res_blunt": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.3559322033898305
+      },
+      "res_ballistic": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.4322033898305085
+      },
+      "res_energy": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.2542372881355932
+      },
+      "res_arcane": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.11016949152542373
+      },
+      "res_explosive": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.1694915254237288
+      },
+      "res_venom": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.1694915254237288
+      },
+      "str_bonus": {
+        "minimum": 0,
+        "maximum": 2,
+        "average": 0.6610169491525424
+      },
+      "end_bonus": {
+        "minimum": 0,
+        "maximum": 3,
+        "average": 1.2542372881355932
+      },
+      "agi_bonus": {
+        "minimum": 0,
+        "maximum": 2,
+        "average": 0.8135593220338984
+      },
+      "lck_bonus": {
+        "minimum": 0,
+        "maximum": 2,
+        "average": 0.5847457627118644
+      },
+      "per_bonus": {
+        "minimum": 0,
+        "maximum": 2,
+        "average": 0.6101694915254238
+      }
+    },
+    "bosses": {
+      "rows": 36,
+      "max_hp": {
+        "minimum": 65,
+        "maximum": 262,
+        "average": 163.5
+      },
+      "str_stat": {
+        "minimum": 4,
+        "maximum": 13,
+        "average": 9.944444444444445
+      },
+      "end_stat": {
+        "minimum": 7,
+        "maximum": 12,
+        "average": 9.5
+      },
+      "agi_stat": {
+        "minimum": 4,
+        "maximum": 10,
+        "average": 7.055555555555555
+      },
+      "lck_stat": {
+        "minimum": 4,
+        "maximum": 10,
+        "average": 7.083333333333333
+      },
+      "per_stat": {
+        "minimum": 5,
+        "maximum": 11,
+        "average": 7.916666666666667
+      },
+      "res_blade": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.19444444444444445
+      },
+      "res_blunt": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.25
+      },
+      "res_ballistic": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.3055555555555556
+      },
+      "res_energy": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.25
+      },
+      "res_arcane": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.027777777777777776
+      },
+      "res_explosive": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.05555555555555555
+      },
+      "res_venom": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.19444444444444445
+      }
+    },
+    "minions": {
+      "rows": 36,
+      "max_hp": {
+        "minimum": 32,
+        "maximum": 156,
+        "average": 94.0
+      },
+      "str_stat": {
+        "minimum": 3,
+        "maximum": 12,
+        "average": 8.0
+      },
+      "end_stat": {
+        "minimum": 5,
+        "maximum": 10,
+        "average": 7.5
+      },
+      "agi_stat": {
+        "minimum": 3,
+        "maximum": 12,
+        "average": 7.0
+      },
+      "lck_stat": {
+        "minimum": 3,
+        "maximum": 8,
+        "average": 5.5
+      },
+      "per_stat": {
+        "minimum": 4,
+        "maximum": 9,
+        "average": 6.5
+      },
+      "res_blade": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.16666666666666666
+      },
+      "res_blunt": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.3333333333333333
+      },
+      "res_ballistic": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.3611111111111111
+      },
+      "res_energy": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.08333333333333333
+      },
+      "res_arcane": {
+        "minimum": 0,
+        "maximum": 0,
+        "average": 0.0
+      },
+      "res_explosive": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.05555555555555555
+      },
+      "res_venom": {
+        "minimum": 0,
+        "maximum": 0,
+        "average": 0.0
+      }
+    },
+    "world_bosses": {
+      "rows": 10,
+      "max_hp": {
+        "minimum": 1500,
+        "maximum": 2500,
+        "average": 1995.0
+      },
+      "str_stat": {
+        "minimum": 6,
+        "maximum": 19,
+        "average": 14.7
+      },
+      "end_stat": {
+        "minimum": 10,
+        "maximum": 20,
+        "average": 16.3
+      },
+      "agi_stat": {
+        "minimum": 6,
+        "maximum": 12,
+        "average": 8.7
+      },
+      "lck_stat": {
+        "minimum": 7,
+        "maximum": 11,
+        "average": 9.2
+      },
+      "per_stat": {
+        "minimum": 9,
+        "maximum": 18,
+        "average": 13.8
+      },
+      "res_blade": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.8
+      },
+      "res_blunt": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.8
+      },
+      "res_ballistic": {
+        "minimum": 1,
+        "maximum": 1,
+        "average": 1.0
+      },
+      "res_energy": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.7
+      },
+      "res_arcane": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.7
+      },
+      "res_explosive": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.7
+      },
+      "res_venom": {
+        "minimum": 0,
+        "maximum": 1,
+        "average": 0.8
+      }
+    }
+  },
+  "integrity": {
+    "invalid_weapon_dice": [],
+    "invalid_weapon_damage_types": [],
+    "invalid_special_damage_types": [],
+    "typed_specials_missing_amount": [
+      {
+        "id": 9,
+        "name": "Predator Trophy Skull",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 53,
+        "name": "Evenstar Pendant",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 92,
+        "name": "Sheriff's Celtic Dagger Sheath",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 93,
+        "name": "Gisborne's Hunting Horn",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 94,
+        "name": "Robin's Holy Land Spyglass",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 95,
+        "name": "Longshanks' Royal Signet",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 96,
+        "name": "Cheltham's Knightly Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 97,
+        "name": "Wallace Clan Targe",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 98,
+        "name": "Richelieu's Cardinal Seal",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 99,
+        "name": "Rochefort's Eyepatch",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 100,
+        "name": "Musketeer Plumed Hat",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 101,
+        "name": "Agamemnon's Royal Sceptre",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 102,
+        "name": "Boagrius's Thessalian Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 103,
+        "name": "Achilles' Myrmidon Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 104,
+        "name": "Commodus's Imperial Laurel",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 105,
+        "name": "Quintus's Praetorian Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 106,
+        "name": "Maximus's General Figurines",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 107,
+        "name": "Cerdic's Wolf-Pelt Mantle",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 108,
+        "name": "Cynric's Saxon Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 109,
+        "name": "Arthur's Roman Command Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 110,
+        "name": "Memnon's Royal Medallion",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 111,
+        "name": "Thorak's War Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 112,
+        "name": "Mathayus's Akkadian Quiver",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 113,
+        "name": "Xerxes' Golden Piercings",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 114,
+        "name": "Immortal Face Mask",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 115,
+        "name": "Leonidas's Lambda Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 116,
+        "name": "Humperdinck's Hunting Horn",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 117,
+        "name": "Rugen's Six-Fingered Glove",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 119,
+        "name": "Einon's Dragon-Heart Scar Relic",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 120,
+        "name": "Brok's Royal Guard Shield",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 121,
+        "name": "Draco's Scale Talisman",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 123,
+        "name": "Kali's Golden Crown Fragment",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 125,
+        "name": "Katana's Energy Shield Device",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 126,
+        "name": "Kurgan's Skull Helmet",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 127,
+        "name": "Connor's Clan MacLeod Tartan",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 128,
+        "name": "Thulsa Doom's Snake Standard",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 129,
+        "name": "Rexor's Serpent Cult Amulet",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 130,
+        "name": "Eye of the Serpent",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 131,
+        "name": "White Witch's Stone Table Shard",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 132,
+        "name": "Otmin's Minotaur Horn",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 134,
+        "name": "Bavmorda's Ritual Skull",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 135,
+        "name": "Kael's Skull Mask",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 136,
+        "name": "Elora Danan's Acorn",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 137,
+        "name": "Hades' Underworld Token",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 139,
+        "name": "Medusa's Head",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 140,
+        "name": "Morgana's Dragon's Breath Charm",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 141,
+        "name": "Mordred's Golden Helm",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 142,
+        "name": "Holy Grail",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 143,
+        "name": "Sauron's One Ring",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 144,
+        "name": "White Hand of Saruman Standard",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 145,
+        "name": "Cohaagen's Mars Reactor Key",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 146,
+        "name": "Richter's Tracking Device",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 147,
+        "name": "Rekall Memory Implant",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 149,
+        "name": "Cobra Assault Cannon Magazine",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 150,
+        "name": "OCP Data Spike",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 151,
+        "name": "Immortan Joe Steering-Wheel Totem",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 152,
+        "name": "Rictus's Doll-Head Trophy",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 153,
+        "name": "Max's Dog Food Tin",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 154,
+        "name": "Roy Batty's Replicant Eye",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 155,
+        "name": "Leon's Precious Photographs",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 156,
+        "name": "Voight-Kampff Test Kit",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 157,
+        "name": "Koba's Human Rifle Trophy",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 158,
+        "name": "Ape Army Gorilla Helmet",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 159,
+        "name": "Taylor's ANSA Dog Tags",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 160,
+        "name": "Zorg's Element-Stone Case",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 161,
+        "name": "Aknot's Mangalore Headgear",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 162,
+        "name": "Multipass",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 163,
+        "name": "Serleena's Kylothian Tendril Core",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 164,
+        "name": "Edgar's Arquillian Galaxy",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 165,
+        "name": "Neuralyzer",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 166,
+        "name": "Khan's Genesis Device Module",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 167,
+        "name": "Joachim's Ceti Eel Container",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 168,
+        "name": "Kirk's Communicator",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 169,
+        "name": "Berserker Predator Bio-Mask",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 170,
+        "name": "Tracker Predator Hound Whistle",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 171,
+        "name": "T-1000 CPU Fragment",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 173,
+        "name": "Sarah Connor's Photo",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 174,
+        "name": "Sark Command Code Shard",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 176,
+        "name": "Flynn's Access Key",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 177,
+        "name": "Baron Harkonnen Suspensor Unit",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 178,
+        "name": "Rabban's Harkonnen Crest",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 179,
+        "name": "Paul's Fremkit",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 180,
+        "name": "Queen Egg-Sac Resin Core",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 181,
+        "name": "Xenomorph Acid-Blood Vial",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 182,
+        "name": "Ripley's Motion Tracker",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 183,
+        "name": "Ming's Imperial Ring",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 184,
+        "name": "Klytus's Golden Mask",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 185,
+        "name": "Flash's Mongo Medallion",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 186,
+        "name": "Brain Bug Neural Node",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 187,
+        "name": "Warrior Bug Chitin Plate",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 188,
+        "name": "Rico's Mobile Infantry Dog Tags",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 190,
+        "name": "Horus Guard Helmet",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 191,
+        "name": "Stargate Dialing Tablet",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 193,
+        "name": "Twin's Ghost-Code Fragment",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 194,
+        "name": "Neo's Red Pill",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 196,
+        "name": "Vader's Breathing Regulator",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      },
+      {
+        "id": 197,
+        "name": "Luke's Jedi Holocron",
+        "bonus_damage_type": "",
+        "bonus_damage_amount": 0
+      }
+    ],
+    "orphan_equipment": [],
+    "hp_above_effective_cap": []
+  }
+}

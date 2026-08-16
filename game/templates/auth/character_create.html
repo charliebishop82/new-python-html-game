@@ -77,8 +77,8 @@
                     ('str','STR','Strength','Improves melee attack rolls and melee damage. It also increases how many inventory items you can carry before becoming encumbered.'),
                     ('end','END','Endurance','Increases maximum HP, daily AP, and the passive HP restored whenever you spend AP.'),
                     ('agi','AGI','Agility','Improves ranged attack rolls and ranged damage, Armor Class, initiative, and opposed actions such as stealing and escaping.'),
-                    ('lck','LCK','Luck','Improves critical-hit range, stealing and other opposed rolls, repair results, and the chance and quality of random events.'),
-                    ('per','PER','Perception','Improves Observe attempts, shop discounts, scene challenges, and your chance to detect or avoid minion interruptions.')
+                    ('lck','LCK','Luck','Improves critical-hit range, stealing and other opposed rolls, repair results, random events, and the chance that an action interruption brings a friendly protagonist instead of a minion.'),
+                    ('per','PER','Perception','Improves Observe attempts, shop discounts, and Perception-based scene challenges.')
                 ] %}
                 <div class="stat-row">
                     <label for="{{ stat }}-alloc"><b>{{ abbreviation }}</b> — {{ name }}<small>{{ description }}</small></label>
@@ -111,6 +111,7 @@
     </form>
     {% endif %}
 </div>
+{% endblock %}
 
 {% block scripts %}
 <script>
@@ -173,7 +174,6 @@ sexChoice.addEventListener('change', () => {
 sexChoice.dispatchEvent(new Event('change'));
 updateCounter();
 </script>
-{% endblock %}
 {% endblock %}
 
 

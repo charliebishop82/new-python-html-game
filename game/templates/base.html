@@ -104,7 +104,7 @@
                 'pvp': 'actions.action_pvp',
                 'world_boss': 'world_boss.index',
                 'tavern': 'actions.action_tavern',
-                'blacksmith': 'blacksmith.index',
+                'blacksmith': 'blacksmith.enter',
                 'shop': 'shop.enter',
                 'auction': 'auction.enter'
             } %}
@@ -122,9 +122,11 @@
                     </button>
                     </form>
                     {% elif action == 'blacksmith' %}
-                    <a class="action-btn action-link" href="{{ url_for(action_endpoints[action]) }}">
+                    <form class="terminal-action" action="{{ url_for(action_endpoints[action]) }}" method="POST">
+                    <button type="submit" class="action-btn" title="Pay once to enter; repair orders inside cost credits only.">
                         {{ action|replace('_', ' ')|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
-                    </a>
+                    </button>
+                    </form>
                     {% elif action in ('shop', 'auction') %}
                     <form class="terminal-action" action="{{ url_for(action_endpoints[action]) }}" method="POST">
                         <button type="submit" class="action-btn">
@@ -141,7 +143,9 @@
                 {% else %}
                 <button class="action-btn disabled" title="{{ state.reason }}" disabled>
                     {{ action|replace('_', ' ')|upper }} <span class="ap-cost">({{ state.ap_cost }} AP)</span>
+                    {% if not (state.reason.startswith('Need ') and state.reason.endswith(' AP')) %}
                     <span class="btn-reason">{{ state.reason }}</span>
+                    {% endif %}
                 </button>
                 {% endif %}
             {% endfor %}

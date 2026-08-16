@@ -8,7 +8,48 @@ from datetime import datetime, timedelta, timezone
 
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
-                      get_all_settings, get_player)
+                      get_all_settings, get_player, get_player_bonus_profile)
+
+
+def calculate_attempt_rewards(damage, rounds, bonuses=None, settings=None):
+    """Calculate a world-boss attempt payout from damage and survival.
+
+    Damage is the actual post-resistance amount accepted by the shared HP pool.
+    Completed rounds are capped at the ordinary world-boss attempt limit so a
+    stale or legacy session cannot manufacture unlimited survival rewards.
+    """
+    settings = settings or get_all_settings()
+    bonuses = bonuses or {}
+    damage = max(0, int(damage or 0))
+    round_cap = max(1, int(settings.get(
+        "WORLD_BOSS_ROUNDS_MAX", cfg.WORLD_BOSS_ROUNDS_MAX
+    )))
+    rounds = min(round_cap, max(0, int(rounds or 0)))
+    raw_xp = (
+        int(settings.get("WORLD_BOSS_ATTEMPT_XP", cfg.WORLD_BOSS_ATTEMPT_XP)) +
+        damage * float(settings.get("WORLD_BOSS_XP_PER_DAMAGE", cfg.WORLD_BOSS_XP_PER_DAMAGE)) +
+        rounds * float(settings.get("WORLD_BOSS_XP_PER_ROUND", cfg.WORLD_BOSS_XP_PER_ROUND))
+    )
+    raw_credits = (
+        int(settings.get("WORLD_BOSS_ATTEMPT_CREDITS", cfg.WORLD_BOSS_ATTEMPT_CREDITS)) +
+        damage * float(settings.get("WORLD_BOSS_CREDITS_PER_DAMAGE", cfg.WORLD_BOSS_CREDITS_PER_DAMAGE)) +
+        rounds * float(settings.get("WORLD_BOSS_CREDITS_PER_ROUND", cfg.WORLD_BOSS_CREDITS_PER_ROUND))
+    )
+    xp = max(0, int(raw_xp * (1 + float(bonuses.get("xp_multiplier", 0) or 0))))
+    credits = max(0, int(raw_credits * (1 + float(bonuses.get("credit_multiplier", 0) or 0))))
+    return {"xp": xp, "credits": credits, "damage": damage, "rounds": rounds,
+            "raw_xp": raw_xp, "raw_credits": raw_credits}
+
+
+def get_attempt_performance(session_id):
+    """Return authoritative damage and completed-round counts for an attempt."""
+    return execute_one(
+        """SELECT cs.attacker_total_damage_dealt AS damage,
+                  COALESCE(MAX(cl.round_number),0) AS rounds
+           FROM combat_sessions cs
+           LEFT JOIN combat_logs cl ON cl.combat_session_id=cs.id
+           WHERE cs.id=? GROUP BY cs.id""", (session_id,)
+    ) or {"damage": 0, "rounds": 0}
 
 
 def _utcnow():
@@ -349,15 +390,18 @@ def close_event(event_id, reason="WEEK_ENDED", defeated_by=None):
         # A shared kill immediately releases everybody who was still viewing
         # an individual attempt. Their accumulated damage remains authoritative.
         active_attempts = execute(
-            """SELECT id,attacker_player_id FROM combat_sessions
-               WHERE world_boss_event_id=? AND status='ACTIVE'""", (event_id,)
+            """SELECT cs.id,cs.attacker_player_id,
+                      cs.attacker_total_damage_dealt AS damage,
+                      COALESCE(MAX(cl.round_number),0) AS rounds
+               FROM combat_sessions cs
+               LEFT JOIN combat_logs cl ON cl.combat_session_id=cs.id
+               WHERE cs.world_boss_event_id=? AND cs.status='ACTIVE'
+               GROUP BY cs.id""", (event_id,)
         )
         killer = execute_one("SELECT character_name FROM players WHERE id=?", (defeated_by,)) if defeated_by else None
         end_message = ((killer["character_name"] + " delivered the final blow. The shared fight is over.")
                        if killer else "The weekly battle has ended; final standings are locked.")
         settings = get_all_settings()
-        attempt_xp = int(settings.get("WORLD_BOSS_ATTEMPT_XP", cfg.WORLD_BOSS_ATTEMPT_XP))
-        attempt_credits = int(settings.get("WORLD_BOSS_ATTEMPT_CREDITS", cfg.WORLD_BOSS_ATTEMPT_CREDITS))
         for attempt in active_attempts:
             execute_write(
                 """UPDATE combat_sessions SET status='RESOLVED',result='WORLD_BOSS_ENDED',
@@ -368,6 +412,11 @@ def close_event(event_id, reason="WEEK_ENDED", defeated_by=None):
             # The final hitter's current request performs its own normal
             # attempt finalization; interrupted peers are paid here exactly once.
             if attempt["attacker_player_id"] != defeated_by:
+                bonuses = get_player_bonus_profile(attempt["attacker_player_id"])
+                reward = calculate_attempt_rewards(
+                    attempt["damage"], attempt["rounds"], bonuses, settings
+                )
+                attempt_xp, attempt_credits = reward["xp"], reward["credits"]
                 execute_write("UPDATE players SET xp=xp+?,credits=credits+? WHERE id=?",
                               (attempt_xp, attempt_credits, attempt["attacker_player_id"]))
                 execute_write(
@@ -375,11 +424,18 @@ def close_event(event_id, reason="WEEK_ENDED", defeated_by=None):
                        credits_earned=credits_earned+? WHERE event_id=? AND player_id=?""",
                     (attempt_xp, attempt_credits, event_id, attempt["attacker_player_id"])
                 )
+                player_message = (
+                    f"{end_message} Your {reward['rounds']}-round attempt dealt "
+                    f"{reward['damage']} damage and earned +{attempt_xp} XP and "
+                    f"+{attempt_credits} credits."
+                )
+            else:
+                player_message = end_message
             execute_write(
                 """INSERT INTO daily_feed
                    (feed_scope,player_id,flavor_text,event_category,combat_session_id)
                    VALUES('PERSONAL',?,?,'WORLD_BOSS',?)""",
-                (attempt["attacker_player_id"], end_message, attempt["id"])
+                (attempt["attacker_player_id"], player_message, attempt["id"])
             )
         _log(event_id, defeated_by, "ENDED",
              "The world-boss event has ended. Final standings and prize selection are now locked.")

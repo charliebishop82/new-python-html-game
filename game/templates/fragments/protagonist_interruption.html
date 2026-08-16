@@ -1,0 +1,19 @@
+<!-- Friendly counterpart to the hostile roaming-minion interruption. -->
+<div class="fragment protagonist-interruption">
+    <div class="protagonist-interruption-banner">
+        ★ FRIENDLY INTERRUPTION — A PROTAGONIST FOUND YOU
+        <small>Your Luck check succeeded. The reward is immediate and your requested action continues.</small>
+    </div>
+    <div class="term-line term-good">{{ reward.protagonist }} · {{ reward.movie }}</div>
+    {% if reward.protagonist_description %}
+    <div class="term-line term-grey">{{ reward.protagonist_description }}</div>
+    {% endif %}
+    <div class="term-line term-system">
+        Luck check: d20({{ interruption.check.roll }}) + {{ interruption.check.modifier }}
+        = {{ interruption.check.total }} vs DC {{ interruption.check.dc }} — SUCCESS
+        {% if interruption.check.natural %}({{ interruption.check.natural }}){% endif %}
+    </div>
+    <div class="term-line term-good protagonist-reward">
+        <strong>REWARD:</strong> {{ reward.item_name }} · +{{ reward.xp_awarded }} XP · +{{ reward.credits_awarded }} credits
+    </div>
+</div>

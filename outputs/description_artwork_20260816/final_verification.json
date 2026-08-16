@@ -1,0 +1,87 @@
+{
+  "file": "C:/Users/charl/OneDrive/Desktop/bbsgame/outputs/description_artwork_20260816/GameContent_Swords_and_Circuits_36_ArtDescriptions_2026-08-16.xlsx",
+  "rows": {
+    "Master": {
+      "count": 36,
+      "nonblank": 36,
+      "minWords": 64,
+      "unique": 36
+    },
+    "Bosses": {
+      "count": 36,
+      "nonblank": 36,
+      "minWords": 65,
+      "unique": 36
+    },
+    "Minions": {
+      "count": 36,
+      "nonblank": 36,
+      "minWords": 63,
+      "unique": 36
+    },
+    "Weapons": {
+      "count": 118,
+      "nonblank": 118,
+      "minWords": 52,
+      "unique": 118
+    },
+    "Armor": {
+      "count": 118,
+      "nonblank": 118,
+      "minWords": 61,
+      "unique": 118
+    },
+    "SpecialItems": {
+      "count": 118,
+      "nonblank": 118,
+      "minWords": 59,
+      "unique": 118
+    },
+    "WorldBosses": {
+      "count": 10,
+      "nonblank": 10,
+      "minWords": 23,
+      "unique": 10
+    }
+  },
+  "samples": {
+    "Master": [
+      "Alert, athletic stance fills the frame as wind and torchlight shape a stern face. The figure is broad-shouldered and powerful, with a strong brow and watchful eyes. The sandstone, tarnished steel, and dusty scarlet layered leather outfit shapes the silhouette, while a bow is held in a practiced grip; heat discoloration and soot along the working surfaces and dense filigree around the fittings add grounded, cinematic detail.",
+      "Lean silhouette poised to move fills the frame as the face is framed by cables, smoke, and angular shadows. The figure is angular and almost statuesque, with a weather-cut face and tight jaw. The burnished gold, oxblood leather, and charcoal protective outfit shapes the silhouette, while a hand weapon is held in a practiced grip; fine scratches and dulled edges and asymmetrical field repairs add grounded, cinematic detail.",
+      "Controlled, ready posture fills the frame as the face is framed by cables, smoke, and angular shadows. The figure is lean and long-limbed, with a pale face marked by fine scars. The weathered umber, iron grey, and forest green ceremonial garment shapes the silhouette, while a sword is held in a practiced grip; chipped enamel and rubbed metal at every exposed corner and a narrow geometric border add grounded, cinematic detail."
+    ],
+    "Bosses": [
+      "Commanding, immovable stance fills the frame as wind and torchlight shape a stern face. The figure is broad-shouldered and powerful, with a strong brow and watchful eyes. The midnight blue, cold silver, and ash grey plate harness shapes the silhouette, while a sword is held in a practiced grip; polished high points contrasting with dark recessed detail and a restrained heraldic motif add grounded, cinematic detail.",
+      "Theatrical posture charged with menace fills the frame as the face is framed by cables, smoke, and angular shadows. The figure is angular and almost statuesque, with a weather-cut face and tight jaw. The storm grey, copper, and faded indigo fitted combat suit shapes the silhouette, while a pistol is held in a practiced grip; chipped enamel and rubbed metal at every exposed corner and a narrow geometric border add grounded, cinematic detail.",
+      "Severe silhouette with predatory stillness fills the frame as cool instrument light reflects across tense features. The figure is lean and long-limbed, with a pale face marked by fine scars. The bone ivory, dark bronze, and dried-blood red ceremonial garment shapes the silhouette, while a sword is held in a practiced grip; careful hand-stitching and worn seams and a single vivid accent line add grounded, cinematic detail."
+    ],
+    "Minions": [
+      "Guarded stance shaped by constant violence fills the frame as dust and weather mark the exposed features. The figure is broad-shouldered and powerful, with a strong brow and watchful eyes. The oil-black, gunmetal, and warning amber plate harness shapes the silhouette, while a sword is held in a practiced grip; fine scratches and dulled edges and asymmetrical field repairs add grounded, cinematic detail.",
+      "Guarded stance shaped by constant violence fills the frame as hard side-light cuts across a focused face. The figure is angular and almost statuesque, with a weather-cut face and tight jaw. The oil-black, gunmetal, and warning amber long coat shapes the silhouette, while a hand weapon is held in a practiced grip; fine scratches and dulled edges and asymmetrical field repairs add grounded, cinematic detail.",
+      "Guarded stance shaped by constant violence fills the frame as the face is framed by cables, smoke, and angular shadows. The figure is lean and long-limbed, with a pale face marked by fine scars. The smoke-black, aged brass, and deep crimson plate harness shapes the silhouette, while a sword is held in a practiced grip; engraved borders softened by years of handling and practical straps and reinforced fasteners add grounded, cinematic detail."
+    ],
+    "Weapons": [
+      "A full-length blade runs from a defined point through a guarded hilt, wrapped grip, and weighted pommel. Its overall profile is broad and top-heavy, with crosshatched grip texture. The oil-black, gunmetal, and warning amber finish is broken by practical straps and reinforced fasteners, while engraved borders softened by years of handling gives the piece a tangible, battle-used character.",
+      "A compact metal frame carries a squared barrel, textured grip panels, exposed controls, and a clean sight line. Its overall profile is long and narrow, with a faceted central ridge. The midnight blue, cold silver, and ash grey finish is broken by a restrained heraldic motif, while polished high points contrasting with dark recessed detail gives the piece a tangible, battle-used character.",
+      "A narrow full-tang blade rises from a guarded grip, its spine thick near the hand and tapering to a severe point. Its overall profile is tall and ceremonial, with a contrasting wrapped seam. The matte black, brushed steel, and signal red finish is broken by small rivets set in disciplined rows, while rain spotting, dust, and old repairs gives the piece a tangible, battle-used character."
+    ],
+    "Armor": [
+      "Overlapping rigid plates shape the torso, shoulders, and limbs, leaving narrow articulated gaps for movement. The complete silhouette is broad and top-heavy, with closely spaced shoulder lames, distinguishing its construction at a glance. Its burnished gold, oxblood leather, and charcoal palette is defined by light-swallowing black surfaces; the presence of engraved borders softened by years of handling keeps the protection grounded, worn, and physically believable.",
+      "Overlapping rigid plates shape the torso, shoulders, and limbs, leaving narrow articulated gaps for movement. The complete silhouette is long and narrow, with a faceted ridge down the torso, distinguishing its construction at a glance. Its weathered umber, iron grey, and forest green palette is defined by layered panels that catch the light; the presence of hammer marks and shallow battle scars keeps the protection grounded, worn, and physically believable.",
+      "Overlapping rigid plates shape the torso, shoulders, and limbs, leaving narrow articulated gaps for movement. The complete silhouette is tall and ceremonial, with a contrasting seam running down the back, distinguishing its construction at a glance. Its sandstone, tarnished steel, and dusty scarlet palette is defined by overlapping scale motifs; the presence of polished high points contrasting with dark recessed detail keeps the protection grounded, worn, and physically believable."
+    ],
+    "SpecialItems": [
+      "A palm-sized personal object combines carefully fitted materials, intricate surface detail, and a silhouette made distinctive by long use. Its profile is broad and top-heavy, with a crosshatched contact surface. The obsidian, antique gold, and royal purple surfaces define the color and material treatment, with a single vivid accent line and careful hand-stitching and worn seams providing the close-up detail needed for a convincing prop.",
+      "A palm-sized personal object combines carefully fitted materials, intricate surface detail, and a silhouette made distinctive by long use. Its profile is long and narrow, with a faceted raised ridge. The matte black, brushed steel, and signal red surfaces define the color and material treatment, with small rivets set in disciplined rows and rain spotting, dust, and old repairs providing the close-up detail needed for a convincing prop.",
+      "A palm-sized personal object combines carefully fitted materials, intricate surface detail, and a silhouette made distinctive by long use. Its profile is tall and ceremonial, with a contrasting wrapped seam. The burnished gold, oxblood leather, and charcoal surfaces define the color and material treatment, with practical straps and reinforced fasteners and engraved borders softened by years of handling providing the close-up detail needed for a convincing prop."
+    ],
+    "WorldBosses": [
+      "Elderly pale man with a deeply lined face, yellow eyes, thin white hair, and a black hooded robe with wide sleeves; carries a compact red-bladed lightsaber.",
+      "Mountain-sized humanoid Titan composed of rough black volcanic rock, massive stone limbs, jagged ridges, and deep glowing orange cracks filled with molten material.",
+      "Enormous charcoal-grey reptilian titan with rough pebbled scales, a broad muscular body, thick legs, long heavy tail, powerful jaws, small deep-set eyes, and rows of jagged dorsal plates."
+    ]
+  },
+  "formulaErrors": [
+    "{\"kind\":\"notice\",\"message\":\"Cell search matched 0 entries.\"}"
+  ]
+}

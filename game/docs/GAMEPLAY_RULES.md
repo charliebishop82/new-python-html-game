@@ -27,12 +27,13 @@ This file is the maintainer index for formula-driven gameplay. Player wording li
 - Maximum AP: `BASE_DAILY_AP + floor(END / 2)`, capped by `AP_CARRYOVER_CAP`.
 - Armor Class: `10 + floor(AGI / 2) + armor AC bonus`.
 - Initiative: `d20 + floor(AGI / 2) + equipment/status bonuses`.
-- Melee attack/damage uses STR; ranged attack/damage uses AGI.
+- Melee attack/damage uses STR; ranged attack/damage uses AGI. Weapon damage also gains +1 per three weapon levels after level 3, capped at +5 for levels 16–18.
 - One resistance source halves matching damage; stacked sources use `RESISTANCE_STACK_MIN_DAMAGE_PERCENT`.
 - Boss weakness doubles matching damage.
 - Opposed actions use AGI and LCK; Observe additionally uses PER; ties fail for the actor.
 - PvP round-limit score combines remaining HP percentage and share of damage dealt using the configured weights.
 - XP starts with encounter-type XP per opponent level, adjusts for level difference, then applies equipment multipliers.
+- World-boss attempt rewards start with a small base, then add configurable XP and credits for actual shared-pool damage and completed rounds before equipment/perk multipliers.
 
 The player and administrator HTML guides contain the complete current flow descriptions.
 # Cinematic Scenes — dormant version 1

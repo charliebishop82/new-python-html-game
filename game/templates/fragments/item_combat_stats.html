@@ -1,9 +1,10 @@
 <div class="item-properties item-combat-stats">
     {% if item.item_type == 'WEAPON' %}
         <span>{{ item.weapon_type or 'Weapon' }}</span>
-        <span class="primary-property" data-help-key="possible damage">Damage {{ item.damage_die }} · {{ item.damage_type }}</span>
+        <span class="primary-property" data-help-key="possible damage">Damage {{ item.damage_die }}{% if item.level and item.level >= 4 %} +{{ [5, ((item.level - 1) // 3)]|min }} tier{% endif %} · {{ item.damage_type }}</span>
     {% elif item.item_type == 'ARMOR' %}
-        <span class="primary-property" data-help-key="armor class">Armor Class +{{ item.ac_bonus or 0 }}</span>
+        {% set armor_tier = 0 if not item.level or item.level < 4 else [3, 1 + ((item.level - 4) // 6)]|min %}
+        <span class="primary-property" data-help-key="armor class">Armor Class +{{ (item.ac_bonus or 0) + armor_tier }}{% if armor_tier %} ({{ item.ac_bonus or 0 }} outfit + {{ armor_tier }} tier){% endif %}</span>
     {% else %}
         <span class="primary-property">Special Item</span>
         {% if item.get('ac_bonus', 0) %}<span class="bonus" data-help-key="armor class">Armor Class +{{ item.ac_bonus }}</span>{% endif %}

@@ -188,7 +188,9 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     per_total = player["per_stat"] + (w.get("per_bonus", 0) if w else 0) + \
                 (a.get("per_bonus", 0) if a else 0) + int(b.get("per_bonus", 0) or 0)
 
-    ac_bonus     = (a.get("ac_bonus", 0) if a else 0) + int(b.get("ac_bonus", 0) or 0)
+    armor_level_bonus = engine.armor_tier_ac_bonus(a)
+    ac_bonus     = ((a.get("ac_bonus", 0) if a else 0) + armor_level_bonus +
+                    int(b.get("ac_bonus", 0) or 0))
     ac           = 10 + math.floor(agi_total / 2) + ac_bonus
     max_hp       = 10 + end_total + (5 * player["level"])
     inv_limit    = inventory_capacity(str_total, settings)
@@ -228,8 +230,10 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     except (TypeError, ValueError):
         die_count, die_sides = 1, 4
     attack_stat = str_total if weapon_type == "Melee" else agi_total
-    attack_modifier = math.floor(attack_stat / 2)
-    attack_roll_modifier = attack_modifier + engine.proficiency_bonus(player["level"])
+    stat_damage_modifier = math.floor(attack_stat / 2)
+    weapon_level_bonus = engine.weapon_tier_damage_bonus(w)
+    damage_modifier = stat_damage_modifier + weapon_level_bonus
+    attack_roll_modifier = stat_damage_modifier + engine.proficiency_bonus(player["level"])
     initiative_modifier = math.floor(agi_total / 2) + \
                           int(b.get("initiative_bonus", 0) or 0)
     opposed_modifier = math.floor(agi_total / 2) + math.floor(lck_total / 2)
@@ -240,8 +244,8 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     components = b.get("bonus_damage_components", [])
     bonus_damage = sum(int(part.get("amount", 0)) for part in components)
     bonus_damage_type = ", ".join(dict.fromkeys(part.get("type", "") for part in components if part.get("type")))
-    damage_min = die_count + attack_modifier + bonus_damage
-    damage_max = (die_count * die_sides) + attack_modifier + bonus_damage
+    damage_min = die_count + damage_modifier + bonus_damage
+    damage_max = (die_count * die_sides) + damage_modifier + bonus_damage
     damage_types = [damage_type]
     for component in components:
         component_type = component.get("type")
@@ -285,6 +289,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         "str": str_total, "end": end_total, "agi": agi_total,
         "lck": lck_total, "per": per_total,
         "ac": ac, "max_hp": max_hp, "inv_limit": inv_limit,
+        "armor_level_bonus": armor_level_bonus,
         "crit_threshold": crit_thresh, "crit_chance_pct": crit_chance_pct,
         "crit_range": f"{crit_thresh}-20" if crit_thresh < 20 else "20",
         "shop_discount_pct": shop_discount,
@@ -292,6 +297,8 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         "weapon_name": weapon_name, "weapon_type": weapon_type,
         "damage_die": damage_die, "damage_type": damage_type,
         "attack_modifier": attack_roll_modifier,
+        "damage_modifier": damage_modifier,
+        "weapon_level_bonus": weapon_level_bonus,
         "initiative_modifier": initiative_modifier,
         "steal_modifier": steal_modifier, "steal_roll_bonus": steal_roll_bonus,
         "escape_modifier": escape_modifier, "observe_modifier": observe_modifier,

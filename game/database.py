@@ -207,6 +207,14 @@ def init_db():
                WHERE constant_name='BRACE_HEAL_PERCENT'
                  AND ABS(CAST(value AS REAL) - 0.25) < 0.000001"""
         )
+        # The original twenty-item daily rotation became unwieldy once
+        # player-sold gear and specials were added. Migrate only the former
+        # stock defaults; administrator-customized counts remain untouched.
+        conn.execute(
+            """UPDATE settings SET value='5'
+               WHERE constant_name IN ('SHOP_WEAPONS_COUNT','SHOP_ARMOR_COUNT')
+                 AND CAST(value AS INTEGER)=10"""
+        )
         for name, value, description in (
             ("MINION_XP_PER_LEVEL", "20", "Base victory XP per minion level."),
             ("BOSS_XP_PER_LEVEL", "35", "Base victory XP per boss level."),
@@ -226,12 +234,23 @@ def init_db():
             ("WORLD_BOSS_HP_MULTIPLIER", "1.0", "Multiplier applied to imported world-boss HP."),
             ("WORLD_BOSS_ATTEMPT_XP", "10", "XP granted after a completed world-boss attempt."),
             ("WORLD_BOSS_ATTEMPT_CREDITS", "5", "Credits granted after a completed world-boss attempt."),
+            ("WORLD_BOSS_XP_PER_DAMAGE", "1.0", "Additional world-boss attempt XP per point of actual shared-pool damage."),
+            ("WORLD_BOSS_XP_PER_ROUND", "2.0", "Additional world-boss attempt XP per completed combat round."),
+            ("WORLD_BOSS_CREDITS_PER_DAMAGE", "0.25", "Additional world-boss attempt credits per point of actual shared-pool damage."),
+            ("WORLD_BOSS_CREDITS_PER_ROUND", "1.0", "Additional world-boss attempt credits per completed combat round."),
             ("WORLD_BOSS_REWARD_HOURS", "12", "Hours each placed player has to choose a prize."),
             ("SHOP_DAILY_VENDOR_CREDITS", "500", "Credits each character's shop vendor can spend on their direct sales per UTC day."),
+            ("SHOP_PLAYER_SOLD_LISTING_CAP", "30", "Maximum player-sold listings retained by the Shop; the oldest player-sold stock expires first."),
+            ("SHOP_SPECIAL_COUNT", "2", "Maximum unique specials placed in each normal Shop rotation."),
             ("TAVERN_CREDITS_PER_HP", "2", "Credits charged for each HP purchased from the Tavern."),
             ("TAVERN_MIN_COST", "5", "Minimum credit price for any Tavern treatment."),
             ("INVENTORY_STR_DIVISOR", "3", "Effective STR required for each additional inventory slot."),
             ("BOARD_FEATURE_ENABLED", "FALSE", "Dormant feature gate for the future hex game board."),
+            ("INTERRUPTION_LUCK_DC", "15", "Luck-check difficulty after an action interruption; success produces a protagonist encounter and failure produces a minion."),
+            ("PROTAGONIST_ENCOUNTER_XP_PER_LEVEL", "10", "Base XP awarded per player level by a friendly protagonist interruption."),
+            ("PROTAGONIST_ENCOUNTER_CREDITS_BASE", "15", "Flat credits included in a friendly protagonist interruption reward."),
+            ("PROTAGONIST_ENCOUNTER_CREDITS_PER_LEVEL", "10", "Additional credits per player level in a friendly protagonist interruption reward."),
+            ("ENCOUNTER_MAX_LEVEL_ABOVE", "7", "Highest boss or interruption-minion level permitted above the encountering character."),
         ):
             conn.execute(
                 "INSERT OR IGNORE INTO settings(constant_name,value,description) VALUES(?,?,?)",

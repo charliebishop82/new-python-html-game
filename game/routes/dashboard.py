@@ -1,6 +1,7 @@
 """Main player dashboard and context-sensitive action availability."""
 # Dashboard feed assembly, action availability, and polling timestamps.
 import logging
+import re
 from datetime import datetime, timedelta
 from flask import Blueprint, render_template, g, session
 from database import (execute, execute_write, exclusive_transaction, get_all_settings,
@@ -14,9 +15,11 @@ logger = logging.getLogger(__name__)
 @bp.route('/')
 def index():
     """Handle the index workflow."""
-    # Returning to the dashboard ends the current shop visit. Clicking Shop
-    # again starts a new visit and charges its single admission AP.
+    # Returning to the dashboard ends paid Shop and Blacksmith visits. Clicking
+    # either service again starts a new visit and charges admission AP.
     session.pop("shop_access_granted", None)
+    session.pop("blacksmith_access_granted", None)
+    session.pop("blacksmith_visit_ap_spent", None)
     player   = g.player
     settings = get_all_settings()
 
@@ -73,6 +76,14 @@ def index():
     from combat.flavour import random_event_flavor
     from routes.actions import _describe_random_event_effect
     for entry in terminal_history:
+        # Interruption entries created before dedicated feed categories existed
+        # are relabelled for today's dashboard without rewriting audit history.
+        if (entry['event_category'] == 'RANDOM_EVENT'
+                and entry['flavor_text'].startswith('INTERRUPTION:')):
+            entry['event_category'] = 'INTERRUPTION_HOSTILE'
+        elif (entry['event_category'] == 'RANDOM_EVENT'
+              and 'looks you over and hands you the ' in entry['flavor_text']):
+            entry['event_category'] = 'INTERRUPTION_FRIENDLY'
         if entry['event_category'] != 'RANDOM_EVENT' or 'Effect:' in entry['flavor_text']:
             continue
         for event in random_events:
@@ -80,10 +91,63 @@ def index():
                 entry['flavor_text'] += f"  Effect: {_describe_random_event_effect(event)}."
                 break
 
+    # Condense every turn belonging to a combat session into one expandable
+    # record, even when live world announcements arrived between its rounds.
+    # A short narrative preserves damage and outcomes; bracketed roll math is
+    # retained only inside the full transcript.
+    grouped_history = []
+    combat_groups = {}
+    for entry in terminal_history:
+        if entry['event_category'] == 'COMBAT_TURN' and entry.get('combat_session_id'):
+            session_id = entry['combat_session_id']
+            concise = re.sub(r'\s*\[[^\]]*\]', '', entry['flavor_text'])
+            concise = re.sub(r'^Round\s+([^—]+)—\s+Initiative:.*?\.\s+',
+                             r'Round \1— ', concise)
+            concise = concise.replace(player['character_name'], 'You')
+            concise = re.sub(r'\s+', ' ', concise).strip()
+            if session_id in combat_groups:
+                group = combat_groups[session_id]
+                group['details'].append(entry['flavor_text'])
+                group['summaries'].append(concise)
+                group['flavor_text'] = f"Combat #{session_id} · {len(group['details'])} rounds recorded"
+                continue
+            group = {**entry, 'event_category': 'COMBAT_ROUNDS',
+                     'details': [entry['flavor_text']], 'summaries': [concise],
+                     'flavor_text': f"Combat #{session_id} · 1 round recorded"}
+            combat_groups[session_id] = group
+            grouped_history.append(group)
+        else:
+            grouped_history.append(entry)
+    terminal_history = grouped_history
+
+    important_categories = {
+        'PVP_DEFENSE', 'COMBAT', 'LEVEL_UP', 'REWARD', 'CONTRACT', 'AUCTION',
+        'WORLD_BOSS_REWARD', 'INTERRUPTION_FRIENDLY', 'INTERRUPTION_HOSTILE',
+    }
+    previous_feed_visit = session.get('dashboard_feed_seen_at')
+    try:
+        previous_feed_dt = datetime.fromisoformat(previous_feed_visit) if previous_feed_visit else None
+        if previous_feed_dt and previous_feed_dt.tzinfo:
+            previous_feed_dt = previous_feed_dt.replace(tzinfo=None)
+    except (TypeError, ValueError):
+        previous_feed_dt = None
+    for entry in terminal_history:
+        entry['important'] = entry['event_category'] in important_categories
+        try:
+            occurred_dt = datetime.fromisoformat(str(entry['occurred_at']).replace('Z', '+00:00'))
+            # SQLite timestamps and session timestamps are both UTC but may use
+            # different separators. Compare naive UTC values consistently.
+            if occurred_dt.tzinfo:
+                occurred_dt = occurred_dt.replace(tzinfo=None)
+            entry['is_new'] = bool(previous_feed_dt and occurred_dt > previous_feed_dt)
+        except (TypeError, ValueError):
+            entry['is_new'] = False
+
     button_states = _get_button_states(player, settings)
 
     # Inject current UTC timestamp for JS feed polling start point
     now_iso = datetime.utcnow().isoformat()
+    session['dashboard_feed_seen_at'] = now_iso
 
     active_effects = execute(
         "SELECT effect_type, value FROM status_effects WHERE player_id = ?", (player["id"],)
@@ -100,7 +164,22 @@ def index():
         for e in active_effects
     ]
     active_combat = _load_active_combat(player)
-    from routes.actions import get_pending_interrupted_action
+    from routes.actions import get_pending_interrupted_action, _minion_per_check
+    pending_minion_data = session.get("pending_minion_prompt")
+    pending_minion_prompt = None
+    if pending_minion_data and not active_combat:
+        minions = execute(
+            "SELECT * FROM minions WHERE id=? AND is_active=1",
+            (pending_minion_data.get("minion_id"),)
+        )
+        if minions:
+            minion = minions[0]
+            pending_minion_prompt = {
+                "minion": minion,
+                "per_result": _minion_per_check(player, minion),
+                "interruption": {"check": pending_minion_data.get("check", {})},
+                "level_diff": minion["level"] - player["level"],
+            }
     pending_action = (None if active_combat else
                       get_pending_interrupted_action(player["id"]))
 
@@ -131,6 +210,7 @@ def index():
         effect_labels=effect_labels,
         active_combat=active_combat,
         pending_action=pending_action,
+        pending_minion_prompt=pending_minion_prompt,
         unread_defense_events=unread_defense_events,
     )
 

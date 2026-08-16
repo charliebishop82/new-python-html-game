@@ -4,7 +4,12 @@
 <h1>Shop Control</h1>
 <p style="margin-bottom:14px;color:#888">
     Manage the live shop inventory. Populate adds stock up to the configured targets without clearing existing listings.
-    <span class="context-help" tabindex="0" data-help="Player-sold listings remain in place. Unique specials can only be listed while they are in the global pool.">?</span>
+    <span class="context-help" tabindex="0" data-help="The oldest player-sold stock expires when its configurable cap is exceeded. Daily-rotation and admin listings are protected. Unique specials return to the global pool when they expire.">?</span>
+</p>
+
+<p style="margin-bottom:14px;padding:10px;border:1px solid #333;color:#aaa;">
+    Player-sold stock: <strong style="color:#ffaa00">{{ player_sold_count }} / {{ player_sold_cap }}</strong>
+    · <a href="/admin/config">Edit listing cap</a>
 </p>
 
 <form method="POST" action="/admin/shop/populate" style="margin-bottom:22px"

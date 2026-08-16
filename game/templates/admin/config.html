@@ -39,6 +39,29 @@
 </section>
 
 <section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
+    <h2 style="margin-top:0;">Encounter Selection &amp; Action Interruptions</h2>
+    <p style="color:#777;margin-bottom:12px;">The level ceiling limits boss and interruption-minion selection. After an interruption triggers, d20 + half effective Luck + encounter bonuses determines whether it produces a protagonist reward or a minion.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">
+        {% for name,label,minimum,fallback,help_text in [
+            ('ENCOUNTER_MAX_LEVEL_ABOVE','Maximum enemy levels above player',0,7,'Bosses and interruption minions above this ceiling cannot be selected.'),
+            ('INTERRUPTION_LUCK_DC','Interruption Luck DC',2,15,'Natural 20 always meets a protagonist; natural 1 always produces a minion.'),
+            ('PROTAGONIST_ENCOUNTER_XP_PER_LEVEL','Protagonist XP per level',0,10,'Raw XP multiplied by player level before normal XP and crew modifiers.'),
+            ('PROTAGONIST_ENCOUNTER_CREDITS_BASE','Protagonist base credits',0,15,'Flat credits included in every friendly interruption.'),
+            ('PROTAGONIST_ENCOUNTER_CREDITS_PER_LEVEL','Protagonist credits per level',0,10,'Additional credits multiplied by player level.')
+        ] %}
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="{{ name }}">
+            <label title="{{ help_text }}">{{ label }}</label><br>
+            <input type="number" name="value" min="{{ minimum }}" step="1"
+                   value="{{ settings_map.get(name, fallback) }}" style="width:95px;">
+            <button type="submit" class="btn">Save</button>
+            <div style="color:#777;font-size:11px;margin-top:5px;">{{ help_text }}</div>
+        </form>
+        {% endfor %}
+    </div>
+</section>
+
+<section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
     <h2 style="margin-top:0;">Healing &amp; Carrying Capacity</h2>
     <p style="color:#777;margin-bottom:12px;">Tavern treatment scales with HP restored. Inventory capacity is the base plus one slot per configured amount of effective STR.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">
@@ -62,7 +85,22 @@
 
 <section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
     <h2 style="margin-top:0;">Shop Economy</h2>
-    <p style="color:#777;margin-bottom:12px;">Each character has a separate vendor-credit allowance. It limits direct Shop sales only and resets at midnight UTC.</p>
+    <p style="color:#777;margin-bottom:12px;">Control how much the Shop can buy and how much player-sold stock remains visible. Daily-rotation stock is managed separately.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;">
+    {% for name, label, fallback in [
+        ('SHOP_WEAPONS_COUNT', 'Weapons per rotation', 5),
+        ('SHOP_ARMOR_COUNT', 'Outfits per rotation', 5),
+        ('SHOP_SPECIAL_COUNT', 'Specials per rotation', 2)
+    ] %}
+    <form method="POST">
+        <input type="hidden" name="constant_name" value="{{ name }}">
+        <label title="Target system stock when the Shop is populated or rotated.">{{ label }}</label><br>
+        <input type="number" name="value" min="0" step="1"
+               value="{{ settings_map.get(name, fallback) }}" style="width:110px;">
+        <button type="submit" class="btn">Save</button>
+        <div style="color:#777;font-size:11px;margin-top:5px;">Controls system-provided stock; player-sold listings are counted separately.</div>
+    </form>
+    {% endfor %}
     <form method="POST">
         <input type="hidden" name="constant_name" value="SHOP_DAILY_VENDOR_CREDITS">
         <label title="Maximum credits the Shop can pay each player or NPC per UTC day.">Daily vendor credits per character</label><br>
@@ -71,6 +109,15 @@
         <button type="submit" class="btn">Save</button>
         <div style="color:#777;font-size:11px;margin-top:5px;">Recommended starting value: 500. A changed value takes full effect at the next midnight reset.</div>
     </form>
+    <form method="POST">
+        <input type="hidden" name="constant_name" value="SHOP_PLAYER_SOLD_LISTING_CAP">
+        <label title="Maximum number of PLAYER_SOLD listings retained. Oldest listings expire first; daily rotation is protected.">Player-sold listing cap</label><br>
+        <input type="number" name="value" min="0" step="1"
+               value="{{ settings_map.get('SHOP_PLAYER_SOLD_LISTING_CAP', 30) }}" style="width:110px;">
+        <button type="submit" class="btn">Save</button>
+        <div style="color:#777;font-size:11px;margin-top:5px;">Recommended: 30. Set to 0 if sold items should leave the Shop immediately. Unique specials safely return to the loot pool when expired.</div>
+    </form>
+    </div>
 </section>
 
 <section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">

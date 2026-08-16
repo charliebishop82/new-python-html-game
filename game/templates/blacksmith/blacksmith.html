@@ -2,9 +2,18 @@
 {% extends "base.html" %}
 {% block title %}Blacksmith{% endblock %}
 {% block content %}
-<div id="page-content">
+<div id="page-content" class="paid-visit-page" data-visit-prefix="/blacksmith"
+     data-leave-url="{{ url_for('blacksmith.leave') }}"
+     data-leave-warning="Leave the Blacksmith? Make sure you have finished all repairs. Returning will cost admission AP again.">
     <a href="{{ url_for('dashboard.index') }}" class="back-link">← Back to Dashboard</a>
     <h2 class="page-title">🔧 BLACKSMITH</h2>
+
+    <p class="page-subtitle">You paid {{ ap_cost }} AP to enter. Repair as many orders as needed during this visit; each order costs credits only.</p>
+
+    <div style="border:1px solid var(--amber);padding:10px 12px;margin-bottom:14px;color:var(--amber);">
+        <strong>PAID VISIT:</strong> Finish all repairs before leaving.
+        Returning will cost admission AP again.
+    </div>
 
     <div id="terminal-output">
         {% if feedback %}<span class="term-good">{{ feedback }}</span>{% endif %}
@@ -80,6 +89,35 @@ function updateTotal() {
 }
 document.querySelectorAll('.item-checkbox').forEach(cb =>
     cb.addEventListener('change', updateTotal));
+
+(function installPaidVisitWarning() {
+    const page = document.querySelector('.paid-visit-page');
+    if (!page) return;
+    const prefix = page.dataset.visitPrefix;
+    const warning = page.dataset.leaveWarning;
+    const leavesVisit = raw => {
+        const target = new URL(raw, window.location.href);
+        return target.origin === window.location.origin && !target.pathname.startsWith(prefix);
+    };
+    const closeVisit = () => fetch(page.dataset.leaveUrl, {
+        method: 'POST', credentials: 'same-origin'
+    });
+    document.addEventListener('click', async event => {
+        const link = event.target.closest('a[href]');
+        if (!link || event.defaultPrevented || !leavesVisit(link.href)) return;
+        event.preventDefault();
+        if (!window.confirm(warning)) return;
+        await closeVisit();
+        window.location.assign(link.href);
+    });
+    document.addEventListener('submit', async event => {
+        if (event.defaultPrevented || !leavesVisit(event.target.action || window.location.href)) return;
+        event.preventDefault();
+        if (!window.confirm(warning)) return;
+        await closeVisit();
+        event.target.submit();
+    });
+})();
 </script>
 {% endblock %}
 

@@ -2,9 +2,16 @@
 {% extends "base.html" %}
 {% block title %}Shop{% endblock %}
 {% block content %}
-<div id="page-content">
+<div id="page-content" class="paid-visit-page" data-visit-prefix="/shop"
+     data-leave-url="{{ url_for('shop.leave') }}"
+     data-leave-warning="Leave the Shop? Make sure you have finished buying and selling. Returning will cost AP again.">
     <a href="{{ url_for('dashboard.index') }}" class="back-link">← Back to Dashboard</a>
     <h2 class="page-title">⚔ THE SHOP</h2>
+
+    <div style="border:1px solid var(--amber);padding:10px 12px;margin-bottom:14px;color:var(--amber);">
+        <strong>PAID VISIT:</strong> Finish buying and selling before leaving.
+        Returning currently costs {{ visit_ap_cost }} AP again.
+    </div>
 
     <div id="terminal-output">
         {% if feedback %}<span class="term-good">{{ feedback }}</span>{% endif %}
@@ -39,13 +46,24 @@
         <tr>
             <td>
                 {{ item.name }}
+                {% if item.is_loadout_upgrade %}
+                <span class="shop-upgrade-badge" title="This item improves the overall score of its equipment slot.">POSSIBLE UPGRADE</span>
+                {% endif %}
                 {% if item.description %}<div class="item-description">{{ item.description }}</div>{% endif %}
+                {% if item.comparison_gains or item.comparison_tradeoffs %}
+                <div class="shop-comparison {{ 'shop-comparison-upgrade' if item.is_loadout_upgrade else '' }}">
+                    <small>{{ item.comparison_summary }}</small>
+                    {% for change in item.comparison_gains %}<span class="comparison-gain">▲ {{ change }}</span>{% endfor %}
+                    {% for change in item.comparison_tradeoffs %}<span class="comparison-loss">▼ {{ change }}</span>{% endfor %}
+                </div>
+                {% endif %}
             </td>
             <td>
                 {% if item.item_type == 'WEAPON' %}
                     {{ item.weapon_type }} · {{ item.damage_die }} {{ item.damage_type }}
                 {% elif item.item_type == 'ARMOR' %}
-                    Armor · AC+{{ item.ac_bonus }}
+                    {% set armor_tier = 0 if not item.level or item.level < 4 else [3, 1 + ((item.level - 4) // 6)]|min %}
+                    Armor · AC+{{ (item.ac_bonus or 0) + armor_tier }}{% if armor_tier %} <small>({{ item.ac_bonus or 0 }}+{{ armor_tier }} tier)</small>{% endif %}
                 {% else %}
                     <span style="color:var(--amber)">★ Special</span>
                 {% endif %}
@@ -137,6 +155,38 @@
     <p style="color:var(--grey)">No unequipped items to sell.</p>
     {% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function installPaidVisitWarning() {
+    const page = document.querySelector('.paid-visit-page');
+    if (!page) return;
+    const prefix = page.dataset.visitPrefix;
+    const warning = page.dataset.leaveWarning;
+    const leavesVisit = raw => {
+        const target = new URL(raw, window.location.href);
+        return target.origin === window.location.origin && !target.pathname.startsWith(prefix);
+    };
+    const closeVisit = () => fetch(page.dataset.leaveUrl, {
+        method: 'POST', credentials: 'same-origin'
+    });
+    document.addEventListener('click', async event => {
+        const link = event.target.closest('a[href]');
+        if (!link || event.defaultPrevented || !leavesVisit(link.href)) return;
+        event.preventDefault();
+        if (!window.confirm(warning)) return;
+        await closeVisit();
+        window.location.assign(link.href);
+    });
+    document.addEventListener('submit', async event => {
+        if (event.defaultPrevented || !leavesVisit(event.target.action || window.location.href)) return;
+        event.preventDefault();
+        if (!window.confirm(warning)) return;
+        await closeVisit();
+        event.target.submit();
+    });
+})();
+</script>
 {% endblock %}
 
 

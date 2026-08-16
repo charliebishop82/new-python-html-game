@@ -18,6 +18,10 @@ from combat import actions as combat_actions
 from combat import engine, flavour
 import config_defaults as cfg
 
+# Keep background/admin processes resilient when this module is imported while
+# an older config_defaults module is still cached during active development.
+DEFAULT_ENCOUNTER_LEVEL_CAP = getattr(cfg, "ENCOUNTER_MAX_LEVEL_ABOVE", 7)
+
 bp = Blueprint("actions", __name__)
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,18 @@ def _with_random_event(event: dict | None, player: dict, content: str) -> str:
     return event_html + content
 
 
+def _with_protagonist_interruption(interruption: dict | None,
+                                   player: dict, content: str) -> str:
+    """Prepend a resolved friendly interruption to the requested activity."""
+    if not interruption or interruption.get("kind") != "PROTAGONIST":
+        return content
+    notice = render_template(
+        "fragments/protagonist_interruption.html",
+        interruption=interruption, reward=interruption["reward"], player=player,
+    )
+    return notice + content
+
+
 def _check_ap(player: dict, cost: int) -> str | None:
     """Provide the internal check ap operation used by this module."""
     cost = encumbered_ap_cost(player, cost)
@@ -48,7 +64,21 @@ def _check_ap(player: dict, cost: int) -> str | None:
     return None
 
 
-def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict):
+def has_interrupted_ap_commitment(action_type: str) -> bool:
+    """Return whether a previously affordable interrupted action is pending."""
+    return session.get("interrupted_ap_commitment") == action_type
+
+
+def consume_interrupted_ap_commitment(action_type: str) -> bool:
+    """Consume the one-use AP guarantee when the original action truly starts."""
+    if not has_interrupted_ap_commitment(action_type):
+        return False
+    session.pop("interrupted_ap_commitment", None)
+    return True
+
+
+def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict,
+                         allow_interruption_shortfall: bool = False):
     """Deduct AP cost and apply passive HP regen. Must be inside exclusive_transaction."""
     cost = encumbered_ap_cost(player, cost, settings)
     # AP-triggered healing and its HP cap use the same effective END as combat.
@@ -60,7 +90,8 @@ def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict
     hp_regen += int(get_player_bonus_profile(player_id).get("hp_regen_bonus", 0) or 0)
 
     max_hp = 10 + player["end_stat"] + (5 * player["level"])
-    new_ap = player["current_ap"] - cost
+    charged_ap = min(player["current_ap"], cost) if allow_interruption_shortfall else cost
+    new_ap = max(0, player["current_ap"] - charged_ap)
     new_hp = min(player["current_hp"] + hp_regen, max_hp)
     execute_write(
         "UPDATE players SET current_ap = ?, current_hp = ? WHERE id = ?",
@@ -129,7 +160,9 @@ def check_random_event(player: dict, settings: dict) -> dict | None:
 
     # Pull matching events from DB
     events = execute(
-        "SELECT * FROM random_events WHERE is_active = 1 AND event_type = ?",
+        """SELECT * FROM random_events
+           WHERE is_active = 1 AND event_type = ?
+             AND effect_type <> 'PROTAGONIST_ENCOUNTER'""",
         ("Good" if is_good else "Bad",)
     )
     if not events:
@@ -345,7 +378,7 @@ def action_tavern():
 
     if player["current_hp"] >= player["max_hp"]:
         return _error_fragment("You are already at full health.")
-    if err := _check_ap(player, cost_ap):
+    if not has_interrupted_ap_commitment("BOSS") and (err := _check_ap(player, cost_ap)):
         return err
     if player["credits"] < cost_cr:
         return _error_fragment(f"Not enough credits. Need {cost_cr}.")
@@ -411,15 +444,26 @@ def action_boss():
 
     # A roaming minion temporarily displaces the hunt. The boss action is
     # retained and resumes after the player survives this free interruption.
-    minion = begin_minion_interruption(player, "BOSS", settings=settings)
-    if minion:
+    interruption = begin_action_interruption(player, "BOSS", settings=settings)
+    if interruption and interruption["kind"] == "MINION":
+        minion = interruption["minion"]
         per_result = _minion_per_check(player, minion)
-        if per_result["spotted"]:
+        level_warning = _minion_level_warning(player, minion, settings)
+        if per_result["spotted"] or level_warning:
             content = render_template("fragments/minion_spotted.html",
-                                      minion=minion, per_result=per_result, player=player)
+                                      minion=minion, per_result=per_result, player=player,
+                                      interruption=interruption,
+                                      level_diff=minion["level"] - player["level"],
+                                      level_warning=level_warning)
         else:
             content = _start_boss_fight(player, minion, "MINION", 0, settings)
+            content = render_template(
+                "fragments/minion_interruption_notice.html",
+                interruption=interruption, player=player,
+            ) + content
         return _with_random_event(event, player, content)
+    if interruption:
+        player = get_player(player["id"]) or player
 
     encounter_type = "BOSS"
 
@@ -432,24 +476,35 @@ def action_boss():
     discovered_ids = [i[f"{'boss' if encounter_type == 'BOSS' else 'minion'}_id"]
                       for i in existing_instances]
 
-    # Get a random undiscovered one, or random from all if all discovered
+    # Get a random undiscovered eligible opponent, or revisit an eligible one
+    # if everything within the protected level range has been discovered.
     tbl = "bosses" if encounter_type == "BOSS" else "minions"
+    max_level = player["level"] + int(settings.get(
+        "ENCOUNTER_MAX_LEVEL_ABOVE", DEFAULT_ENCOUNTER_LEVEL_CAP
+    ))
     if discovered_ids:
         undiscovered = execute(
-            f"SELECT * FROM {tbl} WHERE is_active = 1 AND id NOT IN ({','.join('?' * len(discovered_ids))}) ORDER BY RANDOM() LIMIT 1",
-            tuple(discovered_ids)
+            f"SELECT * FROM {tbl} WHERE is_active=1 AND level<=? "
+            f"AND id NOT IN ({','.join('?' * len(discovered_ids))}) ORDER BY RANDOM() LIMIT 1",
+            (max_level, *discovered_ids)
         )
-        opponent = undiscovered[0] if undiscovered else random.choice(
-            execute(f"SELECT * FROM {tbl} WHERE is_active = 1")
+        eligible = execute(
+            f"SELECT * FROM {tbl} WHERE is_active=1 AND level<=? ORDER BY RANDOM()",
+            (max_level,)
         )
+        opponent = undiscovered[0] if undiscovered else (eligible[0] if eligible else None)
     else:
-        result = execute(f"SELECT * FROM {tbl} WHERE is_active = 1 ORDER BY RANDOM() LIMIT 1")
-        if not result:
-            return _with_random_event(
-                event, player,
-                _error_fragment("No content available yet. Ask the admin to import game content.")
-            )
-        opponent = result[0]
+        result = execute(
+            f"SELECT * FROM {tbl} WHERE is_active=1 AND level<=? ORDER BY RANDOM() LIMIT 1",
+            (max_level,)
+        )
+        opponent = result[0] if result else None
+    if not opponent:
+        content = _error_fragment(
+            f"No active boss is within {settings.get('ENCOUNTER_MAX_LEVEL_ABOVE', DEFAULT_ENCOUNTER_LEVEL_CAP)} levels of you."
+        )
+        content = _with_protagonist_interruption(interruption, player, content)
+        return _with_random_event(event, player, content)
 
     # Level warning check
     warn_threshold = settings.get("BOSS_LEVEL_WARNING_THRESHOLD", cfg.BOSS_LEVEL_WARNING_THRESHOLD)
@@ -460,16 +515,21 @@ def action_boss():
                                   encounter_type=encounter_type,
                                   level_diff=level_diff,
                                   player=player)
+        content = _with_protagonist_interruption(interruption, player, content)
         return _with_random_event(event, player, content)
 
     # Start the fight
-    content = _start_boss_fight(player, opponent, encounter_type, cost_ap, settings)
+    allow_shortfall = consume_interrupted_ap_commitment("BOSS")
+    content = _start_boss_fight(player, opponent, encounter_type, cost_ap, settings,
+                                allow_shortfall)
+    content = _with_protagonist_interruption(interruption, player, content)
     return _with_random_event(event, player, content)
 
 
 @bp.route("/action/boss/confirm", methods=["POST"])
 def action_boss_confirm():
     """Player confirmed they want to fight despite level warning or spotted minion."""
+    session.pop("pending_minion_prompt", None)
     player       = g.player
     settings     = get_all_settings()
     cost_ap      = settings.get("AP_COST_BOSS",   cfg.AP_COST_BOSS)
@@ -495,10 +555,19 @@ def action_boss_confirm():
     opponent = execute_one(f"SELECT * FROM {tbl} WHERE id = ?", (opponent_id,))
     if not opponent:
         return _error_fragment("Opponent not found.")
+    max_above = int(settings.get("ENCOUNTER_MAX_LEVEL_ABOVE", DEFAULT_ENCOUNTER_LEVEL_CAP))
+    if opponent["level"] > player["level"] + max_above:
+        return _error_fragment(
+            f"That opponent is outside the permitted encounter range of {max_above} levels above you."
+        )
 
+    allow_shortfall = False
     if encounter_type == "MINION" and get_pending_interrupted_action(player["id"]):
         cost_ap = 0
-    return _start_boss_fight(player, opponent, encounter_type, cost_ap, settings)
+    elif encounter_type == "BOSS":
+        allow_shortfall = consume_interrupted_ap_commitment("BOSS")
+    return _start_boss_fight(player, opponent, encounter_type, cost_ap, settings,
+                             allow_shortfall)
 
 
 def _minion_per_check(player: dict, minion: dict) -> dict:
@@ -514,12 +583,23 @@ def _minion_per_check(player: dict, minion: dict) -> dict:
     return {"spotted": result["success"], "detail": result["detail"]}
 
 
+def _minion_level_warning(player: dict, minion: dict, settings: dict) -> bool:
+    """Require a choice whenever an interruption minion is much stronger."""
+    threshold = int(settings.get(
+        "BOSS_LEVEL_WARNING_THRESHOLD", cfg.BOSS_LEVEL_WARNING_THRESHOLD
+    ))
+    return minion["level"] - player["level"] >= threshold
+
+
 def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
-                      cost_ap: int, settings: dict):
+                      cost_ap: int, settings: dict,
+                      allow_interruption_shortfall: bool = False):
     """Initiate a boss or minion fight. Deducts AP, sets in_combat, creates session."""
     result = enqueue_and_process(
         player["id"], "start_boss_fight",
-        {"opponent_id": opponent["id"], "encounter_type": encounter_type, "cost_ap": cost_ap}
+        {"opponent_id": opponent["id"], "encounter_type": encounter_type,
+         "cost_ap": cost_ap,
+         "allow_interruption_shortfall": allow_interruption_shortfall}
     )
     if result.get("error"):
         return _error_fragment(result["error"])
@@ -591,6 +671,7 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
     opponent_id    = payload["opponent_id"]
     encounter_type = payload["encounter_type"]
     cost_ap        = payload["cost_ap"]
+    allow_shortfall = bool(payload.get("allow_interruption_shortfall"))
 
     player   = get_player(player_id)
     settings = get_all_settings()
@@ -598,7 +679,7 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
 
     if player["in_combat"]:
         return {"error": "Already in combat."}
-    if player["current_ap"] < effective_cost_ap:
+    if player["current_ap"] < effective_cost_ap and not allow_shortfall:
         return {"error": f"Not enough AP. Need {effective_cost_ap}."}
 
     tbl = "bosses" if encounter_type == "BOSS" else "minions"
@@ -612,7 +693,9 @@ def handle_start_boss_fight(player_id: int, payload: dict) -> dict:
     encounter_max_hp = max(1, round(opponent["max_hp"] * hp_scale))
 
     with exclusive_transaction():
-        new_ap, new_hp = _deduct_ap_and_regen(player_id, player, cost_ap, settings)
+        new_ap, new_hp = _deduct_ap_and_regen(
+            player_id, player, cost_ap, settings, allow_shortfall
+        )
         execute_write("UPDATE players SET in_combat = 1 WHERE id = ?", (player_id,))
 
         # Get or create boss/minion instance
@@ -680,7 +763,7 @@ def action_pvp():
         return _error_fragment("You are already in combat.")
     if g.get("blackout"):
         return _error_fragment("Combat unavailable — midnight reset approaching.")
-    if err := _check_ap(player, cost_ap):
+    if not has_interrupted_ap_commitment("PVP") and (err := _check_ap(player, cost_ap)):
         return err
 
     # Random event check
@@ -688,25 +771,41 @@ def action_pvp():
     if event:
         player = get_player(player["id"]) or player
 
-    minion = begin_minion_interruption(player, "PVP", settings=settings)
-    if minion:
+    interruption = begin_action_interruption(player, "PVP", settings=settings)
+    if interruption and interruption["kind"] == "MINION":
+        minion = interruption["minion"]
         per_result = _minion_per_check(player, minion)
-        if per_result["spotted"]:
+        level_warning = _minion_level_warning(player, minion, settings)
+        if per_result["spotted"] or level_warning:
             content = render_template("fragments/minion_spotted.html",
-                                      minion=minion, per_result=per_result, player=player)
+                                      minion=minion, per_result=per_result, player=player,
+                                      interruption=interruption,
+                                      level_diff=minion["level"] - player["level"],
+                                      level_warning=level_warning)
         else:
             content = _start_boss_fight(player, minion, "MINION", 0, settings)
+            content = render_template(
+                "fragments/minion_interruption_notice.html",
+                interruption=interruption, player=player,
+            ) + content
         return _with_random_event(event, player, content)
+    if interruption:
+        player = get_player(player["id"]) or player
 
     # Build eligible opponent list
     opponents = _get_eligible_opponents(player, settings)
     content = render_template("fragments/opponent_list.html",
                               opponents=opponents, player=player)
+    content = _with_protagonist_interruption(interruption, player, content)
     return _with_random_event(event, player, content)
 
 
-def _choose_minion_for_player(player: dict) -> dict | None:
+def _choose_minion_for_player(player: dict, settings: dict | None = None) -> dict | None:
     """Select a level-appropriate minion, preferring undiscovered encounters."""
+    settings = settings or get_all_settings()
+    max_level = player["level"] + int(settings.get(
+        "ENCOUNTER_MAX_LEVEL_ABOVE", DEFAULT_ENCOUNTER_LEVEL_CAP
+    ))
     discovered = execute(
         "SELECT minion_id FROM minion_instances WHERE player_id=?", (player["id"],)
     )
@@ -727,8 +826,9 @@ def _choose_minion_for_player(player: dict) -> dict | None:
     if minion:
         return minion
     return execute_one(
-        "SELECT * FROM minions WHERE is_active=1 ORDER BY ABS(level-?), RANDOM() LIMIT 1",
-        (player["level"],)
+        "SELECT * FROM minions WHERE is_active=1 AND level<=? "
+        "ORDER BY ABS(level-?), RANDOM() LIMIT 1",
+        (max_level, player["level"])
     )
 
 
@@ -760,29 +860,90 @@ def clear_pending_interrupted_action(player_id: int) -> dict | None:
     return pending
 
 
-def begin_minion_interruption(player: dict, action_type: str, payload: dict | None = None,
+def begin_action_interruption(player: dict, action_type: str,
+                              payload: dict | None = None,
                               settings: dict | None = None) -> dict | None:
-    """Roll once and preserve the original activity when a minion interrupts."""
+    """Resolve the shared interruption roll for a requested AP activity.
+
+    The configured interruption chance determines whether anything appears.
+    Once triggered, a d20 Luck check decides its alignment: success produces a
+    friendly, immediately resolved protagonist reward; failure produces the
+    existing resumable minion interruption. Encounter bonuses improve this
+    check without increasing interruption frequency.
+    """
     if session.pop("skip_minion_interruption", False):
         return None
+    return resolve_action_interruption(player, action_type, payload, settings,
+                                       save_pending_action=True)
+
+
+def resolve_action_interruption(player: dict, action_type: str,
+                                payload: dict | None = None,
+                                settings: dict | None = None,
+                                save_pending_action: bool = True) -> dict | None:
+    """Roll an interruption without requiring a browser session.
+
+    Player routes save hostile interruptions so their requested action can be
+    resumed after combat. Automated NPC turns resolve the same roll but manage
+    their continuation in-process, so they deliberately omit that saved row.
+    """
     settings = settings or get_all_settings()
     chance = max(0.0, min(1.0, float(settings.get(
         "MINION_ENCOUNTER_CHANCE", cfg.MINION_ENCOUNTER_CHANCE
     ))))
     if random.random() >= chance:
         return None
-    minion = _choose_minion_for_player(player)
+
+    effective = combat_actions.apply_equipped_stat_bonuses(player)
+    encounter_steps = math.floor(float(
+        get_player_bonus_profile(player["id"]).get("encounter_bonus", 0) or 0
+    ) * 20)
+    luck_modifier = math.floor(int(effective["lck_stat"]) / 2) + encounter_steps
+    dc = max(2, int(settings.get(
+        "INTERRUPTION_LUCK_DC", cfg.INTERRUPTION_LUCK_DC
+    )))
+    roll = random.randint(1, 20)
+    total = roll + luck_modifier
+    protagonist_success = roll == 20 or (roll != 1 and total >= dc)
+    check = {
+        "roll": roll, "modifier": luck_modifier, "total": total, "dc": dc,
+        "natural": "CRITICAL SUCCESS" if roll == 20 else "CRITICAL FAILURE" if roll == 1 else None,
+    }
+    if protagonist_success:
+        reward = _handle_protagonist_encounter(player["id"], player, settings)
+        return {"kind": "PROTAGONIST", "check": check, "reward": reward}
+
+    minion = _choose_minion_for_player(player, settings)
     if not minion:
         return None
     with exclusive_transaction():
+        if save_pending_action:
+            execute_write(
+                """INSERT INTO pending_interrupted_actions(player_id,action_type,payload_json)
+                   VALUES(?,?,?) ON CONFLICT(player_id) DO UPDATE SET
+                   action_type=excluded.action_type,payload_json=excluded.payload_json,
+                   created_at=datetime('now')""",
+                (player["id"], action_type, json.dumps(payload or {}))
+            )
         execute_write(
-            """INSERT INTO pending_interrupted_actions(player_id,action_type,payload_json)
-               VALUES(?,?,?) ON CONFLICT(player_id) DO UPDATE SET
-               action_type=excluded.action_type,payload_json=excluded.payload_json,
-               created_at=datetime('now')""",
-            (player["id"], action_type, json.dumps(payload or {}))
+            """INSERT INTO daily_feed
+               (feed_scope,player_id,flavor_text,event_category)
+               VALUES('PERSONAL',?,?,'INTERRUPTION_HOSTILE')""",
+            (player["id"],
+             f"INTERRUPTION: Luck check d20({roll}) + {luck_modifier} = {total} "
+             f"vs DC {dc} produced {minion['name']}. Your {action_type.replace('_', ' ').title()} "
+             + ("action is paused until the minion encounter resolves."
+                if save_pending_action else "action must wait until the minion encounter resolves.")),
         )
-    return minion
+    return {"kind": "MINION", "check": check, "minion": minion}
+
+
+def begin_minion_interruption(player: dict, action_type: str,
+                              payload: dict | None = None,
+                              settings: dict | None = None) -> dict | None:
+    """Compatibility wrapper returning only hostile interruption results."""
+    result = begin_action_interruption(player, action_type, payload, settings)
+    return result.get("minion") if result and result["kind"] == "MINION" else None
 
 
 @bp.route("/action/resume-interrupted", methods=["POST"])
@@ -793,6 +954,7 @@ def resume_interrupted_action():
         return _error_fragment("There is no interrupted action waiting to resume.")
     session["skip_minion_interruption"] = True
     session["skip_random_event_once"] = True
+    session["interrupted_ap_commitment"] = pending["action_type"]
     if pending["action_type"] == "BOSS":
         return action_boss()
     if pending["action_type"] == "PVP":
@@ -886,9 +1048,11 @@ def action_pvp_fight():
     if level_diff > 2:
         return _error_fragment("That player is too far below your level.")
 
+    allow_shortfall = consume_interrupted_ap_commitment("PVP")
     result = enqueue_and_process(
         player["id"], "start_pvp_fight",
-        {"target_id": target_id, "cost_ap": cost_ap}
+        {"target_id": target_id, "cost_ap": cost_ap,
+         "allow_interruption_shortfall": allow_shortfall}
     )
     if result.get("error"):
         return _error_fragment(result["error"])
@@ -918,6 +1082,7 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
     """Process the queued start pvp fight action against validated game state."""
     target_id = payload["target_id"]
     cost_ap   = payload["cost_ap"]
+    allow_shortfall = bool(payload.get("allow_interruption_shortfall"))
     settings  = get_all_settings()
 
     player  = get_player(player_id)
@@ -930,11 +1095,13 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
 
     if player["in_combat"] or target["in_combat"]:
         return {"error": "A player is already in combat."}
-    if player["current_ap"] < effective_cost_ap:
+    if player["current_ap"] < effective_cost_ap and not allow_shortfall:
         return {"error": f"Not enough AP. Need {effective_cost_ap}."}
 
     with exclusive_transaction():
-        new_ap, new_hp = _deduct_ap_and_regen(player_id, player, cost_ap, settings)
+        new_ap, new_hp = _deduct_ap_and_regen(
+            player_id, player, cost_ap, settings, allow_shortfall
+        )
         execute_write("UPDATE players SET in_combat = 1 WHERE id = ?", (player_id,))
         execute_write("UPDATE players SET in_combat = 1 WHERE id = ?", (target_id,))
         target_max_hp = target["max_hp"]
@@ -984,10 +1151,50 @@ def handle_start_pvp_fight(player_id: int, payload: dict) -> dict:
 
 def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
     """Find a level-appropriate protagonist, roll 40/40/20 for weapon/armor/special,
-    award the item, write feed entry. If item already taken, fall back to credits."""
+    award an item plus scaled XP/credits, and return display-ready details."""
     from database import execute, execute_one, execute_write, exclusive_transaction
     from datetime import datetime
     import random, math
+
+    profile = get_player_bonus_profile(player_id)
+    raw_xp = max(0, int(settings.get(
+        "PROTAGONIST_ENCOUNTER_XP_PER_LEVEL",
+        cfg.PROTAGONIST_ENCOUNTER_XP_PER_LEVEL
+    ))) * max(1, int(player["level"]))
+    raw_credits = max(0, int(settings.get(
+        "PROTAGONIST_ENCOUNTER_CREDITS_BASE",
+        cfg.PROTAGONIST_ENCOUNTER_CREDITS_BASE
+    ))) + max(0, int(settings.get(
+        "PROTAGONIST_ENCOUNTER_CREDITS_PER_LEVEL",
+        cfg.PROTAGONIST_ENCOUNTER_CREDITS_PER_LEVEL
+    ))) * max(1, int(player["level"]))
+    raw_xp = int(raw_xp * (1 + float(profile.get("xp_multiplier", 0) or 0)))
+    raw_credits = int(raw_credits * (1 + float(profile.get("credit_multiplier", 0) or 0)))
+    from crews import contribute_earnings
+    net_xp, net_credits = contribute_earnings(
+        player_id, raw_xp, raw_credits, "PROTAGONIST_ENCOUNTER"
+    )
+
+    def award_fallback(message: str) -> dict:
+        """Award progression even if imported protagonist gear is unavailable."""
+        with exclusive_transaction():
+            execute_write(
+                "UPDATE players SET xp=xp+?,credits=credits+? WHERE id=?",
+                (net_xp, net_credits, player_id),
+            )
+            execute_write(
+                """INSERT INTO daily_feed
+                   (feed_scope,player_id,flavor_text,event_category)
+                   VALUES('PERSONAL',?,?,'INTERRUPTION_FRIENDLY')""",
+                (player_id, f"{message} +{net_xp} XP and +{net_credits} credits."),
+            )
+        engine.check_level_up(player_id, player["xp"] + net_xp, player["level"])
+        return {
+            "protagonist": "A mysterious protagonist", "movie": "Movie Multiverse",
+            "item_name": "no item (content unavailable)", "item_type": None,
+            "xp_awarded": net_xp, "credits_awarded": net_credits,
+            "message": message,
+        }
 
     # Find all movies with a protagonist defined, ordered by how close
     # their boss level is to the player's current level
@@ -1008,18 +1215,9 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
     )
 
     if not movies:
-        # Fallback: award credits
-        with exclusive_transaction():
-            execute_write(
-            "UPDATE players SET credits = credits + 50 WHERE id = ?", (player_id,)
-            )
-            execute_write(
-            """INSERT INTO daily_feed (feed_scope, player_id, flavor_text, event_category)
-               VALUES ('PERSONAL', ?, ?, 'RANDOM_EVENT')""",
-            (player_id,
-             "A familiar figure passes in the crowd — but vanishes before you can speak. +50 credits left behind.")
-            )
-        return
+        return award_fallback(
+            "A familiar figure passes in the crowd but vanishes before you can speak."
+        )
 
     # Pick from the 3 closest level matches (weighted toward closest)
     candidates = movies[:3]
@@ -1047,12 +1245,9 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
         table     = "special_items"
 
     if not item_id:
-        # Protagonist item not defined — fallback credits
-        with exclusive_transaction():
-            execute_write(
-                "UPDATE players SET credits = credits + 50 WHERE id = ?", (player_id,)
-            )
-        return
+        return award_fallback(
+            f"{protagonist} meets you, but their imported reward item is unavailable."
+        )
 
     # For specials: check if already in world
     if item_type == "SPECIAL":
@@ -1069,7 +1264,9 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
     # Get item detail for name
     item_detail = execute_one(f"SELECT name, starting_durability FROM {table} WHERE id = ?", (item_id,))
     if not item_detail:
-        return
+        return award_fallback(
+            f"{protagonist} meets you, but their imported reward item cannot be found."
+        )
 
     item_name = item_detail["name"]
     durability = item_detail.get("starting_durability", 100) or 100
@@ -1096,14 +1293,18 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
                    WHERE special_item_id = ?""",
                 (player_id, inv_id, datetime.utcnow().isoformat(), item_id)
             )
+        execute_write(
+            "UPDATE players SET xp=xp+?,credits=credits+? WHERE id=?",
+            (net_xp, net_credits, player_id),
+        )
         # Personal feed entry
         execute_write(
             """INSERT INTO daily_feed (feed_scope, player_id, flavor_text, event_category)
-               VALUES ('PERSONAL', ?, ?, 'RANDOM_EVENT')""",
+               VALUES ('PERSONAL', ?, ?, 'INTERRUPTION_FRIENDLY')""",
             (player_id,
              f"{protagonist} looks you over and hands you the {item_name}."
              f"{' Their appearance is unmistakable: ' + protagonist_description if protagonist_description else ''}"
-             " No words. Just a nod.")
+             f" No words. Just a nod. +{net_xp} XP and +{net_credits} credits.")
         )
         # Global feed for special items
         if item_type == "SPECIAL":
@@ -1112,3 +1313,14 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
                    VALUES ('GLOBAL', NULL, ?, 'ITEM')""",
                 (f"The {item_name} has entered the world.",)
             )
+    engine.check_level_up(player_id, player["xp"] + net_xp, player["level"])
+    return {
+        "protagonist": protagonist,
+        "protagonist_description": protagonist_description,
+        "movie": movie["movie_name"],
+        "item_name": item_name,
+        "item_type": item_type,
+        "xp_awarded": net_xp,
+        "credits_awarded": net_credits,
+        "message": f"{protagonist} rewarded you before your requested action continued.",
+    }

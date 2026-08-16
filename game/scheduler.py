@@ -286,7 +286,8 @@ def _step8_9_10_shop_rotation():
 
         # Step 10: Populate special item shop slots = floor(player_count / 2)
         player_count  = execute_one("SELECT COUNT(*) as cnt FROM players WHERE is_banned = 0")["cnt"]
-        special_slots = max(0, player_count // 2)
+        special_cap = int(settings.get("SHOP_SPECIAL_COUNT", cfg.SHOP_SPECIAL_COUNT))
+        special_slots = min(special_cap, max(0, player_count // 2))
         if special_slots > 0:
             _populate_special_slots(special_slots)
 

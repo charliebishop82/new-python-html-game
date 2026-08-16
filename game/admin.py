@@ -872,7 +872,17 @@ def admin_shop():
                WHERE s.is_active=1 AND r.status='IN_POOL' ORDER BY s.name"""
         ),
     }
-    return render_template("admin/shop.html", listings=displayed, choices=choices)
+    settings = get_all_settings()
+    player_sold_count = sum(
+        1 for listing in listings if listing["listing_source"] == "PLAYER_SOLD"
+    )
+    return render_template(
+        "admin/shop.html", listings=displayed, choices=choices,
+        player_sold_count=player_sold_count,
+        player_sold_cap=int(settings.get(
+            "SHOP_PLAYER_SOLD_LISTING_CAP", cfg.SHOP_PLAYER_SOLD_LISTING_CAP
+        )),
+    )
 
 
 def admin_shop_populate():
@@ -892,7 +902,10 @@ def admin_shop_populate():
                 _populate_shop_rotation("weapons" if item_type == "WEAPON" else "armor", needed)
                 added += needed
         players = execute_one("SELECT COUNT(*) cnt FROM players WHERE is_banned=0")["cnt"]
-        special_target = players // 2
+        special_target = min(
+            int(settings.get("SHOP_SPECIAL_COUNT", cfg.SHOP_SPECIAL_COUNT)),
+            players // 2,
+        )
         special_current = execute_one("SELECT COUNT(*) cnt FROM shop_listings WHERE item_type='SPECIAL'")["cnt"]
         special_needed = max(0, special_target - special_current)
         if special_needed:
@@ -1545,14 +1558,30 @@ def admin_config():
             except ValueError:
                 error = "Enemy balance values must be between 0.10 (10%) and 2.00 (200%)."
                 constant = ""
-        if constant == "SHOP_DAILY_VENDOR_CREDITS":
+        if constant in {"SHOP_WEAPONS_COUNT", "SHOP_ARMOR_COUNT", "SHOP_SPECIAL_COUNT",
+                        "SHOP_DAILY_VENDOR_CREDITS", "SHOP_PLAYER_SOLD_LISTING_CAP"}:
             try:
                 numeric_value = int(value)
                 if numeric_value < 0:
                     raise ValueError
                 value = str(numeric_value)
             except ValueError:
-                error = "Daily vendor credits must be a whole number of zero or more."
+                error = "Shop economy values must be whole numbers of zero or more."
+                constant = ""
+        if constant in {
+            "ENCOUNTER_MAX_LEVEL_ABOVE",
+            "INTERRUPTION_LUCK_DC", "PROTAGONIST_ENCOUNTER_XP_PER_LEVEL",
+            "PROTAGONIST_ENCOUNTER_CREDITS_BASE",
+            "PROTAGONIST_ENCOUNTER_CREDITS_PER_LEVEL",
+        }:
+            minimum = 2 if constant == "INTERRUPTION_LUCK_DC" else 0
+            try:
+                numeric_value = int(value)
+                if numeric_value < minimum:
+                    raise ValueError
+                value = str(numeric_value)
+            except ValueError:
+                error = f"{constant} must be a whole number of at least {minimum}."
                 constant = ""
         if constant in {"TAVERN_CREDITS_PER_HP", "TAVERN_MIN_COST",
                         "INVENTORY_LIMIT", "INVENTORY_STR_DIVISOR"}:
@@ -1567,6 +1596,7 @@ def admin_config():
                 error = f"{constant} must be a whole number of at least {minimums[constant]}."
                 constant = ""
         if constant and value:
+            cap_expired = 0
             with exclusive_transaction():
                 execute_write(
                     """INSERT INTO settings (constant_name, value, imported_at)
@@ -1575,8 +1605,15 @@ def admin_config():
                            value=excluded.value, imported_at=excluded.imported_at""",
                     (constant, value, datetime.utcnow().isoformat())
                 )
+                if constant == "SHOP_PLAYER_SOLD_LISTING_CAP":
+                    from shop_stock import enforce_player_sold_listing_cap
+                    cap_expired = len(enforce_player_sold_listing_cap(
+                        {"SHOP_PLAYER_SOLD_LISTING_CAP": int(value)}
+                    ))
                 _audit("EDIT_CONFIG", "SETTING", reason=constant, details={"value": value})
             feedback = f"Setting '{constant}' updated to '{value}'."
+            if cap_expired:
+                feedback += f" {cap_expired} oldest player-sold listing(s) expired immediately."
         elif request.form.get("action") != "reset_enemy_balance" and not error:
             error = "Both constant name and value are required."
 
@@ -1649,6 +1686,13 @@ def admin_full_reset():
 
     # Drop all operational tables (content tables survive)
     operational = [
+        # Social state must be removed before player IDs are reused. Leaving
+        # these tables behind can attach an old crew to a brand-new character
+        # that happens to receive the same numeric player ID.
+        "crew_logs", "crew_score_events", "crew_contributions",
+        "crew_requests", "crew_memberships", "crews",
+        "player_daily_contracts", "player_shop_budgets",
+        "minion_intel", "world_boss_intel", "board_positions",
         "world_boss_event_log", "world_boss_rewards", "world_boss_contributions",
         "world_boss_events",
         "scene_combat_logs", "scene_combat_sessions", "scene_effects", "scene_attempts",

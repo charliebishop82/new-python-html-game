@@ -7,6 +7,12 @@
     <div class="term-line term-amber">
         ★ MINION SPOTTED — {{ minion.name }}
     </div>
+    {% if level_warning %}
+    <div class="term-line term-bad">
+        ⚠ LEVEL MISMATCH — {{ minion.name }} is {{ level_diff }} level(s) above you.
+        This interruption may be extremely dangerous.
+    </div>
+    {% endif %}
     <div class="term-line term-grey">
         {{ minion.flavor_text }}
     </div>
@@ -14,6 +20,13 @@
     <div class="term-line term-system">
         {{ per_result.detail }}
     </div>
+    {% if interruption %}
+    <div class="term-line term-system">
+        Interruption Luck check: d20({{ interruption.check.roll }}) + {{ interruption.check.modifier }}
+        = {{ interruption.check.total }} vs DC {{ interruption.check.dc }} — MINION
+        {% if interruption.check.natural %}({{ interruption.check.natural }}){% endif %}
+    </div>
+    {% endif %}
     <div style="display:flex;gap:8px;margin-top:8px;">
         <form class="terminal-action"
               action="{{ url_for('actions.action_boss_confirm') }}" method="POST">
@@ -21,7 +34,7 @@
             <input type="hidden" name="encounter_type" value="MINION">
             <input type="hidden" name="action"         value="fight">
             <button type="submit" class="action-btn" style="width:auto;padding:6px 16px;">
-                Deal With Interruption
+                {{ 'Fight Anyway' if level_warning else 'Deal With Interruption' }}
             </button>
         </form>
         <form class="terminal-action"
@@ -30,7 +43,7 @@
             <input type="hidden" name="encounter_type" value="MINION">
             <input type="hidden" name="action"         value="avoid">
             <button type="submit" class="action-btn" style="width:auto;padding:6px 16px;">
-                Slip Past and Continue (No AP cost)
+                {{ 'Back Away and Continue (No AP cost)' if level_warning else 'Slip Past and Continue (No AP cost)' }}
             </button>
         </form>
     </div>

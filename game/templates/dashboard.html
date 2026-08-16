@@ -3,18 +3,23 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
+{% if request.args.get('feedback') %}<div class="term-line term-good" style="padding:10px 14px;">{{ request.args.get('feedback') }}</div>{% endif %}
+{% if request.args.get('error') %}<div class="term-line term-error" style="padding:10px 14px;">⚠ {{ request.args.get('error') }}</div>{% endif %}
 <div class="feed-legend" aria-label="Feed legend">
     <strong>FEED KEY</strong>
     <span><b class="feed-scope feed-you">YOU</b> Private events and results for your character</span>
     <span><b class="feed-scope feed-world">WORLD</b> Public announcements visible to every player</span>
     <span><b class="feed-scope feed-system">SYSTEM</b> Rules, tutorial, and service notices</span>
+    <span><b class="feed-scope feed-interruption">INTERRUPTION</b> A protagonist or minion interrupted an action</span>
     <span>Bottom bar: live <b class="feed-scope feed-world">WORLD</b> ticker</span>
 </div>
 <div class="feed-toolbar" role="toolbar" aria-label="Filter today's activity">
     <span>SHOW</span>
     <button type="button" class="feed-filter active" data-feed-filter="all" aria-pressed="true">All</button>
+    <button type="button" class="feed-filter" data-feed-filter="important" aria-pressed="false">Important</button>
     <button type="button" class="feed-filter" data-feed-filter="combat" aria-pressed="false">Combat</button>
     <button type="button" class="feed-filter" data-feed-filter="rewards" aria-pressed="false">Rewards</button>
+    <button type="button" class="feed-filter" data-feed-filter="interruptions" aria-pressed="false">Interruptions</button>
     <button type="button" class="feed-filter" data-feed-filter="against" aria-pressed="false">Against You</button>
     <button type="button" class="feed-filter" data-feed-filter="system" aria-pressed="false">System</button>
 </div>
@@ -34,12 +39,27 @@
     </div>
 </section>
 {% endif %}
+{% if pending_minion_prompt %}
+    {% with minion=pending_minion_prompt.minion,
+            per_result=pending_minion_prompt.per_result,
+            interruption=pending_minion_prompt.interruption,
+            level_diff=pending_minion_prompt.level_diff,
+            level_warning=true %}
+        {% include "fragments/minion_spotted.html" %}
+    {% endwith %}
+{% endif %}
 <div id="terminal" role="log" aria-live="polite">
     {# Pre-populate with last N personal feed entries on every load #}
+    {% set new_marker = namespace(shown=false) %}
     {% for entry in terminal_history %}
+        {% if entry.is_new and not new_marker.shown %}
+        <div class="feed-new-divider" role="separator"><span>NEW SINCE YOUR LAST VISIT</span></div>
+        {% set new_marker.shown = true %}
+        {% endif %}
         <div class="term-line feed-entry term-{{ entry.event_category|lower }}"
              data-feed-category="{{ entry.event_category|lower }}"
-             data-feed-scope="{{ entry.feed_scope|lower }}">
+             data-feed-scope="{{ entry.feed_scope|lower }}"
+             data-important="{{ 'true' if entry.important else 'false' }}">
             <span class="term-ts">[{{ entry.occurred_at[11:16] }}]</span>
             <span class="feed-entry-scope">
             {% if entry.feed_scope == 'GLOBAL' %}
@@ -48,17 +68,32 @@
             <span class="feed-scope feed-system">SYSTEM</span>
             {% elif entry.event_category == 'RANDOM_EVENT' %}
             <span class="feed-scope feed-you">YOU · EVENT</span>
+            {% elif entry.event_category == 'INTERRUPTION_FRIENDLY' %}
+            <span class="feed-scope feed-interruption friendly">FRIENDLY INTERRUPTION</span>
+            {% elif entry.event_category == 'INTERRUPTION_HOSTILE' %}
+            <span class="feed-scope feed-interruption hostile">HOSTILE INTERRUPTION</span>
             {% elif entry.event_category == 'COMBAT' %}
             <span class="feed-scope feed-you">YOU · COMBAT</span>
             {% elif entry.event_category == 'COMBAT_TURN' %}
             <span class="feed-scope feed-you">COMBAT TURN</span>
+            {% elif entry.event_category == 'COMBAT_ROUNDS' %}
+            <span class="feed-scope feed-combat-detail">COMBAT DETAILS</span>
             {% elif entry.event_category == 'PVP_DEFENSE' %}
             <span class="feed-scope feed-against-you">AGAINST YOU</span>
             {% else %}
             <span class="feed-scope feed-you">YOU</span>
             {% endif %}
             </span>
-            <span class="feed-message">{{ entry.flavor_text }}</span>
+            <span class="feed-message">
+            {% if entry.details %}
+            <div class="combat-feed-summary"><strong>{{ entry.flavor_text }}</strong>
+                {% for summary in entry.summaries %}<p>{{ summary }}</p>{% endfor %}
+            </div>
+            <details class="feed-details"><summary>Show complete roll transcript</summary>
+                <div class="feed-details-body">{% for detail in entry.details %}<p>{{ detail }}</p>{% endfor %}</div>
+            </details>
+            {% else %}{{ entry.flavor_text }}{% endif %}
+            </span>
         </div>
     {% endfor %}
 
@@ -75,7 +110,7 @@
                 combat_inventory=active_combat.inventory, resumed=true %}
             {% include "fragments/combat_open.html" %}
         {% endwith %}
-    {% elif pending_action %}
+    {% elif pending_action and not pending_minion_prompt %}
         {% with message="Your interrupted action is ready to continue.", player=player %}
             {% include "fragments/interruption_resume.html" %}
         {% endwith %}

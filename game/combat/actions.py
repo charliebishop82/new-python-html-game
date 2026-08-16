@@ -608,7 +608,13 @@ def _announce_pvp_theft(thief_id: int, victim_id: int, *, item_name: str = "",
 
 
 def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
-    """Provide the internal boss steal result operation used by this module."""
+    """Award enemy gear or credits after a successful Boss/Minion steal.
+
+    The opposed roll decides whether the combat action succeeds. A second item
+    opportunity roll uses base chance, effective Luck, and steal bonuses. It
+    may award any associated special, weapon, or outfit the player is eligible
+    to own. Credits are the fallback so every successful action still pays.
+    """
     import random, math
     from datetime import datetime
 
@@ -616,71 +622,85 @@ def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
     cr_multiplier = settings.get("STEAL_BOSS_CREDIT_MULTIPLIER", cfg.STEAL_BOSS_CREDIT_MULTIPLIER)
     player        = apply_equipped_stat_bonuses(get_player(player_id))
     lck_bonus     = math.floor(player["lck_stat"] / 2) / 100
+    item_chance = min(0.75, max(0.0, base_chance + lck_bonus + steal_bonus))
 
-    # Try special item first
-    if random.random() < (base_chance + lck_bonus):
-        association_type = "Boss" if combat_type == "BOSS" else "Minion"
-        special_def = execute_one(
-            """SELECT si.id, si.name, si.starting_durability
-               FROM special_items si
-               JOIN special_item_registry sir ON sir.special_item_id = si.id
-               WHERE si.associated_to = ? AND si.association_type = ?
-                 AND sir.status = 'IN_POOL'""",
-            (opponent["name"], association_type)
+    if combat_type == "BOSS":
+        gear = execute_one(
+            """SELECT m.boss_weapon_id AS weapon_id,w.name AS weapon_name,
+                      w.starting_durability AS weapon_durability,
+                      m.boss_armor_id AS armor_id,a.name AS armor_name,
+                      a.starting_durability AS armor_durability,
+                      m.boss_special_item_id AS special_id,s.name AS special_name,
+                      s.starting_durability AS special_durability,sir.status AS special_status
+               FROM master m JOIN bosses enemy ON enemy.id=m.boss_id
+               LEFT JOIN weapons w ON w.id=m.boss_weapon_id
+               LEFT JOIN armor a ON a.id=m.boss_armor_id
+               LEFT JOIN special_items s ON s.id=m.boss_special_item_id
+               LEFT JOIN special_item_registry sir ON sir.special_item_id=m.boss_special_item_id
+               WHERE enemy.name=?""", (opponent["name"],)
         )
-        if special_def:
-            with exclusive_transaction():
-                inv_id = execute_write(
-                    """INSERT INTO inventory_items
-                       (player_id, item_type, item_id, current_durability, acquired_method)
-                       VALUES (?, 'SPECIAL', ?, ?, 'COMBAT_STEAL')""",
-                    (player_id, special_def["id"], special_def.get("starting_durability", 100))
-                )
-                execute_write(
-                    """UPDATE special_item_registry
-                       SET status='IN_INVENTORY', current_owner_player_id=?,
-                           inventory_item_id=?, last_acquired_method='COMBAT_STEAL', updated_at=?
-                       WHERE special_item_id=?""",
-                    (player_id, inv_id, datetime.utcnow().isoformat(), special_def["id"])
-                )
-                execute_write(
-                    """INSERT INTO item_history
-                       (player_id, item_type, item_id, item_name, event_type)
-                       VALUES (?, 'SPECIAL', ?, ?, 'RECEIVED_COMBAT_STEAL')""",
-                    (player_id, special_def["id"], special_def["name"])
-                )
-            return {"item_name": special_def["name"]}
+    else:
+        gear = execute_one(
+            """SELECT m.minion_weapon_id AS weapon_id,w.name AS weapon_name,
+                      w.starting_durability AS weapon_durability,
+                      m.minion_armor_id AS armor_id,a.name AS armor_name,
+                      a.starting_durability AS armor_durability,
+                      m.minion_special_item_id AS special_id,s.name AS special_name,
+                      s.starting_durability AS special_durability,sir.status AS special_status
+               FROM master m JOIN minions enemy ON enemy.id=m.minion_id
+               LEFT JOIN weapons w ON w.id=m.minion_weapon_id
+               LEFT JOIN armor a ON a.id=m.minion_armor_id
+               LEFT JOIN special_items s ON s.id=m.minion_special_item_id
+               LEFT JOIN special_item_registry sir ON sir.special_item_id=m.minion_special_item_id
+               WHERE enemy.name=?""", (opponent["name"],)
+        )
 
-    # Minion only: try to steal the minion weapon
-    if combat_type == "MINION":
-        master = execute_one(
-            """SELECT m.minion_weapon_id, w.name as weapon_name, w.starting_durability
-               FROM master m
-               JOIN minions mn ON mn.id = m.minion_id
-               JOIN weapons w  ON w.id  = m.minion_weapon_id
-               WHERE mn.name = ?""",
-            (opponent["name"],)
-        )
-        if master and master["minion_weapon_id"]:
+    candidates = []
+    if gear:
+        if gear.get("special_id") and gear.get("special_status") == "IN_POOL":
+            candidates.append({"item_type": "SPECIAL", "item_id": gear["special_id"],
+                               "name": gear["special_name"],
+                               "durability": gear.get("special_durability", 100)})
+        for item_type, prefix in (("WEAPON", "weapon"), ("ARMOR", "armor")):
+            item_id = gear.get(f"{prefix}_id")
+            if not item_id:
+                continue
             already_owned = execute_one(
-                "SELECT id FROM inventory_items WHERE player_id = ? AND item_type = 'WEAPON' AND item_id = ?",
-                (player_id, master["minion_weapon_id"])
+                """SELECT id FROM inventory_items
+                   WHERE player_id=? AND item_type=? AND item_id=?""",
+                (player_id, item_type, item_id)
             )
             if not already_owned:
-                with exclusive_transaction():
-                    execute_write(
-                        """INSERT INTO inventory_items
-                           (player_id, item_type, item_id, current_durability, acquired_method)
-                           VALUES (?, 'WEAPON', ?, ?, 'COMBAT_STEAL')""",
-                        (player_id, master["minion_weapon_id"], master.get("starting_durability", 100))
-                    )
-                    execute_write(
-                        """INSERT INTO item_history
-                           (player_id, item_type, item_id, item_name, event_type)
-                           VALUES (?, 'WEAPON', ?, ?, 'RECEIVED_COMBAT_STEAL')""",
-                        (player_id, master["minion_weapon_id"], master["weapon_name"])
-                    )
-                return {"item_name": master["weapon_name"]}
+                candidates.append({"item_type": item_type, "item_id": item_id,
+                                   "name": gear[f"{prefix}_name"],
+                                   "durability": gear.get(f"{prefix}_durability", 100)})
+
+    if candidates and random.random() < item_chance:
+        prize = random.choice(candidates)
+        with exclusive_transaction():
+            inv_id = execute_write(
+                """INSERT INTO inventory_items
+                   (player_id,item_type,item_id,current_durability,acquired_method)
+                   VALUES (?,?,?,?, 'COMBAT_STEAL')""",
+                (player_id, prize["item_type"], prize["item_id"],
+                 prize.get("durability", 100) or 100)
+            )
+            if prize["item_type"] == "SPECIAL":
+                execute_write(
+                    """UPDATE special_item_registry
+                       SET status='IN_INVENTORY',current_owner_player_id=?,
+                           inventory_item_id=?,last_acquired_method='COMBAT_STEAL',updated_at=?
+                       WHERE special_item_id=? AND status='IN_POOL'""",
+                    (player_id, inv_id, datetime.utcnow().isoformat(), prize["item_id"])
+                )
+            execute_write(
+                """INSERT INTO item_history
+                   (player_id,item_type,item_id,item_name,event_type)
+                   VALUES (?,?,?,?, 'RECEIVED_COMBAT_STEAL')""",
+                (player_id, prize["item_type"], prize["item_id"], prize["name"])
+            )
+        return {"item_name": prize["name"], "item_type": prize["item_type"],
+                "item_chance": round(item_chance, 4)}
 
     # Credits fallback
     credit_bonus = float(get_player_bonus_profile(player_id).get("credit_multiplier", 0) or 0)
@@ -693,7 +713,8 @@ def _boss_steal_result(player_id, opponent, steal_bonus, settings, combat_type):
     with exclusive_transaction():
         execute_write("UPDATE players SET credits = credits + ? WHERE id = ?",
                       (net_credits, player_id))
-    return {"credits": net_credits}
+    return {"credits": net_credits, "item_chance": round(item_chance, 4),
+            "eligible_item_count": len(candidates)}
 
 def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
     """Process the queued brace action against validated game state."""
@@ -1419,28 +1440,29 @@ def _finalize_world_boss_attempt(session_id: int, state: dict,
     boss = state["boss"]
     settings = get_all_settings()
     bonuses = state["attacker_equipped"].get("bonuses") or {}
-    xp = max(0, int(settings.get("WORLD_BOSS_ATTEMPT_XP",
-                                 cfg.WORLD_BOSS_ATTEMPT_XP) *
-                    (1 + float(bonuses.get("xp_multiplier", 0) or 0))))
-    credits = max(0, int(settings.get("WORLD_BOSS_ATTEMPT_CREDITS",
-                                      cfg.WORLD_BOSS_ATTEMPT_CREDITS) *
-                         (1 + float(bonuses.get("credit_multiplier", 0) or 0))))
-    damage = execute_one(
-        "SELECT attacker_total_damage_dealt AS damage FROM combat_sessions WHERE id=?",
-        (session_id,)
-    )["damage"]
+    from world_boss import calculate_attempt_rewards, get_attempt_performance
+    performance = get_attempt_performance(session_id)
+    reward = calculate_attempt_rewards(
+        performance["damage"], performance["rounds"], bonuses, settings
+    )
+    xp, credits = reward["xp"], reward["credits"]
+    damage, rounds = reward["damage"], reward["rounds"]
     if boss_defeated:
         flavor_text = (f"{player['character_name']} helped bring down {boss['name']} "
-                       f"after dealing {damage} damage this attempt!")
+                       f"after dealing {damage} damage across {rounds} rounds! "
+                       f"Reward: +{xp} XP, +{credits} credits.")
     elif result_type == "STALEMATE":
-        flavor_text = (f"{player['character_name']} withdrew from {boss['name']} "
-                       f"after dealing {damage} damage this attempt.")
+        flavor_text = (f"{player['character_name']} withdrew from {boss['name']} after "
+                       f"dealing {damage} damage across {rounds} rounds. "
+                       f"Reward: +{xp} XP, +{credits} credits.")
     elif result_type == "ESCAPE":
         flavor_text = (f"{player['character_name']} escaped from {boss['name']} after "
-                       f"dealing {damage} damage this attempt.")
+                       f"dealing {damage} damage across {rounds} rounds. "
+                       f"Reward: +{xp} XP, +{credits} credits.")
     else:
-        flavor_text = (f"{boss['name']} defeated {player['character_name']}, but the "
-                       f"shared enemy suffered {damage} damage this attempt.")
+        flavor_text = (f"{boss['name']} defeated {player['character_name']}, but suffered "
+                       f"{damage} shared damage across {rounds} rounds. "
+                       f"Reward: +{xp} XP, +{credits} credits.")
     with exclusive_transaction():
         execute_write("UPDATE players SET xp=xp+?,credits=credits+?,in_combat=0 WHERE id=?",
                       (xp, credits, player["id"]))
@@ -1474,6 +1496,8 @@ def _finalize_world_boss_attempt(session_id: int, state: dict,
     divert_awarded_earnings(player["id"], xp, credits, "WORLD_BOSS_ATTEMPT")
     return {"result_type": result_type, "flavor": flavor_text,
             "xp_earned": xp, "credits_stolen": credits,
+            "damage_dealt": damage, "rounds_lasted": rounds,
+            "reward_breakdown": reward,
             "item_stolen": None, "drops": None}
 
 

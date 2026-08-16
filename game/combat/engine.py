@@ -51,6 +51,41 @@ def proficiency_bonus(level: int) -> int:
     return 2 + max(0, (int(level or 1) - 1) // 4)
 
 
+def weapon_tier_damage_bonus(weapon: dict | None) -> int:
+    """Return the flat damage earned by a weapon's content level.
+
+    Weapon dice retain their readable D&D-style progression while this bonus
+    prevents the broad d8/d10 bands from making distant tiers feel identical:
+    levels 1-3 +0, 4-6 +1, 7-9 +2, 10-12 +3, 13-15 +4, 16-18 +5.
+    Unarmed attacks and malformed content receive no tier bonus.
+    """
+    if not weapon:
+        return 0
+    try:
+        level = max(1, int(weapon.get("level", 1) or 1))
+    except (TypeError, ValueError):
+        return 0
+    return min(5, (level - 1) // 3)
+
+
+def armor_tier_ac_bonus(armor: dict | None) -> int:
+    """Return the bounded AC earned by an outfit's content level.
+
+    Armor uses a slower curve than weapon damage because each point of AC
+    changes every incoming d20 attack. Levels 1-3 gain +0, 4-9 +1, 10-15 +2,
+    and 16-18 +3. Natural 20 still hits regardless of the resulting AC.
+    """
+    if not armor:
+        return 0
+    try:
+        level = max(1, int(armor.get("level", 1) or 1))
+    except (TypeError, ValueError):
+        return 0
+    if level < 4:
+        return 0
+    return min(3, 1 + (level - 4) // 6)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # DERIVED STAT CALCULATIONS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -61,10 +96,10 @@ def calc_max_hp(player: dict) -> int:
 
 
 def calc_ac(combatant: dict, armor: dict | None) -> int:
-    """10 + half AGI + equipped armor and special-item AC bonuses."""
+    """10 + half AGI + authored armor AC + armor tier + special AC."""
     ac = 10 + stat_mod(combatant["agi_stat"])
     if armor:
-        ac += armor.get("ac_bonus", 0)
+        ac += armor.get("ac_bonus", 0) + armor_tier_ac_bonus(armor)
     ac += int(combatant.get("special_ac_bonus", 0) or 0)
     return ac
 
@@ -149,17 +184,20 @@ def hits_ac(attack_total: int, target_ac: int, raw_d20: int | None = None) -> bo
 # ─────────────────────────────────────────────────────────────────────────────
 
 def calc_weapon_damage(attacker: dict, weapon: dict, is_crit: bool) -> tuple[int, str]:
-    """Roll weapon damage + stat modifier.
+    """Roll weapon damage + stat modifier + weapon-tier modifier.
     Doubles on crit. Returns (damage, detail_str)."""
     die_roll = roll_damage_die(weapon["damage_die"])
     if weapon["weapon_type"] == "Melee":
         modifier = stat_mod(attacker["str_stat"])
     else:
         modifier = stat_mod(attacker["agi_stat"])
-    base = die_roll + modifier
+    tier_bonus = weapon_tier_damage_bonus(weapon)
+    base = die_roll + modifier + tier_bonus
     if is_crit:
         base *= 2
-    detail = f"{weapon['damage_die']}({die_roll})+{modifier}={'CRIT:' if is_crit else ''}{base}"
+    tier_detail = f"+{tier_bonus}[tier]" if tier_bonus else ""
+    detail = (f"{weapon['damage_die']}({die_roll})+{modifier}{tier_detail}="
+              f"{'CRIT:' if is_crit else ''}{base}")
     return base, detail
 
 

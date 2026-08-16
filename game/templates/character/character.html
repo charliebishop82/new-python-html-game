@@ -30,9 +30,9 @@
 
             <h3 style="color:var(--amber);margin:14px 0 10px;">Combat Summary</h3>
             <table>
-                <tr><td data-help-key="armor class">Armor Class</td><td id="d-ac">{{ derived.ac }}</td></tr>
+                <tr><td data-help-key="armor class">Armor Class</td><td id="d-ac">{{ derived.ac }}{% if derived.armor_level_bonus %} <small>(includes +{{ derived.armor_level_bonus }} outfit tier)</small>{% endif %}</td></tr>
                 <tr><td data-help-key="attack bonus">Attack Bonus</td><td>{{ '%+d'|format(derived.attack_modifier) }} ({{ 'STR' if derived.weapon_type == 'Melee' else 'AGI' }})</td></tr>
-                <tr><td data-help-key="possible damage">Possible Damage</td><td id="d-damage">{{ derived.damage_min }}–{{ derived.damage_max }} {{ derived.damage_type }} <small>({{ derived.damage_die }}+{{ derived.attack_modifier }}{% if derived.bonus_damage %}, +{{ derived.bonus_damage }} {{ derived.bonus_damage_type }}{% endif %})</small></td></tr>
+                <tr><td data-help-key="possible damage">Possible Damage</td><td id="d-damage">{{ derived.damage_min }}–{{ derived.damage_max }} {{ derived.damage_type }} <small>({{ derived.damage_die }} + {{ derived.damage_modifier }}{% if derived.weapon_level_bonus %}, including +{{ derived.weapon_level_bonus }} weapon tier{% endif %}{% if derived.bonus_damage %}, +{{ derived.bonus_damage }} {{ derived.bonus_damage_type }}{% endif %})</small></td></tr>
                 <tr><td data-help-key="critical damage">Critical Damage</td><td id="d-crit-damage">{{ derived.crit_damage_min }}–{{ derived.crit_damage_max }}</td></tr>
                 <tr><td data-help-key="critical range">Critical Range</td><td>{{ derived.crit_range }} ({{ derived.crit_chance_pct }}%)</td></tr>
                 <tr><td data-help-key="damage types">Damage Types</td><td id="d-damage-types">{{ derived.damage_types|join(', ') }}</td></tr>

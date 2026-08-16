@@ -19,6 +19,13 @@ bp = Blueprint("shop", __name__)
 logger = logging.getLogger(__name__)
 
 
+@bp.route("/shop/leave", methods=["POST"])
+def leave():
+    """Explicitly close a paid Shop visit before navigating elsewhere."""
+    session.pop("shop_access_granted", None)
+    return ("", 204)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /shop
 # ─────────────────────────────────────────────────────────────────────────────
@@ -28,9 +35,26 @@ def enter():
     """Charge the one-time admission AP, then open a free trading visit."""
     try:
         player = get_player(session["player_id"])
-        from routes.actions import begin_minion_interruption
-        minion = begin_minion_interruption(player, "SHOP", settings=get_all_settings())
-        if minion:
+        settings = get_all_settings()
+        from routes.actions import begin_action_interruption, has_interrupted_ap_commitment
+        admission = encumbered_ap_cost(
+            player, settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP), settings
+        )
+        if player["current_ap"] < admission and not has_interrupted_ap_commitment("SHOP"):
+            return redirect(url_for(
+                "dashboard.index", error=f"Not enough AP. Need {admission}."
+            ))
+        interruption = begin_action_interruption(
+            player, "SHOP", settings=settings
+        )
+        if interruption and interruption["kind"] == "MINION":
+            minion = interruption["minion"]
+            from routes.actions import _minion_level_warning
+            if _minion_level_warning(player, minion, settings):
+                session["pending_minion_prompt"] = {
+                    "minion_id": minion["id"], "check": interruption["check"]
+                }
+                return redirect(url_for("dashboard.index"))
             result = enqueue_and_process(
                 player["id"], "start_boss_fight",
                 {"opponent_id": minion["id"], "encounter_type": "MINION", "cost_ap": 0}
@@ -39,9 +63,23 @@ def enter():
                 raise RuntimeError(result["error"])
             session["combat_session_id"] = result["session_id"]
             return redirect(url_for("dashboard.index"))
-        enqueue_and_process(session["player_id"], "shop_enter", {})
+        from routes.actions import consume_interrupted_ap_commitment
+        allow_shortfall = consume_interrupted_ap_commitment("SHOP")
+        enqueue_and_process(
+            session["player_id"], "shop_enter",
+            {"allow_interruption_shortfall": allow_shortfall}
+        )
         session["shop_access_granted"] = True
-        return redirect(url_for("shop.index"))
+        feedback = None
+        if interruption:
+            reward = interruption["reward"]
+            feedback = (
+                f"Friendly interruption: {reward['protagonist']} gave you "
+                f"{reward['item_name']}, {reward['xp_awarded']} XP, and "
+                f"{reward['credits_awarded']} credits."
+            )
+        return redirect(url_for("shop.index", feedback=feedback) if feedback
+                        else url_for("shop.index"))
     except RuntimeError as exc:
         return redirect(url_for("dashboard.index", error=str(exc)))
 
@@ -51,17 +89,20 @@ def handle_shop_enter(player_id: int, payload: dict) -> dict:
     """Spend the configured Shop AP once; purchases and sales are then free."""
     settings = get_all_settings()
     ap_cost = settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP)
+    allow_shortfall = bool(payload.get("allow_interruption_shortfall"))
     player = get_player(player_id)
     if not player:
         raise ValueError("Player not found.")
     if player["in_combat"]:
         raise ValueError("The shop is unavailable during combat.")
     ap_cost = encumbered_ap_cost(player, ap_cost, settings)
-    if player["current_ap"] < ap_cost:
+    if player["current_ap"] < ap_cost and not allow_shortfall:
         raise ValueError(f"Not enough AP. Need {ap_cost}.")
+    charged_ap = min(player["current_ap"], ap_cost) if allow_shortfall else ap_cost
     with exclusive_transaction():
-        execute_write("UPDATE players SET current_ap=current_ap-? WHERE id=?", (ap_cost, player_id))
-    return {"success": True, "ap_spent": ap_cost}
+        execute_write("UPDATE players SET current_ap=current_ap-? WHERE id=?", (charged_ap, player_id))
+    return {"success": True, "ap_spent": charged_ap,
+            "interruption_commitment": allow_shortfall}
 
 @bp.route("/shop")
 def index():
@@ -81,6 +122,7 @@ def index():
 
     # Load all current shop listings with content detail
     listings = _get_listings_with_detail(discount)
+    _attach_loadout_comparisons(player, listings, settings)
 
     # Load player's unequipped inventory for the sell panel
     sellable = _get_sellable_items(player)
@@ -96,6 +138,9 @@ def index():
         "shop/shop.html",
         listings=listings,
         sellable=sellable,
+        visit_ap_cost=encumbered_ap_cost(
+            player, settings.get("AP_COST_SHOP", cfg.AP_COST_SHOP), settings
+        ),
         discount_pct=int(discount * 100),
         vendor_credits=vendor_credits,
         vendor_credit_limit=vendor_credit_limit,
@@ -121,6 +166,83 @@ def _get_listings_with_detail(discount: float) -> list[dict]:
                        "discounted_price": discounted_price,
                        "listing_id": row["id"]})
     return result
+
+
+def _attach_loadout_comparisons(player: dict, listings: list[dict],
+                                settings: dict) -> None:
+    """Annotate listings with a concise comparison to the equipped item.
+
+    The comparison uses the same derived-stat calculator as the Character and
+    Equipment screens. It therefore includes core-stat changes and their
+    downstream effects instead of comparing only the item's printed AC or die.
+    """
+    from routes.character import _calc_derived_stats
+
+    equipped = get_player_equipped(player)
+    current = _calc_derived_stats(player, equipped, settings)
+    slot_for_type = {"WEAPON": "weapon", "ARMOR": "armor", "SPECIAL": "special"}
+
+    def delta_label(label: str, before: int | float, after: int | float,
+                    suffix: str = "") -> tuple[str, float] | None:
+        delta = after - before
+        if abs(delta) < 0.001:
+            return None
+        shown = int(delta) if float(delta).is_integer() else round(delta, 1)
+        return f"{label} {shown:+}{suffix}", float(delta)
+
+    for listing in listings:
+        slot = slot_for_type.get(listing["item_type"])
+        if not slot:
+            continue
+        candidate_loadout = dict(equipped)
+        candidate_loadout[slot] = {
+            **listing,
+            "current_durability": listing.get("durability_at_listing") or 100,
+        }
+        candidate = _calc_derived_stats(player, candidate_loadout, settings)
+        gains, tradeoffs = [], []
+
+        def record(label: str, key: str, suffix: str = "") -> float:
+            result = delta_label(label, current[key], candidate[key], suffix)
+            if not result:
+                return 0.0
+            text, delta = result
+            (gains if delta > 0 else tradeoffs).append(text)
+            return delta
+
+        stat_delta = sum(record(stat.upper(), stat) for stat in
+                         ("str", "end", "agi", "lck", "per"))
+        hp_delta = record("Max HP", "max_hp")
+        ac_delta = record("AC", "ac")
+        attack_delta = record("Attack", "attack_modifier")
+        initiative_delta = record("Initiative", "initiative_modifier")
+        resistance_delta = record("Resistance sources", "resistance_sources")
+        damage_min_delta = candidate["damage_min"] - current["damage_min"]
+        damage_max_delta = record("Max damage", "damage_max")
+        daily_ap_delta = record("Daily AP", "daily_ap")
+        crit_delta = record("Critical chance", "crit_chance_pct", "%")
+
+        if slot == "weapon":
+            score_delta = ((damage_min_delta + damage_max_delta) * 1.5 +
+                           attack_delta * 3 + initiative_delta + ac_delta * 2 +
+                           hp_delta * 0.25 + resistance_delta * 3 + stat_delta * 0.5)
+        elif slot == "armor":
+            score_delta = (ac_delta * 5 + hp_delta * 0.35 + resistance_delta * 4 +
+                           attack_delta * 2 + initiative_delta + stat_delta * 0.75)
+        else:
+            score_delta = ((damage_min_delta + damage_max_delta) + attack_delta * 2 +
+                           ac_delta * 4 + hp_delta * 0.3 + resistance_delta * 4 +
+                           initiative_delta + daily_ap_delta * 3 + crit_delta * 0.25 +
+                           stat_delta * 0.75)
+
+        current_item = equipped.get(slot)
+        listing["is_loadout_upgrade"] = current_item is None or score_delta > 0.5
+        listing["comparison_gains"] = gains[:4]
+        listing["comparison_tradeoffs"] = tradeoffs[:3]
+        listing["comparison_summary"] = (
+            f"Fills your empty {slot} slot" if current_item is None
+            else f"Compared with {current_item.get('name', 'equipped gear')}"
+        )
 
 
 def _get_item_detail(item_type: str, item_id: int, active_only: bool = False) -> dict | None:
@@ -379,10 +501,13 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
             (player_id, inv["item_type"], inv["item_id"],
              detail["name"], sell_price)
         )
+        from shop_stock import enforce_player_sold_listing_cap
+        expired = enforce_player_sold_listing_cap(settings)
     logger.info("Player %d sold item %s/%d for %d credits",
                 player_id, inv["item_type"], inv["item_id"], sell_price)
     return {"success": True, "sell_price": sell_price,
-            "vendor_credits_remaining": vendor_remaining, "ap_spent": 0}
+            "vendor_credits_remaining": vendor_remaining,
+            "shop_listings_expired": len(expired), "ap_spent": 0}
 
 
 def _get_item_name(item_type: str, item_id: int) -> str:

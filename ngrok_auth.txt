@@ -1,0 +1,8 @@
+version: 3
+agent:
+  authtoken: "$YOUR_AUTHTOKEN"
+endpoints:
+  - name: your_endpoint_name
+    url: https://neutron-lively-throttle.ngrok-free.dev
+    upstream:
+      url: 80

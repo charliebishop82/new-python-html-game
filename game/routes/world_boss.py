@@ -108,11 +108,26 @@ def fight():
     event = get_active_event()
     if not event:
         return redirect(url_for("world_boss.index"))
-    from routes.actions import begin_minion_interruption
-    minion = begin_minion_interruption(
-        g.player, "WORLD_BOSS", {"event_id": event["id"]}, get_all_settings()
+    settings = get_all_settings()
+    from routes.actions import begin_action_interruption, has_interrupted_ap_commitment
+    admission = encumbered_ap_cost(
+        g.player, settings.get("AP_COST_WORLD_BOSS", cfg.AP_COST_WORLD_BOSS), settings
     )
-    if minion:
+    if g.player["current_ap"] < admission and not has_interrupted_ap_commitment("WORLD_BOSS"):
+        return redirect(url_for(
+            "world_boss.index", error=f"Not enough AP. Need {admission}."
+        ))
+    interruption = begin_action_interruption(
+        g.player, "WORLD_BOSS", {"event_id": event["id"]}, settings
+    )
+    if interruption and interruption["kind"] == "MINION":
+        minion = interruption["minion"]
+        from routes.actions import _minion_level_warning
+        if _minion_level_warning(g.player, minion, settings):
+            session["pending_minion_prompt"] = {
+                "minion_id": minion["id"], "check": interruption["check"]
+            }
+            return redirect(url_for("dashboard.index"))
         result = enqueue_and_process(
             g.player["id"], "start_boss_fight",
             {"opponent_id": minion["id"], "encounter_type": "MINION", "cost_ap": 0}
@@ -121,11 +136,23 @@ def fight():
             return redirect(url_for("world_boss.index", error=result["error"]))
         session["combat_session_id"] = result["session_id"]
         return redirect(url_for("dashboard.index"))
-    result = enqueue_and_process(g.player["id"], "start_world_boss_fight",
-                                 {"event_id": event["id"]})
+    from routes.actions import consume_interrupted_ap_commitment
+    allow_shortfall = consume_interrupted_ap_commitment("WORLD_BOSS")
+    result = enqueue_and_process(
+        g.player["id"], "start_world_boss_fight",
+        {"event_id": event["id"], "allow_interruption_shortfall": allow_shortfall}
+    )
     if result.get("error"):
         return redirect(url_for("world_boss.index", error=result["error"]))
     session["combat_session_id"] = result["session_id"]
+    if interruption:
+        reward = interruption["reward"]
+        return redirect(url_for(
+            "dashboard.index",
+            feedback=(f"{reward['protagonist']} gave you {reward['item_name']}, "
+                      f"{reward['xp_awarded']} XP, and {reward['credits_awarded']} credits "
+                      "before the multiplayer raid.")
+        ))
     return redirect(url_for("dashboard.index"))
 
 
@@ -138,14 +165,17 @@ def handle_start_world_boss_fight(player_id, payload):
     settings = get_all_settings()
     cost = int(settings.get("AP_COST_WORLD_BOSS", cfg.AP_COST_WORLD_BOSS))
     effective_cost = encumbered_ap_cost(player, cost, settings)
+    allow_shortfall = bool(payload.get("allow_interruption_shortfall"))
     if not event:
         return {"error": "That world-boss event has ended."}
     if player["in_combat"]:
         return {"error": "You are already in combat."}
-    if player["current_ap"] < effective_cost:
+    if player["current_ap"] < effective_cost and not allow_shortfall:
         return {"error": f"Not enough AP (need {effective_cost})."}
     with exclusive_transaction():
-        _, new_hp = _deduct_ap_and_regen(player_id, player, cost, settings)
+        _, new_hp = _deduct_ap_and_regen(
+            player_id, player, cost, settings, allow_shortfall
+        )
         execute_write("UPDATE players SET in_combat=1 WHERE id=?", (player_id,))
         combat_id = execute_write(
             """INSERT INTO combat_sessions

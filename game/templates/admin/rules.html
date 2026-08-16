@@ -14,17 +14,21 @@
 </table>
 
 <h2>Attack Resolution</h2>
-<ol style="line-height:1.7;margin-left:22px;"><li>Choose effective STR for melee or effective AGI for ranged.</li><li>Roll d20 + modifier + D&amp;D-style proficiency (+2, then +1 every four levels) against Armor Class.</li><li>On a hit, roll weapon damage and every active typed bonus-damage component.</li><li>Apply critical multipliers, each componentâ€™s resistance or weakness, enemy scaling, HP, durability, and defeat checks.</li><li>An Extra Attack effect repeats the full accuracy and damage process once.</li></ol>
+<ol style="line-height:1.7;margin-left:22px;"><li>Choose effective STR for melee or effective AGI for ranged.</li><li>Roll d20 + modifier + D&amp;D-style proficiency (+2, then +1 every four levels) against Armor Class. Outfit tier adds +0 AC at Levels 1–3, +1 at 4–9, +2 at 10–15, and +3 at 16–18.</li><li>On a hit, roll weapon damage, add its level-tier bonus (L1–3 +0 through L16–18 +5), and add every active typed bonus-damage component.</li><li>Apply critical multipliers, each componentâ€™s resistance or weakness, enemy scaling, HP, durability, and defeat checks.</li><li>An Extra Attack effect repeats the full accuracy and damage process once.</li></ol>
 <table><tr><th>Rule</th><th>Active value</th><th>Meaning</th></tr>
 <tr><td>Minimum critical threshold</td><td>{{ settings.get('CRIT_MIN_THRESHOLD',15) }}</td><td>Luck and specials may lower the roll needed, but never below this.</td></tr>
 <tr><td>Stacked resistance floor</td><td>{{ settings.get('RESISTANCE_STACK_MIN_DAMAGE_PERCENT',0.25) }}</td><td>Minimum fraction of original damage after multiple resistance sources.</td></tr>
 <tr><td>Enemy damage scale</td><td>{{ settings.get('ENEMY_DAMAGE_SCALE',0.85) }}</td><td>Safety multiplier applied to enemy attacks.</td></tr>
 <tr><td>Minion/Boss HP scale</td><td>{{ settings.get('MINION_HP_SCALE',0.60) }} / {{ settings.get('BOSS_HP_SCALE',0.65) }}</td><td>Applied when a new encounter instance is created.</td></tr></table>
 
+<h3>World-Boss Attempt Rewards</h3>
+<p>Only actual post-resistance damage accepted by the shared HP pool counts. Completed-round rewards are capped at {{ settings.get('WORLD_BOSS_ROUNDS_MAX',10) }} rounds. Equipment and perk XP/credit multipliers apply after the performance calculation.</p>
+<div class="formula">XP = {{ settings.get('WORLD_BOSS_ATTEMPT_XP',10) }} + damage × {{ settings.get('WORLD_BOSS_XP_PER_DAMAGE',1.0) }} + rounds × {{ settings.get('WORLD_BOSS_XP_PER_ROUND',2.0) }}. Credits = {{ settings.get('WORLD_BOSS_ATTEMPT_CREDITS',5) }} + damage × {{ settings.get('WORLD_BOSS_CREDITS_PER_DAMAGE',0.25) }} + rounds × {{ settings.get('WORLD_BOSS_CREDITS_PER_ROUND',1.0) }}.</div>
+
 <h2>Opposed Actions</h2>
 <p>Steal and Escape compare d20 + floor(AGI ÷ 2) + floor(LCK ÷ 2). Observe also adds floor(PER ÷ 2) to both sides. The actor must win strictly; ties fail.</p>
 <table><tr><th>Action</th><th>Success flow</th><th>Failure</th></tr>
-<tr><td>Steal</td><td>PvP: unequipped item → credits → XP. Enemy: eligible special/weapon → credits.</td><td>Temporary defensive penalty.</td></tr>
+<tr><td>Steal</td><td>PvP: unequipped item → credits → XP. Boss/Minion: successful opposed roll, then item chance = base + half-Luck percentage + steal bonus; eligible special/weapon/outfit → credits.</td><td>Temporary defensive penalty.</td></tr>
 <tr><td>Escape</td><td>Resolve combat as ESCAPE and clear both combat flags.</td><td>Turn and AP are consumed.</td></tr>
 <tr><td>Observe</td><td>Persist opponent intel for future fights.</td><td>No information revealed.</td></tr></table>
 
@@ -37,6 +41,7 @@
 <h2>Operational Flows</h2>
 <table><tr><th>System</th><th>Flow and troubleshooting expectation</th></tr>
 <tr><td>Combat record</td><td>Each action writes a permanent combat log; readable rounds also enter the daily player feed, which is archived at midnight.</td></tr>
+<tr><td>Blacksmith visit</td><td>Blacksmith entry charges AP exactly once. Repair orders during that visit cost credits only; leaving ends access. A positive-value damaged item has a minimum one-credit repair price.</td></tr>
 <tr><td>PvP theft</td><td>Inventory ownership is transferred atomically, both item histories are written, the victim is alerted, and a WORLD entry is published.</td></tr>
 <tr><td>NPC encounter safety</td><td>NPC target selection excludes contacts more than four levels above the NPC.</td></tr>
 <tr><td>Shop</td><td>Admission costs {{ settings.get('AP_COST_SHOP',1) }} AP once per visit. Buying and selling inside is free. Each character's vendor can pay at most {{ settings.get('SHOP_DAILY_VENDOR_CREDITS',500) }} credits for direct sales per UTC day; purchases do not replenish it. An empty shop is populated at game startup.</td></tr>

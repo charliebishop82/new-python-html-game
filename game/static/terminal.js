@@ -324,14 +324,21 @@ function appendFeedEntry(entry) {
     div.className = `term-line feed-entry term-${category}`;
     div.dataset.feedCategory = category;
     div.dataset.feedScope = scope;
+    div.dataset.important = [
+        'pvp_defense', 'combat', 'level_up', 'reward', 'contract', 'auction',
+        'world_boss_reward', 'interruption_friendly', 'interruption_hostile'
+    ].includes(category) ? 'true' : 'false';
     const ts = entry.occurred_at ? entry.occurred_at.substring(11, 16) : '';
     const categoryLabel = scope === 'global' ? 'WORLD' :
         category === 'pvp_defense' ? 'AGAINST YOU' :
         category === 'system' ? 'SYSTEM' :
+        category === 'interruption_friendly' ? 'FRIENDLY INTERRUPTION' :
+        category === 'interruption_hostile' ? 'HOSTILE INTERRUPTION' :
         category === 'random_event' ? 'YOU · EVENT' :
         category === 'combat' ? 'YOU · COMBAT' : 'YOU';
     const scopeClass = scope === 'global' ? 'feed-world' :
         category === 'pvp_defense' ? 'feed-against-you' :
+        category.startsWith('interruption_') ? `feed-interruption ${category.endsWith('friendly') ? 'friendly' : 'hostile'}` :
         category === 'system' ? 'feed-system' : 'feed-you';
     div.innerHTML = `<span class="term-ts">[${ts}]</span>` +
         `<span class="feed-entry-scope"><span class="feed-scope ${scopeClass}">${categoryLabel}</span></span>` +
@@ -347,20 +354,26 @@ function feedEntryMatches(entry, filter) {
     const category = entry.dataset.feedCategory || '';
     const scope = entry.dataset.feedScope || '';
     if (filter === 'all') return true;
+    if (filter === 'important') return entry.dataset.important === 'true';
     if (filter === 'against') return category === 'pvp_defense';
     if (filter === 'system') return category === 'system' || scope === 'system';
     if (filter === 'combat') {
         return ['combat', 'combat_turn', 'pvp_defense', 'world_boss'].includes(category);
     }
     if (filter === 'rewards') {
-        return ['level_up', 'contract', 'reward', 'world_boss_reward', 'item'].includes(category);
+        return ['level_up', 'contract', 'reward', 'world_boss_reward', 'item',
+                'interruption_friendly'].includes(category);
     }
+    if (filter === 'interruptions') return category.startsWith('interruption_');
     return true;
 }
 
 function applyFeedFilter() {
     document.querySelectorAll('#terminal .feed-entry').forEach(entry => {
         entry.hidden = !feedEntryMatches(entry, activeFeedFilter);
+    });
+    document.querySelectorAll('#terminal .feed-new-divider').forEach(divider => {
+        divider.hidden = activeFeedFilter !== 'all';
     });
 }
 
