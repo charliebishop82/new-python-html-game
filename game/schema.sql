@@ -189,7 +189,7 @@ CREATE TABLE IF NOT EXISTS level_up_history (
     timestamp      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
--- Permanent perk selections earned at levels 3, 6, 9, 12, and 15.
+-- Permanent perk selections earned every third level through level 18.
 CREATE TABLE IF NOT EXISTS player_perks (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     player_id   INTEGER NOT NULL REFERENCES players(id),
@@ -285,6 +285,23 @@ CREATE TABLE IF NOT EXISTS boss_intel (
     boss_id    INTEGER NOT NULL REFERENCES bosses(id),
     learned_at TEXT    NOT NULL DEFAULT (datetime('now')),
     UNIQUE(player_id, boss_id)
+);
+
+-- Permanent intelligence learned by observing non-boss creature types.
+CREATE TABLE IF NOT EXISTS minion_intel (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id  INTEGER NOT NULL REFERENCES players(id),
+    minion_id  INTEGER NOT NULL REFERENCES minions(id),
+    learned_at TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(player_id, minion_id)
+);
+
+CREATE TABLE IF NOT EXISTS world_boss_intel (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id     INTEGER NOT NULL REFERENCES players(id),
+    world_boss_id INTEGER NOT NULL REFERENCES world_bosses(id),
+    learned_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(player_id, world_boss_id)
 );
 
 -- Detailed round-by-round audit records for combat actions and outcomes.
@@ -577,6 +594,14 @@ CREATE TABLE IF NOT EXISTS minions (
     lck_stat      INTEGER NOT NULL,
     per_stat      INTEGER NOT NULL,
     max_hp        INTEGER NOT NULL,
+    res_blade INTEGER NOT NULL DEFAULT 0, res_blunt INTEGER NOT NULL DEFAULT 0,
+    res_ballistic INTEGER NOT NULL DEFAULT 0, res_energy INTEGER NOT NULL DEFAULT 0,
+    res_arcane INTEGER NOT NULL DEFAULT 0, res_explosive INTEGER NOT NULL DEFAULT 0,
+    res_venom INTEGER NOT NULL DEFAULT 0,
+    weak_blade INTEGER NOT NULL DEFAULT 0, weak_blunt INTEGER NOT NULL DEFAULT 0,
+    weak_ballistic INTEGER NOT NULL DEFAULT 0, weak_energy INTEGER NOT NULL DEFAULT 0,
+    weak_arcane INTEGER NOT NULL DEFAULT 0, weak_explosive INTEGER NOT NULL DEFAULT 0,
+    weak_venom INTEGER NOT NULL DEFAULT 0,
     drop_weapon_chance       REAL    NOT NULL,
     drop_armor_chance        REAL    NOT NULL,
     drop_special_item_chance REAL    NOT NULL,
@@ -781,6 +806,11 @@ CREATE TABLE IF NOT EXISTS random_events (
 CREATE TABLE IF NOT EXISTS master (
     id                      INTEGER PRIMARY KEY AUTOINCREMENT,
     movie_name              TEXT    UNIQUE NOT NULL,
+    layer_name              TEXT,
+    tile_number             INTEGER,
+    hex_q                   INTEGER,
+    hex_r                   INTEGER,
+    vehicle                 TEXT,
     is_active               INTEGER NOT NULL DEFAULT 1,
     boss_id                 INTEGER NOT NULL REFERENCES bosses(id),
     boss_weapon_id          INTEGER NOT NULL REFERENCES weapons(id),

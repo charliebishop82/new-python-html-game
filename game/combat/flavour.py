@@ -175,6 +175,17 @@ def observe_flavor(player_name: str, success: bool,
             parts.append(f"Weak to: {', '.join(revealed['weaknesses'])}")
         if revealed.get("exact_hp") is not None:
             parts.append(f"HP: {revealed['exact_hp']}")
+        if revealed.get("weapon"):
+            weapon = revealed["weapon"]
+            if revealed.get("damage_type"):
+                weapon += f" ({revealed['damage_type']})"
+            parts.append(f"Weapon: {weapon}")
+        if revealed.get("armor"):
+            parts.append(f"Outfit: {revealed['armor']}")
+        if revealed.get("attack_rating"):
+            parts.append(f"Attack: {revealed['attack_rating']}")
+        if revealed.get("defense_rating"):
+            parts.append(f"Defense: {revealed['defense_rating']}")
         if parts:
             line += " — " + " | ".join(parts)
     return line

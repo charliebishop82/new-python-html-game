@@ -36,6 +36,8 @@
     {% if intel_detail.special_attack_name %}<div class="term-line term-amber" style="font-size:11px;margin-left:12px;">Special Attack: {{ intel_detail.special_attack_name }} ({{ intel_detail.special_attack_type }})</div>{% endif %}
     {% if intel_detail.special_buff_name %}<div class="term-line term-amber" style="font-size:11px;margin-left:12px;">Special Buff: {{ intel_detail.special_buff_name }} ({{ intel_detail.special_buff_type }})</div>{% endif %}
     {% if intel_detail.current_hp is not none %}<div class="term-line term-blue" style="font-size:11px;margin-left:12px;">Last known HP: {{ intel_detail.current_hp }}/{{ intel_detail.max_hp }}</div>{% endif %}
+    {% if intel_detail.weapon %}<div class="term-line term-blue" style="font-size:11px;margin-left:12px;">Weapon: {{ intel_detail.weapon }}{% if intel_detail.damage_type %} ({{ intel_detail.damage_type }}){% endif %}</div>{% endif %}
+    {% if intel_detail.armor %}<div class="term-line term-blue" style="font-size:11px;margin-left:12px;">Outfit: {{ intel_detail.armor }}</div>{% endif %}
     {% elif intel %}
     <div class="term-line term-blue">[KNOWN INTEL - previous encounter logged]</div>
     {% endif %}

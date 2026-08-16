@@ -139,7 +139,11 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
     # --- Initiative ---
     att_init_bonus = att_special.get("initiative_bonus", 0) if att_special else 0
     att_init, att_agi = engine.calc_initiative(attacker, att_init_bonus)
-    def_init, def_agi = engine.calc_initiative(defender)
+    # PvP defenders receive the same equipped-special and permanent-perk
+    # initiative bonuses as the initiating player. Creature initiative remains
+    # authored directly on the creature stat block.
+    def_init_bonus = def_special.get("initiative_bonus", 0) if def_special else 0
+    def_init, def_agi = engine.calc_initiative(defender, def_init_bonus)
 
     if att_init > def_init:
         attacker_first = True
@@ -152,7 +156,7 @@ def handle_combat_action(player_id: int, payload: dict) -> dict:
         else:
             while att_init == def_init:
                 att_init, _ = engine.calc_initiative(attacker, att_init_bonus)
-                def_init, _ = engine.calc_initiative(defender)
+                def_init, _ = engine.calc_initiative(defender, def_init_bonus)
             attacker_first = att_init > def_init
 
     round_log = []

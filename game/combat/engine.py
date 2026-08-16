@@ -278,6 +278,17 @@ def resolve_full_attack(attacker: dict, defender: dict,
     """
     settings = get_all_settings()
 
+    # Boss and world-boss resistance flags live on their creature record rather
+    # than in an equipped outfit. Fold those authored defenses into the same
+    # source-counting profile used for player outfits, specials, and perks.
+    resistance_profile = dict(defender_special or {})
+    if boss:
+        for column in RES_COLS:
+            resistance_profile[column] = (
+                int(resistance_profile.get(column, 0) or 0) +
+                int(bool(boss.get(column, 0)))
+            )
+
     # --- Get active boss resistance buff if any ---
     boss_resistance_type = None
     if active_buffs:
@@ -356,7 +367,7 @@ def resolve_full_attack(attacker: dict, defender: dict,
     # --- Step 5: Resistance + weakness ---
     weapon_dmg, res_note = resolve_resistance(
         weapon_dmg, attacker_weapon["damage_type"],
-        defender_armor, defender_special, boss_resistance_type
+        defender_armor, resistance_profile, boss_resistance_type
     )
     if boss:
         weapon_dmg, weak_note = resolve_weakness(
@@ -382,7 +393,7 @@ def resolve_full_attack(attacker: dict, defender: dict,
         bonus_type = component.get("type", "")
         if raw_bonus and bonus_type:
             final_bonus, bonus_res_note = resolve_resistance(
-                raw_bonus, bonus_type, defender_armor, defender_special, boss_resistance_type
+                raw_bonus, bonus_type, defender_armor, resistance_profile, boss_resistance_type
             )
             if boss:
                 final_bonus, bonus_weak_note = resolve_weakness(final_bonus, bonus_type, boss)
@@ -597,7 +608,7 @@ def check_level_up(player_id: int, current_xp: int, current_level: int) -> bool:
     settings  = get_all_settings()
     xp_curve  = cfg.XP_CURVE
     next_level = current_level + 1
-    if next_level > 15:
+    if next_level > 18:
         return False  # Max level — XP accumulates but no more level-ups
     threshold = xp_curve.get(next_level)
     if threshold is None or current_xp < threshold:

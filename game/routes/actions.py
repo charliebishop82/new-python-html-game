@@ -540,9 +540,11 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
     # Show boss intel if previously observed
     intel = None
     intel_detail = None
-    if encounter_type == "BOSS":
+    if encounter_type in ("BOSS", "MINION"):
+        intel_table = "boss_intel" if encounter_type == "BOSS" else "minion_intel"
+        id_column = "boss_id" if encounter_type == "BOSS" else "minion_id"
         intel = execute_one(
-            "SELECT * FROM boss_intel WHERE player_id = ? AND boss_id = ?",
+            f"SELECT * FROM {intel_table} WHERE player_id = ? AND {id_column} = ?",
             (player["id"], opponent["id"])
         )
         if intel:
@@ -557,6 +559,17 @@ def _start_boss_fight(player: dict, opponent: dict, encounter_type: str,
                 "current_hp": opponent_full.get("current_hp"),
                 "max_hp": opponent_full.get("max_hp"),
             }
+            if encounter_type == "MINION":
+                loadout = execute_one(
+                    """SELECT w.name weapon,w.damage_type,a.name armor,s.name special
+                       FROM master m
+                       LEFT JOIN weapons w ON w.id=m.minion_weapon_id
+                       LEFT JOIN armor a ON a.id=m.minion_armor_id
+                       LEFT JOIN special_items s ON s.id=m.minion_special_item_id
+                       WHERE m.minion_id=? AND m.is_active=1 LIMIT 1""",
+                    (opponent["id"],)
+                ) or {}
+                intel_detail.update(loadout)
 
     return render_template("fragments/combat_open.html",
                            opponent=opponent_full,

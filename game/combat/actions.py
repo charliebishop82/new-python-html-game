@@ -879,23 +879,51 @@ def handle_observe(session_id: int, player_id: int, state: dict) -> dict:
                 "UPDATE combat_sessions SET attacker_observed = 1 WHERE id = ?",
                 (session_id,)
             )
-            if session["combat_type"] in ("BOSS", "WORLD_BOSS"):
+            if session["combat_type"] in ("BOSS", "WORLD_BOSS", "MINION"):
                 boss = state["boss"]
-                resistances = [t for t in engine.DAMAGE_TYPES if boss.get(f"res_{t}")]
-                weaknesses  = [t for t in engine.DAMAGE_TYPES if boss.get(f"weak_{t}")]
+                creature = boss or state["minion"]
+                resistances = [t for t in engine.DAMAGE_TYPES if creature.get(f"res_{t}")]
+                weaknesses  = [t for t in engine.DAMAGE_TYPES if creature.get(f"weak_{t}")]
                 revealed = {
                     "resistances": resistances,
                     "weaknesses":  weaknesses,
-                    "exact_hp":    boss["current_hp"],
+                    "exact_hp":    creature["current_hp"],
                 }
-                # Save to boss_intel permanently
-                execute_write(
-                    """INSERT OR IGNORE INTO boss_intel (player_id, boss_id)
-                       SELECT ?, boss_id FROM boss_instances WHERE id = ?""",
-                    (player_id, session["boss_instance_id"])
-                )
-            elif session["combat_type"] == "MINION":
-                revealed = {"exact_hp": (state["minion"] or {}).get("current_hp")}
+                if session["combat_type"] == "MINION":
+                    loadout = execute_one(
+                        """SELECT w.name weapon,w.damage_type,a.name armor,
+                                  COALESCE(a.ac_bonus,0) armor_ac_bonus
+                           FROM master m
+                           LEFT JOIN weapons w ON w.id=m.minion_weapon_id
+                           LEFT JOIN armor a ON a.id=m.minion_armor_id
+                           WHERE m.minion_id=? AND m.is_active=1 LIMIT 1""",
+                        (creature["id"],)
+                    ) or {}
+                    revealed.update({
+                        "weapon": loadout.get("weapon"),
+                        "armor": loadout.get("armor"),
+                        "damage_type": loadout.get("damage_type"),
+                        "attack_rating": _approx_combat_rating(
+                            max(creature.get("str_stat", 0), creature.get("agi_stat", 0)),
+                            creature.get("level", 1)),
+                        "defense_rating": _approx_combat_rating(
+                            creature.get("end_stat", 0) + loadout.get("armor_ac_bonus", 0),
+                            creature.get("level", 1)),
+                    })
+                    execute_write(
+                        "INSERT OR IGNORE INTO minion_intel(player_id,minion_id) VALUES(?,?)",
+                        (player_id, creature["id"])
+                    )
+                elif session["combat_type"] == "WORLD_BOSS":
+                    execute_write(
+                        "INSERT OR IGNORE INTO world_boss_intel(player_id,world_boss_id) VALUES(?,?)",
+                        (player_id, creature["id"])
+                    )
+                else:
+                    execute_write(
+                        "INSERT OR IGNORE INTO boss_intel(player_id,boss_id) VALUES(?,?)",
+                        (player_id, creature["id"])
+                    )
             else:
                 # PvP: reveal equipped gear
                 def_eq = state["defender_equipped"]
@@ -912,6 +940,18 @@ def handle_observe(session_id: int, player_id: int, state: dict) -> dict:
     )
     return {"action": "OBSERVE", "success": roll_result["success"],
             "revealed": revealed, "roll_detail": roll_result["detail"], "flavor": flv}
+
+
+def _approx_combat_rating(value: int, level: int) -> str:
+    """Convert a hidden numeric combat value into useful but non-exact intel."""
+    margin = int(value or 0) - max(1, int(level or 1))
+    if margin >= 6:
+        return "Exceptional"
+    if margin >= 3:
+        return "Strong"
+    if margin >= 0:
+        return "Moderate"
+    return "Weak"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

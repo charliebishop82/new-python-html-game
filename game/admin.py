@@ -1460,8 +1460,12 @@ def _create_npc(form) -> int:
     alloc = [0, 0, 0, 0, 0]
     for i in range(stat_points): alloc[i % 5] += 1
     for i in range(level - 1): alloc[i % 5] += 1
-    stats = [1 + cls[key] + alloc[i] for i, key in enumerate(
-        ("str_bonus", "end_bonus", "agi_bonus", "lck_bonus", "per_bonus"))]
+    from character_rules import sex_bonuses
+    sex = form.get("sex", "Other")
+    identity_bonus = sex_bonuses(sex)
+    stat_names = ("str", "end", "agi", "lck", "per")
+    stats = [1 + cls[f"{stat}_bonus"] + alloc[i] + identity_bonus[stat]
+             for i, stat in enumerate(stat_names)]
     max_hp = 10 + stats[1] + 5 * level
     current_ap = get_all_settings().get("BASE_DAILY_AP", cfg.BASE_DAILY_AP) + math.floor(stats[1] / 2)
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "npc"
@@ -1472,7 +1476,7 @@ def _create_npc(form) -> int:
             """INSERT INTO players(username,password_hash,email,character_name,sex,class_id,
                str_stat,end_stat,agi_stat,lck_stat,per_stat,level,xp,current_hp,current_ap,credits)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (username, generate_password_hash(uuid.uuid4().hex), email, name, form.get("sex", "Other"),
+            (username, generate_password_hash(uuid.uuid4().hex), email, name, sex,
              class_id, *stats, level, 0, max_hp, current_ap, max(100, cfg.STARTING_CREDITS))
         )
         execute_write("INSERT INTO player_stats(player_id) VALUES(?)", (pid,))

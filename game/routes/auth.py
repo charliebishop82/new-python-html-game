@@ -18,9 +18,20 @@ from database import (execute, execute_one, execute_write,
                       get_player_perk_bonuses)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
+from character_rules import SEX_OPTIONS, sex_bonuses, valid_sexes
 
 bp = Blueprint("auth", __name__)
 logger = logging.getLogger(__name__)
+
+def _creation_rules(settings: dict) -> dict:
+    """Expose the authoritative creation constants used by the live preview."""
+    return {
+        "sex_options": SEX_OPTIONS,
+        "base_stat": 1,
+        "base_hp": settings.get("BASE_HP", cfg.BASE_HP),
+        "hp_per_level": settings.get("HP_PER_LEVEL", cfg.HP_PER_LEVEL),
+        "base_daily_ap": settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP),
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -163,7 +174,8 @@ def character_create():
     stat_points = settings.get("STARTING_STAT_POINTS", cfg.STARTING_STAT_POINTS)
     return render_template("auth/character_create.html",
                            classes=classes,
-                           stat_points=stat_points)
+                           stat_points=stat_points,
+                           **_creation_rules(settings))
 
 
 @bp.route("/character-create", methods=["POST"])
@@ -194,8 +206,8 @@ def character_create_post():
     errors = []
     if not character_name:
         errors.append("Character name is required.")
-    if not sex:
-        errors.append("Please select a sex.")
+    if sex not in valid_sexes():
+        errors.append("Please select a valid identity option.")
     if not class_id:
         errors.append("Please select a class.")
 
@@ -214,20 +226,20 @@ def character_create_post():
                                classes=classes, errors=errors,
                                stat_points=stat_points,
                                character_name=character_name, sex=sex,
-                               class_id=class_id, alloc=alloc)
+                               class_id=class_id, alloc=alloc,
+                               **_creation_rules(settings))
 
     # Apply class bonuses on top of base 1 per stat + player allocation
+    identity_bonus = sex_bonuses(sex)
     final_stats = {
-        "str": 1 + selected_class["str_bonus"] + alloc["str"],
-        "end": 1 + selected_class["end_bonus"] + alloc["end"],
-        "agi": 1 + selected_class["agi_bonus"] + alloc["agi"],
-        "lck": 1 + selected_class["lck_bonus"] + alloc["lck"],
-        "per": 1 + selected_class["per_bonus"] + alloc["per"],
+        stat: 1 + selected_class[f"{stat}_bonus"] + alloc[stat] + identity_bonus[stat]
+        for stat in ("str", "end", "agi", "lck", "per")
     }
 
     # Derive starting HP and AP
     base_daily_ap = settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP)
-    starting_hp   = 10 + final_stats["end"] + 5   # level 1
+    starting_hp   = (settings.get("BASE_HP", cfg.BASE_HP) + final_stats["end"]
+                     + settings.get("HP_PER_LEVEL", cfg.HP_PER_LEVEL))
     starting_ap   = base_daily_ap + math.floor(final_stats["end"] / 2)
 
     with exclusive_transaction():

@@ -25,7 +25,9 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script defer src="{{ url_for('static', filename='help.js') }}"></script>
 </head>
-<body class="{{ 'authenticated' if player else 'auth-page' }} {% block body_class %}{% endblock %}">
+{% set character_setup_page = request.endpoint in ('auth.character_create', 'auth.character_create_post') %}
+{% set game_shell = player and not character_setup_page %}
+<body class="{{ 'authenticated' if game_shell else 'auth-page' }} {% block body_class %}{% endblock %}">
 
 {% if settings.get('ALLOW_PLAYER_COLOR_OVERRIDE', true) %}<button id="theme-toggle" type="button" aria-label="Switch color theme" aria-pressed="false">
     LIGHT MODE
@@ -36,7 +38,7 @@
 </button>
 {% endif %}
 
-{% if player %}
+{% if game_shell %}
 <header id="mobile-command-bar" aria-label="Mobile player controls">
     <button id="mobile-menu-toggle" type="button" aria-controls="left-col" aria-expanded="false">
         <span aria-hidden="true">☰</span><span>MENU</span>
@@ -195,7 +197,7 @@
 <!-- MAIN CONTENT AREA                                             -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <div id="main">
-    {% if player and request.endpoint != 'dashboard.index' %}
+    {% if game_shell and request.endpoint != 'dashboard.index' %}
     <nav class="main-actions-return" aria-label="Return to game actions">
         <a href="{{ url_for('dashboard.index') }}">← MAIN ACTIONS</a>
         <span>Return to the dashboard and action menu</span>
@@ -204,7 +206,7 @@
     {% block content %}{% endblock %}
 </div>
 
-{% if player %}
+{% if game_shell %}
 <!-- ═══════════════════════════════════════════════════════════════ -->
 <!-- BOTTOM TICKER — global feed                                   -->
 <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -217,7 +219,7 @@
 </div>
 {% endif %}
 
-{% if player %}
+{% if game_shell %}
 <aside id="live-player-alert" class="live-player-alert" role="status" aria-live="assertive" hidden>
     <strong id="live-player-alert-label">LIVE UPDATE</strong>
     <span id="live-player-alert-message"></span>
@@ -226,7 +228,7 @@
 {% endif %}
 
 {% block scripts %}{% endblock %}
-{% if player %}<script>
+{% if game_shell %}<script>
 window.globalFeedUrl = "{{ url_for('feeds.global_latest') }}";
 window.personalFeedUrl = "{{ url_for('feeds.personal_latest') }}";
 window.playerStatusUrl = "{{ url_for('feeds.player_status') }}";

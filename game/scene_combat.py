@@ -188,7 +188,8 @@ def _attack(attacker: dict, defender: dict, attack_bonus: int = 0,
     total, raw, modifier = engine.calc_attack_roll(attacker["actor"], weapon)
     total += int(attack_bonus)
     ac = engine.calc_ac(target_actor, defender.get("armor")) + int(guard_bonus)
-    hit = total >= ac
+    # Preserve the universal natural-d20 rule used by every live combat mode.
+    hit = engine.hits_ac(total, ac, raw)
     detail = f"d20({raw})+{modifier}+{int(attack_bonus)}={total} vs AC {ac}"
     if not hit:
         return {"hit": False, "damage": 0, "roll": detail, "text": "MISS"}
@@ -209,6 +210,10 @@ def _attack(attacker: dict, defender: dict, attack_bonus: int = 0,
                 amount, _ = engine.resolve_weakness(amount, component.get("type", ""),
                                                     defender.get("content"))
             bonus_total += amount
+    if crit and special.get("crit_dmg_multiplier"):
+        multiplier = 1 + float(special.get("crit_dmg_multiplier", 0) or 0)
+        damage = int(damage * multiplier)
+        bonus_total = int(bonus_total * multiplier)
     damage = max(1, int((damage + bonus_total) * max(0.0, damage_scale)))
     notes = "; ".join(filter(None, [resistance, weakness]))
     return {"hit": True, "damage": damage, "roll": detail,
@@ -252,9 +257,15 @@ def take_scene_combat_turn(player_id: int, session_id: int, action: str,
     player = state["player_snapshot"]; protagonist = state["protagonist_snapshot"]
     enemy = state["enemy_snapshot"]
     initiatives = [
-        (engine.calc_initiative(player["actor"])[0], "PLAYER"),
-        (engine.calc_initiative(protagonist["actor"])[0], "PROTAGONIST"),
-        (engine.calc_initiative(enemy["actor"])[0], "ENEMY"),
+        (engine.calc_initiative(
+            player["actor"], (player.get("special") or {}).get("initiative_bonus", 0)
+        )[0], "PLAYER"),
+        (engine.calc_initiative(
+            protagonist["actor"], (protagonist.get("special") or {}).get("initiative_bonus", 0)
+        )[0], "PROTAGONIST"),
+        (engine.calc_initiative(
+            enemy["actor"], (enemy.get("special") or {}).get("initiative_bonus", 0)
+        )[0], "ENEMY"),
     ]
     initiatives.sort(reverse=True)
     php, ahp, ehp = state["player_hp"], state["protagonist_hp"], state["enemy_hp"]

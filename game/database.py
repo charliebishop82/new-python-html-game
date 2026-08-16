@@ -168,9 +168,26 @@ def init_db():
                 conn.execute(
                     f"ALTER TABLE {table} ADD COLUMN description TEXT NOT NULL DEFAULT ''"
                 )
+        minion_columns = {row[1] for row in conn.execute("PRAGMA table_info(minions)")}
+        for prefix in ("res", "weak"):
+            for damage_type in ("blade", "blunt", "ballistic", "energy", "arcane", "explosive", "venom"):
+                column = f"{prefix}_{damage_type}"
+                if column not in minion_columns:
+                    conn.execute(
+                        f"ALTER TABLE minions ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+                    )
         master_columns = {row[1] for row in conn.execute("PRAGMA table_info(master)")}
         if "protagonist_description" not in master_columns:
             conn.execute("ALTER TABLE master ADD COLUMN protagonist_description TEXT")
+        for column, declaration in (
+            ("layer_name", "TEXT"),
+            ("tile_number", "INTEGER"),
+            ("hex_q", "INTEGER"),
+            ("hex_r", "INTEGER"),
+            ("vehicle", "TEXT"),
+        ):
+            if column not in master_columns:
+                conn.execute(f"ALTER TABLE master ADD COLUMN {column} {declaration}")
         conn.execute(
             """INSERT OR IGNORE INTO settings(constant_name,value,description)
                VALUES ('SUCCESSFUL_STEAL_XP','10',

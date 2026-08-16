@@ -1,10 +1,11 @@
 <!-- ============================================================ -->
 {% extends "base.html" %}
 {% block title %}Create Character{% endblock %}
+{% block body_class %}character-setup-page{% endblock %}
 {% block content %}
-<div id="auth-box" id="char-create">
+<div id="auth-box" class="char-create">
     <h2 class="auth-heading">Character Creation</h2>
-    <p class="auth-subtitle">This is permanent. Choose carefully.</p>
+    <p class="auth-subtitle">Build your role in the Movie Multiverse. Permanent choices are clearly marked.</p>
 
     {% if errors %}
     <div class="term-errors">
@@ -18,7 +19,8 @@
 
     <form method="POST" action="{{ url_for('auth.character_create_post') }}">
 
-        <div class="form-section">
+        <section class="form-section creation-step">
+            <div class="creation-step-heading"><span>1</span><div><h3>Identity</h3><p>Your name and identity appear in game records and player interactions.</p></div></div>
             <div class="form-row">
                 <label>CHARACTER NAME:</label>
                 <input type="text" name="character_name"
@@ -26,21 +28,28 @@
                 <span class="field-hint">Permanent — cannot be changed</span>
             </div>
             <div class="form-row">
-                <label>SEX:</label>
-                <select name="sex" required>
+                <label for="sex-choice">SEX / IDENTITY:</label>
+                <select id="sex-choice" name="sex" required>
                     <option value="">-- Select --</option>
-                    <option value="Male"   {% if sex == 'Male'   %}selected{% endif %}>Male</option>
-                    <option value="Female" {% if sex == 'Female' %}selected{% endif %}>Female</option>
-                    <option value="Other"  {% if sex == 'Other'  %}selected{% endif %}>Other</option>
+                    {% for option in sex_options %}<option value="{{ option.value }}"
+                        data-effect="{{ option.effect }}"
+                        data-str="{{ option.bonuses.str }}" data-end="{{ option.bonuses.end }}"
+                        data-agi="{{ option.bonuses.agi }}" data-lck="{{ option.bonuses.lck }}"
+                        data-per="{{ option.bonuses.per }}"
+                        {% if sex == option.value %}selected{% endif %}>{{ option.label }} — {{ option.effect.split(' — ')[0] }}</option>{% endfor %}
                 </select>
+                <span id="sex-effect" class="choice-explanation">Select an identity to review its starting bonus.</span>
             </div>
-        </div>
+        </section>
 
-        <div class="form-section">
-            <h3>Choose Class <span class="field-hint">(Permanent)</span></h3>
+        <section class="form-section creation-step">
+            <div class="creation-step-heading"><span>2</span><div><h3>Choose Class <em>Permanent</em></h3><p>Your class immediately adds the listed bonuses to your five base statistics.</p></div></div>
             <div id="class-list">
                 {% for cls in classes %}
-                <label class="class-option {% if class_id == cls.id %}selected{% endif %}">
+                <label class="class-option {% if class_id == cls.id %}selected{% endif %}"
+                       data-str="{{ cls.str_bonus }}" data-end="{{ cls.end_bonus }}"
+                       data-agi="{{ cls.agi_bonus }}" data-lck="{{ cls.lck_bonus }}"
+                       data-per="{{ cls.per_bonus }}" data-name="{{ cls.name }}">
                     <input type="radio" name="class_id" value="{{ cls.id }}"
                            {% if class_id == cls.id %}checked{% endif %} required>
                     <span class="class-name">{{ cls.name }}</span>
@@ -50,6 +59,7 @@
                         {% if cls.agi_bonus %}+{{ cls.agi_bonus }} AGI {% endif %}
                         {% if cls.lck_bonus %}+{{ cls.lck_bonus }} LCK {% endif %}
                         {% if cls.per_bonus %}+{{ cls.per_bonus }} PER {% endif %}
+                        {% if not (cls.str_bonus or cls.end_bonus or cls.agi_bonus or cls.lck_bonus or cls.per_bonus) %}No class stat bonuses{% endif %}
                     </span>
                     {% if cls.description %}
                     <span class="class-desc">{{ cls.description }}</span>
@@ -57,41 +67,69 @@
                 </label>
                 {% endfor %}
             </div>
-        </div>
+            <div id="selected-class-summary" class="choice-explanation">Select a class to preview your final statistics.</div>
+        </section>
 
-        <div class="form-section">
-            <h3>Distribute {{ stat_points }} Stat Points</h3>
-            <p class="field-hint">Base stats start at 1 each (plus class bonus). No per-stat cap.</p>
+        <section class="form-section creation-step">
+            <div class="creation-step-heading"><span>3</span><div><h3>Distribute {{ stat_points }} Stat Points</h3><p>Final statistic = base {{ base_stat }} + identity bonus + class bonus + points assigned here. There is no per-stat cap.</p></div></div>
             <div id="stat-alloc">
-                {% for stat, label in [('str','STR — Melee damage, inventory size'),
-                                       ('end','END — HP pool, AP bonus, HP regen'),
-                                       ('agi','AGI — Ranged attack and damage, AC, initiative, opposed actions'),
-                                       ('lck','LCK — Crits, opposed actions, events, repair'),
-                                       ('per','PER — Observe, shop discount, minion detection')] %}
+                {% for stat, abbreviation, name, description in [
+                    ('str','STR','Strength','Improves melee attack rolls and melee damage. It also increases how many inventory items you can carry before becoming encumbered.'),
+                    ('end','END','Endurance','Increases maximum HP, daily AP, and the passive HP restored whenever you spend AP.'),
+                    ('agi','AGI','Agility','Improves ranged attack rolls and ranged damage, Armor Class, initiative, and opposed actions such as stealing and escaping.'),
+                    ('lck','LCK','Luck','Improves critical-hit range, stealing and other opposed rolls, repair results, and the chance and quality of random events.'),
+                    ('per','PER','Perception','Improves Observe attempts, shop discounts, scene challenges, and your chance to detect or avoid minion interruptions.')
+                ] %}
                 <div class="stat-row">
-                    <label>{{ label }}</label>
+                    <label for="{{ stat }}-alloc"><b>{{ abbreviation }}</b> — {{ name }}<small>{{ description }}</small></label>
                     <input type="number" name="{{ stat }}_alloc"
+                           id="{{ stat }}-alloc" data-stat="{{ stat }}"
                            value="{{ (alloc or {}).get(stat, 0) }}"
                            min="0" max="{{ stat_points }}" required>
+                    <output id="{{ stat }}-final" class="stat-final" aria-label="Final {{ name }}">{{ base_stat }}</output>
                 </div>
                 {% endfor %}
             </div>
             <div id="points-remaining">
                 Points remaining: <span id="pts-left">{{ stat_points }}</span>
             </div>
-        </div>
+        </section>
 
-        <button type="submit" class="auth-btn">BEGIN</button>
+        <section class="creation-preview" aria-live="polite">
+            <div class="creation-step-heading"><span>4</span><div><h3>Starting Character Preview</h3><p>Before the bonuses on your randomly issued starter weapon and outfit.</p></div></div>
+            <div class="creation-preview-grid">
+                <span><small>CLASS</small><b id="preview-class">Not selected</b></span>
+                <span><small>IDENTITY BONUS</small><b id="preview-identity">Not selected</b></span>
+                <span><small>STARTING HP</small><b id="preview-hp">—</b></span>
+                <span><small>DAILY AP</small><b id="preview-ap">—</b></span>
+                <span><small>STAT TOTALS</small><b id="preview-stats">—</b></span>
+            </div>
+            <p class="creation-confirmation">On Begin, you receive and automatically equip one starter weapon and one starter outfit. Your class and allocated statistics cannot currently be changed later.</p>
+        </section>
+
+        <button type="submit" class="auth-btn" id="begin-character">BEGIN YOUR STORY</button>
     </form>
     {% endif %}
 </div>
 
 {% block scripts %}
 <script>
-// Live stat point counter
 const total = {{ stat_points }};
+const baseStat = {{ base_stat }};
+const baseHp = {{ base_hp }};
+const hpPerLevel = {{ hp_per_level }};
+const baseDailyAp = {{ base_daily_ap }};
 const inputs = document.querySelectorAll('#stat-alloc input[type=number]');
 const counter = document.getElementById('pts-left');
+const classOptions = document.querySelectorAll('.class-option');
+const classInputs = document.querySelectorAll('input[name="class_id"]');
+const sexChoice = document.getElementById('sex-choice');
+const sexEffect = document.getElementById('sex-effect');
+
+function selectedClass() {
+    const checked = document.querySelector('input[name="class_id"]:checked');
+    return checked ? checked.closest('.class-option') : null;
+}
 
 function updateCounter() {
     let used = 0;
@@ -100,8 +138,39 @@ function updateCounter() {
     counter.textContent = remaining;
     counter.style.color = remaining === 0 ? 'var(--green)' :
                           remaining < 0  ? 'var(--red)'   : 'var(--amber)';
+    const cls = selectedClass();
+    const identity = sexChoice.selectedOptions[0]?.value ? sexChoice.selectedOptions[0] : null;
+    const final = {};
+    inputs.forEach(input => {
+        const stat = input.dataset.stat;
+        const classBonus = cls ? Number(cls.dataset[stat] || 0) : 0;
+        const identityBonus = identity ? Number(identity.dataset[stat] || 0) : 0;
+        final[stat] = baseStat + identityBonus + classBonus + (parseInt(input.value) || 0);
+        document.getElementById(`${stat}-final`).textContent = final[stat];
+    });
+    document.getElementById('preview-class').textContent = cls ? cls.dataset.name : 'Not selected';
+    document.getElementById('preview-identity').textContent = identity
+        ? identity.dataset.effect.split(' — ')[0]
+        : 'Not selected';
+    document.getElementById('preview-hp').textContent = final.end == null ? '—' : baseHp + final.end + hpPerLevel;
+    document.getElementById('preview-ap').textContent = final.end == null ? '—' : baseDailyAp + Math.floor(final.end / 2);
+    document.getElementById('preview-stats').textContent =
+        `STR ${final.str} · END ${final.end} · AGI ${final.agi} · LCK ${final.lck} · PER ${final.per}`;
+    document.getElementById('selected-class-summary').textContent = cls
+        ? `${cls.dataset.name} selected. The highlighted totals below include its bonuses.`
+        : 'Select a class to preview your final statistics.';
 }
 inputs.forEach(i => i.addEventListener('input', updateCounter));
+classInputs.forEach(input => input.addEventListener('change', () => {
+    classOptions.forEach(option => option.classList.toggle('selected', option.contains(input) && input.checked));
+    updateCounter();
+}));
+sexChoice.addEventListener('change', () => {
+    sexEffect.textContent = sexChoice.selectedOptions[0]?.dataset.effect ||
+        'Select an option to review its gameplay benefit.';
+    updateCounter();
+});
+sexChoice.dispatchEvent(new Event('change'));
 updateCounter();
 </script>
 {% endblock %}

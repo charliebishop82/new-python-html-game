@@ -54,14 +54,22 @@ def war_room():
     )
     minions = execute(
         """SELECT mn.name,mn.level,mn.description,mi.kill_count,mi.discovered_at,
+          CASE WHEN intel.id IS NULL THEN 0 ELSE 1 END observed,
+          mn.res_blade,mn.res_blunt,mn.res_ballistic,mn.res_energy,mn.res_arcane,mn.res_explosive,mn.res_venom,
+          mn.weak_blade,mn.weak_blunt,mn.weak_ballistic,mn.weak_energy,mn.weak_arcane,mn.weak_explosive,mn.weak_venom,
           w.name weapon,a.name armor,s.name special,
           (SELECT COUNT(*) FROM combat_sessions cs WHERE cs.minion_instance_id=mi.id AND cs.status='RESOLVED') encounters
           FROM minion_instances mi JOIN minions mn ON mn.id=mi.minion_id
+          LEFT JOIN minion_intel intel ON intel.player_id=mi.player_id AND intel.minion_id=mn.id
           LEFT JOIN master m ON m.minion_id=mn.id AND m.is_active=1
           LEFT JOIN weapons w ON w.id=m.minion_weapon_id LEFT JOIN armor a ON a.id=m.minion_armor_id
           LEFT JOIN special_items s ON s.id=m.minion_special_item_id
           WHERE mi.player_id=? ORDER BY mi.discovered_at DESC""", (pid,)
     )
+    damage_types = ("blade", "blunt", "ballistic", "energy", "arcane", "explosive", "venom")
+    for minion in minions:
+        minion["resistances"] = [d.title() for d in damage_types if minion.get(f"res_{d}")]
+        minion["weaknesses"] = [d.title() for d in damage_types if minion.get(f"weak_{d}")]
     pvp = execute(
         """SELECT opponent,COUNT(*) encounters,SUM(won) victories,MAX(resolved_at) last_contact FROM (
           SELECT CASE WHEN cs.attacker_player_id=? THEN d.character_name ELSE a.character_name END opponent,

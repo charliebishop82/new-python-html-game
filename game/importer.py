@@ -236,8 +236,8 @@ def _validate_bosses(rows: list, errors: list):
                       "SpecialAttack_Name", "SpecialAttack_Die", "SpecialAttack_DamageType",
                       "SpecialBuff_Name", "SpecialBuff_Type", "SpecialBuff_Value"], "Bosses", errors, name)
         level = r.get("Level")
-        if level is not None and (int(level) < 1 or int(level) > 15):
-            errors.append(f"[Bosses] '{name}': Level must be 1-15, got {level}")
+        if level is not None and (int(level) < 1 or int(level) > 18):
+            errors.append(f"[Bosses] '{name}': Level must be 1-18, got {level}")
         buff_type = r.get("SpecialBuff_Type", "")
         if buff_type and buff_type not in VALID_BUFF_TYPES:
             errors.append(f"[Bosses] '{name}': Invalid SpecialBuff_Type '{buff_type}'")
@@ -284,8 +284,11 @@ def _validate_minions(rows: list, errors: list):
         names.add(name)
         _require(r, ["Name", "Level", "STR", "END", "AGI", "LCK", "PER", "HP"], "Minions", errors, name)
         level = r.get("Level")
-        if level is not None and (int(level) < 1 or int(level) > 15):
-            errors.append(f"[Minions] '{name}': Level must be 1-15")
+        if level is not None and (int(level) < 1 or int(level) > 18):
+            errors.append(f"[Minions] '{name}': Level must be 1-18")
+        for dtype in DAMAGE_TYPES:
+            if r.get(f"Res_{dtype}") and r.get(f"Weak_{dtype}"):
+                errors.append(f"[Minions] '{name}': {dtype} cannot be resistant and weak")
 
 
 def _validate_weapons(rows: list, errors: list):
@@ -373,6 +376,16 @@ def _validate_master(raw_data: dict, errors: list):
         _require(r, ["MovieName", "BossName", "BossWeapon", "BossArmor", "BossSpecialItem",
                       "MinionName", "MinionWeapon", "MinionArmor", "MinionSpecialItem"],
                  "Master", errors, movie)
+        layer = _s(r.get("Layer"))
+        tile_number = _i(r.get("TileNumber"), 0)
+        hex_q = r.get("HexQ")
+        hex_r = r.get("HexR")
+        if layer not in ("Swords", "Circuits"):
+            errors.append(f"[Master] '{movie}': Layer must be Swords or Circuits")
+        if tile_number < 1 or tile_number > 18:
+            errors.append(f"[Master] '{movie}': TileNumber must be 1-18")
+        if hex_q is None or hex_r is None:
+            errors.append(f"[Master] '{movie}': HexQ and HexR are required")
         if r.get("BossName")          and r["BossName"]          not in boss_names:
             errors.append(f"[Master] '{movie}': BossName '{r['BossName']}' not found in Bosses sheet")
         if r.get("MinionName")        and r["MinionName"]        not in minion_names:
@@ -548,6 +561,8 @@ def _map_minion(r: dict) -> dict:
         "str_stat": _i(r.get("STR")), "end_stat": _i(r.get("END")),
         "agi_stat": _i(r.get("AGI")), "lck_stat": _i(r.get("LCK")),
         "per_stat": _i(r.get("PER")), "max_hp": _i(r.get("HP")),
+        **{f"res_{d.lower()}":  _b(r.get(f"Res_{d}"))  for d in DAMAGE_TYPES},
+        **{f"weak_{d.lower()}": _b(r.get(f"Weak_{d}")) for d in DAMAGE_TYPES},
         "drop_weapon_chance":       _f(r.get("Drop_Weapon_Chance")),
         "drop_armor_chance":        _f(r.get("Drop_Armor_Chance")),
         "drop_special_item_chance": _f(r.get("Drop_SpecialItem_Chance")),
@@ -856,6 +871,11 @@ def _apply_master(master_rows: list):
         prot_weapon_id   = get_id('weapons',       r.get('ProtagonistWeapon'))
         prot_armor_id    = get_id('armor',         r.get('ProtagonistArmor'))
         prot_special_id  = get_id('special_items', r.get('ProtagonistSpecialItem'))
+        layer_name       = _s(r.get('Layer')) or None
+        tile_number      = _i(r.get('TileNumber')) or None
+        hex_q            = _i(r.get('HexQ'))
+        hex_r            = _i(r.get('HexR'))
+        vehicle          = _s(r.get('Vehicle')) or None
 
         if not all([boss_id, minion_id, boss_weapon_id, boss_armor_id,
                     boss_special_id, min_weapon_id, min_armor_id, min_special_id]):
@@ -871,12 +891,13 @@ def _apply_master(master_rows: list):
                    minion_id=?, minion_weapon_id=?, minion_armor_id=?, minion_special_item_id=?,
                    protagonist_name=?, protagonist_weapon_id=?, protagonist_armor_id=?,
                    protagonist_special_item_id=?, protagonist_description=?,
+                   layer_name=?, tile_number=?, hex_q=?, hex_r=?, vehicle=?,
                    is_active=1, imported_at=?
                    WHERE movie_name=?""",
                 (boss_id, boss_weapon_id, boss_armor_id, boss_special_id,
                  minion_id, min_weapon_id, min_armor_id, min_special_id,
                  prot_name, prot_weapon_id, prot_armor_id, prot_special_id,
-                 prot_description,
+                 prot_description, layer_name, tile_number, hex_q, hex_r, vehicle,
                  now, movie)
             )
         else:
@@ -885,12 +906,13 @@ def _apply_master(master_rows: list):
                    (movie_name, boss_id, boss_weapon_id, boss_armor_id, boss_special_item_id,
                     minion_id, minion_weapon_id, minion_armor_id, minion_special_item_id,
                     protagonist_name, protagonist_weapon_id, protagonist_armor_id,
-                    protagonist_special_item_id, protagonist_description, imported_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    protagonist_special_item_id, protagonist_description,
+                    layer_name, tile_number, hex_q, hex_r, vehicle, imported_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (movie, boss_id, boss_weapon_id, boss_armor_id, boss_special_id,
                  minion_id, min_weapon_id, min_armor_id, min_special_id,
                  prot_name, prot_weapon_id, prot_armor_id, prot_special_id,
-                 prot_description, now)
+                 prot_description, layer_name, tile_number, hex_q, hex_r, vehicle, now)
             )
 
 
@@ -919,22 +941,28 @@ def _apply_world_boss_loot():
             (boss["id"], weapon["id"], armor["id"], special["id"])
         )
 def clear_stale_intel(changes: dict):
-    """Clear boss_intel rows for any boss whose intel-sensitive columns changed."""
-    for item in changes.get("bosses", {}).get("update", []):
-        old = item["db_row"]
-        new = item["new_data"]
-        changed = any(
-            str(old.get(col, "")) != str(new.get(col, ""))
-            for col in INTEL_SENSITIVE_COLS
-            if col in new
-        )
-        if changed:
-            boss_id = old["id"]
-            deleted = execute_write(
-                "DELETE FROM boss_intel WHERE boss_id = ?", (boss_id,)
+    """Clear learned intelligence when imported resistance data changes."""
+    for change_key, intel_table, id_column in (
+        ("bosses", "boss_intel", "boss_id"),
+        ("world_bosses", "world_boss_intel", "world_boss_id"),
+        ("minions", "minion_intel", "minion_id"),
+    ):
+        for item in changes.get(change_key, {}).get("update", []):
+            old = item["db_row"]
+            new = item["new_data"]
+            changed = any(
+                str(old.get(col, "")) != str(new.get(col, ""))
+                for col in INTEL_SENSITIVE_COLS
+                if col in new
             )
-            if deleted:
-                logger.info("Cleared boss_intel for boss_id=%d (intel-sensitive columns changed)", boss_id)
+            if changed:
+                enemy_id = old["id"]
+                deleted = execute_write(
+                    f"DELETE FROM {intel_table} WHERE {id_column} = ?", (enemy_id,)
+                )
+                if deleted:
+                    logger.info("Cleared %s for enemy_id=%d (intel-sensitive columns changed)",
+                                intel_table, enemy_id)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
