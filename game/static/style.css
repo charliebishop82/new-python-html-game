@@ -623,6 +623,13 @@ body.auth-page #main {
 :root[data-theme="light"] .class-option.selected { background: #e5f2e9; }
 .class-name    { color: var(--amber); font-size: 13px; display: block; }
 .class-bonuses { color: var(--green); font-size: 12px; display: block; }
+.class-passives {
+    color: var(--blue);
+    font-size: 13px;
+    line-height: 1.45;
+    margin-top: 4px;
+}
+.class-passives strong { color: var(--amber); }
 .class-desc    { color: var(--grey);  font-size: 11px; display: block; margin-top: 3px; }
 
 .stat-row {
@@ -907,6 +914,8 @@ tr:nth-child(even) td { background: #0d0d0d; }
 .wb-details{margin:14px 0;border:1px solid var(--border);background:var(--bg-panel)}.wb-details>summary{cursor:pointer;padding:12px 14px;color:var(--blue);font-weight:bold;letter-spacing:.05em}.wb-details[open]>summary{border-bottom:1px solid var(--border)}.wb-details>.wb-stat-grid,.wb-details>.wb-intel-grid{margin:14px}.wb-details>section{padding:14px}.wb-details.wb-rewards{padding:0}.wb-details.wb-rewards>section{border:0;background:transparent}
 .loadout-summary{display:grid;gap:6px;min-width:210px;padding:10px 12px;border:1px solid var(--border);background:var(--bg-panel)}.loadout-summary small{color:var(--grey);line-height:1.35}.capacity-track{display:block;height:7px;overflow:hidden;border:1px solid var(--border);background:var(--bg)}.capacity-track i{display:block;height:100%;background:linear-gradient(90deg,var(--green),var(--amber));transition:width .2s}.loadout-summary.capacity-warning{border-color:var(--red)}.loadout-summary.capacity-warning strong,.loadout-summary.capacity-warning small{color:var(--red)}.loadout-summary.capacity-warning .capacity-track i{background:var(--red)}
 .active-players-toggle{display:flex;width:100%;justify-content:space-between;margin:10px 0;padding:7px 9px;border:1px solid var(--border);background:var(--bg-panel);color:var(--blue);font:10px var(--font);cursor:pointer;letter-spacing:.6px}.active-players-toggle:hover{border-color:var(--blue)}#active-player-count{color:var(--green);font-weight:bold}.active-players-dialog{width:min(460px,calc(100vw - 32px));padding:16px;border:1px solid var(--blue);background:var(--bg-panel);color:var(--white);font-family:var(--font);box-shadow:0 18px 55px rgba(0,0,0,.7)}.active-players-dialog::backdrop{background:rgba(0,0,0,.68)}.active-players-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding-bottom:9px}.active-players-heading h2{margin:0;color:var(--amber);font-size:16px}.active-players-heading button{border:0;background:transparent;color:var(--white);font-size:24px;cursor:pointer}.active-players-dialog>p,.active-players-empty{color:var(--grey);font-size:11px}.active-player-row{display:flex;justify-content:space-between;gap:18px;padding:9px 4px;border-top:1px solid var(--border)}.active-player-row strong{color:var(--green)}.active-player-row span{color:var(--grey);font-size:10px;text-align:right}
+.header-active-players{position:fixed;top:12px;right:140px;z-index:1000;width:auto;min-width:86px;margin:0;padding:7px 9px;border-color:var(--blue);box-shadow:0 2px 10px rgba(0,0,0,.18);font-weight:bold}
+.loadout-card.locked{opacity:.58;border-style:dashed}.loadout-card.locked h2{color:var(--grey)}
 .free-action-buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px;margin-top:4px;padding-top:6px;border-top:1px solid var(--border)}.free-action-btn{display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;padding:5px 6px;border-color:var(--blue)!important;color:var(--blue)!important;text-decoration:none;background:color-mix(in srgb,var(--blue) 7%,var(--bg-panel))!important;font-size:10px;white-space:nowrap}.free-action-btn:hover{background:color-mix(in srgb,var(--blue) 16%,var(--bg-panel))!important}.free-cost{color:var(--green);font-size:8px;font-weight:bold;letter-spacing:.35px}
 .free-action-form{margin:0}.free-action-form .free-action-btn{width:100%;font-family:var(--font);cursor:pointer}.free-action-logout{border-color:var(--red)!important;color:var(--red)!important}.free-action-logout .free-cost{color:var(--red)}
 :root[data-theme="light"] .active-players-dialog{background:#fffdf8;color:#191919;box-shadow:0 18px 50px rgba(40,30,15,.25)}:root[data-theme="light"] .active-players-heading button{color:#191919}

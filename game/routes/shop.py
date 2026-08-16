@@ -11,7 +11,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings,
                       get_player_bonus_profile, get_player_equipped, get_player,
-                      encumbered_ap_cost)
+                      encumbered_ap_cost, equipped_special_ids)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -259,7 +259,7 @@ def _get_sellable_items(player: dict) -> list[dict]:
     equipped_ids = {
         player.get("equipped_weapon_id"),
         player.get("equipped_armor_id"),
-        player.get("equipped_special_id"),
+        *equipped_special_ids(player, unlocked_only=False),
     } - {None}
 
     items = execute(
@@ -304,7 +304,7 @@ def _get_special_sell_bonus(player: dict) -> float:
 def _effective_per(player: dict) -> int:
     """Return PER with weapon, outfit, equipped special, and perks applied."""
     equipped = get_player_equipped(player)
-    profile = get_player_bonus_profile(player["id"], equipped.get("special"))
+    profile = get_player_bonus_profile(player["id"], equipped.get("specials", []))
     return (int(player.get("per_stat", 0) or 0) +
             int((equipped.get("weapon") or {}).get("per_bonus", 0) or 0) +
             int((equipped.get("armor") or {}).get("per_bonus", 0) or 0) +
@@ -441,7 +441,7 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
     # Cannot sell equipped items
     equipped = {player.get("equipped_weapon_id"),
                 player.get("equipped_armor_id"),
-                player.get("equipped_special_id")}
+                *equipped_special_ids(player, unlocked_only=False)}
     if inv_id in equipped:
         raise ValueError("Unequip the item before selling it.")
 

@@ -22,7 +22,7 @@
     {% if item.get('crit_dmg_multiplier', 0) %}<span class="bonus" data-help-key="critical damage">Critical damage +{{ (item.crit_dmg_multiplier * 100)|round|int }}%</span>{% endif %}
     {% if item.get('bonus_damage_amount', 0) %}<span class="bonus" data-help-key="damage types">Bonus damage +{{ item.bonus_damage_amount }} {{ item.bonus_damage_type }}</span>{% endif %}
     {% if item.get('xp_multiplier', 0) %}<span class="bonus" data-help-key="xp reward bonus">XP +{{ (item.xp_multiplier * 100)|round|int }}%</span>{% endif %}
-    {% if item.get('credit_multiplier', 0) %}<span class="bonus" data-help-key="credit reward bonus">Credits +{{ (item.credit_multiplier * 100)|round|int }}%</span>{% endif %}
+    {% if item.get('credit_multiplier', 0) %}<span class="bonus" data-help-key="credit reward bonus">Generated credits +{{ (item.credit_multiplier * 100)|round|int }}%</span>{% endif %}
     {% if item.get('steal_bonus', 0) %}<span class="bonus" data-help-key="steal modifier">Steal +{{ (item.steal_bonus * 100)|round|int }}%</span>{% endif %}
     {% if item.get('bonus_ap', 0) %}<span class="bonus" data-help-key="daily ap">Daily AP +{{ item.bonus_ap }}</span>{% endif %}
     {% if item.get('hp_regen_bonus', 0) %}<span class="bonus" data-help-key="hp regen/ap">HP regeneration +{{ item.hp_regen_bonus }}</span>{% endif %}

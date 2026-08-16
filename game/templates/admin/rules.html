@@ -9,6 +9,7 @@
 <tr><td>Stat modifier</td><td>floor(stat ÷ 2)</td><td>Shared combat rule</td></tr>
 <tr><td>Maximum HP</td><td>10 + effective END + (5 × level)</td><td>Base, gear, status, and perk END</td></tr>
 <tr><td>Maximum AP</td><td>BASE_DAILY_AP + floor(effective END ÷ 2) + AP bonuses, limited by AP_CARRYOVER_CAP</td><td>{{ settings.get('BASE_DAILY_AP',20) }}, cap {{ settings.get('AP_CARRYOVER_CAP',40) }}</td></tr>
+<tr><td>AP trickle</td><td>{{ settings.get('TRICKLE_AP_AMOUNT',1) }} AP every {{ settings.get('TRICKLE_AP_INTERVAL_HOURS',1) }} hour(s), plus one award when the player server starts</td><td>Players and NPCs; limited by the AP cap.</td></tr>
 <tr><td>Armor Class</td><td>10 + floor(effective AGI ÷ 2) + outfit/special/perk/temporary AC</td><td>Item, perk, and combat-buff content</td></tr>
 <tr><td>Initiative</td><td>d20 + floor(AGI ÷ 2) + equipment/status bonuses</td><td>Item/status content</td></tr>
 </table>

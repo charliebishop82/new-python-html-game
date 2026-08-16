@@ -70,12 +70,19 @@ def player_status():
     player = get_player(session.get("player_id"))
     if not player:
         return jsonify({"authenticated": False}), 401
+    from routes.character import get_player_combat_snapshot
+    combat = get_player_combat_snapshot(player)
     return jsonify({
         "authenticated": True, "level": player["level"], "xp": player["xp"],
         "xp_threshold": player.get("next_level_xp"),
         "xp_next": player.get("xp_to_next_level"),
         "hp": player["current_hp"], "max_hp": player["max_hp"],
         "ap": player["current_ap"], "max_ap": player["max_ap"],
+        "inventory_count": player.get("inventory_count", 0),
+        "inventory_limit": player.get("inventory_limit", 0),
+        "ac": combat["ac"],
+        "damage_min": combat["damage_min"], "damage_max": combat["damage_max"],
+        "damage_types": combat["damage_types"],
         "credits": player["credits"], "in_combat": bool(player["in_combat"]),
         "is_overencumbered": bool(player.get("is_overencumbered")),
         "is_cursed": bool(player.get("is_cursed")),

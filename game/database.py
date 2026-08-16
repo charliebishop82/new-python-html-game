@@ -16,6 +16,70 @@ import config_defaults as cfg
 logger = logging.getLogger(__name__)
 
 
+def calculate_max_hp(level: int, effective_end: int,
+                     settings: dict | None = None) -> int:
+    """Return the authoritative maximum HP for a fully resolved loadout."""
+    settings = settings or get_all_settings()
+    base = int(settings.get("BASE_HP", cfg.BASE_HP))
+    per_level = int(settings.get("HP_PER_LEVEL", cfg.HP_PER_LEVEL))
+    return base + int(effective_end) + (per_level * int(level))
+
+
+def calculate_daily_ap(effective_end: int, bonus_ap: int = 0,
+                       is_cursed: bool = False,
+                       settings: dict | None = None) -> dict:
+    """Return raw and effective daily AP after curse reduction and the cap."""
+    settings = settings or get_all_settings()
+    base = int(settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP))
+    cap = int(settings.get("AP_CARRYOVER_CAP", cfg.AP_CARRYOVER_CAP))
+    curse_reduction = float(settings.get(
+        "CURSE_AP_REDUCTION", cfg.CURSE_AP_REDUCTION
+    ))
+    raw = base + math.floor(int(effective_end) / 2) + int(bonus_ap or 0)
+    after_curse = int(raw * (1 - curse_reduction)) if is_cursed else raw
+    return {
+        "raw": raw,
+        "after_curse": after_curse,
+        "effective": min(after_curse, cap),
+        "cap": cap,
+        "is_capped": after_curse > cap,
+        "is_cursed": bool(is_cursed),
+    }
+
+
+def calculate_passive_regen(effective_end: int, hp_regen_bonus: int = 0,
+                            settings: dict | None = None) -> int:
+    """Return HP restored when an AP-charging action is completed."""
+    settings = settings or get_all_settings()
+    base = int(settings.get("AP_PASSIVE_HP_REGEN", cfg.AP_PASSIVE_HP_REGEN))
+    divisor = max(1, int(settings.get(
+        "END_HP_REGEN_DIVISOR", cfg.END_HP_REGEN_DIVISOR
+    )))
+    return base + math.floor(int(effective_end) / divisor) + int(hp_regen_bonus or 0)
+
+
+SPECIAL_SLOT_COLUMNS = (
+    "equipped_special_id", "equipped_special_2_id", "equipped_special_3_id",
+)
+
+
+def unlocked_special_slots(level: int) -> int:
+    """One special slot initially, a second at level 8, and a third at level 16."""
+    return 1 + int(int(level) >= 8) + int(int(level) >= 16)
+
+
+def equipped_special_ids(player: dict, unlocked_only: bool = True) -> list[int]:
+    """Return unique equipped special inventory IDs in stable slot order."""
+    columns = SPECIAL_SLOT_COLUMNS[:unlocked_special_slots(player.get("level", 1))] \
+        if unlocked_only else SPECIAL_SLOT_COLUMNS
+    result = []
+    for column in columns:
+        inv_id = player.get(column)
+        if inv_id and inv_id not in result:
+            result.append(inv_id)
+    return result
+
+
 def get_db() -> sqlite3.Connection:
     """Return the thread-local DB connection, creating it if needed."""
     if 'db' not in g:
@@ -113,6 +177,41 @@ def init_db():
             conn.execute("ALTER TABLE players ADD COLUMN retired_at TEXT")
         if "pending_perk" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN pending_perk INTEGER NOT NULL DEFAULT 0")
+        for column in ("equipped_special_2_id", "equipped_special_3_id"):
+            if column not in player_columns:
+                conn.execute(f"ALTER TABLE players ADD COLUMN {column} INTEGER REFERENCES inventory_items(id)")
+        class_columns = {row[1] for row in conn.execute("PRAGMA table_info(classes)")}
+        class_migrations = {
+            "initiative_bonus": "INTEGER NOT NULL DEFAULT 0",
+            "crit_chance_bonus": "REAL NOT NULL DEFAULT 0",
+            "crit_dmg_multiplier": "REAL NOT NULL DEFAULT 0",
+            "ac_bonus": "INTEGER NOT NULL DEFAULT 0",
+            "bonus_damage_amount": "INTEGER NOT NULL DEFAULT 0",
+            "bonus_damage_type": "TEXT NOT NULL DEFAULT ''",
+            "observe_bonus": "INTEGER NOT NULL DEFAULT 0",
+            "encounter_bonus": "REAL NOT NULL DEFAULT 0",
+            "durability_reduction": "REAL NOT NULL DEFAULT 0",
+            "steal_bonus": "REAL NOT NULL DEFAULT 0",
+            "shop_discount": "REAL NOT NULL DEFAULT 0",
+        }
+        added_class_passives = False
+        for column, declaration in class_migrations.items():
+            if column not in class_columns:
+                conn.execute(f"ALTER TABLE classes ADD COLUMN {column} {declaration}")
+                added_class_passives = True
+        if added_class_passives:
+            # Seed existing databases once. Future imports remain authoritative.
+            conn.execute("""UPDATE classes SET bonus_damage_amount=1,
+                         bonus_damage_type='Weapon',crit_dmg_multiplier=.10
+                         WHERE name='Action Hero'""")
+            conn.execute("""UPDATE classes SET initiative_bonus=2,
+                         crit_chance_bonus=.05 WHERE name='Gunslinger'""")
+            conn.execute("""UPDATE classes SET observe_bonus=2,
+                         encounter_bonus=.05 WHERE name='Hunter'""")
+            conn.execute("""UPDATE classes SET ac_bonus=1,
+                         durability_reduction=.10 WHERE name='Juggernaut'""")
+            conn.execute("""UPDATE classes SET steal_bonus=.10,
+                         shop_discount=.05 WHERE name='Scoundrel'""")
         board_position_columns = {
             row[1] for row in conn.execute("PRAGMA table_info(board_positions)")
         }
@@ -197,6 +296,19 @@ def init_db():
             """INSERT OR IGNORE INTO settings(constant_name,value,description)
                VALUES ('COMBAT_DEFEAT_XP','10',
                        'Small XP award for losing a completed fight; escapes and stalemates excluded.')"""
+        )
+        # Adopt the hourly AP-trickle rule only for installations still using
+        # the former stock 3 AP / 6 hour values. Administrator customizations
+        # are deliberately preserved.
+        conn.execute(
+            """UPDATE settings SET value='1',
+                   description='AP awarded to every non-banned character at each trickle.'
+               WHERE constant_name='TRICKLE_AP_AMOUNT' AND CAST(value AS INTEGER)=3"""
+        )
+        conn.execute(
+            """UPDATE settings SET value='1',
+                   description='Hours between automatic AP trickle awards.'
+               WHERE constant_name='TRICKLE_AP_INTERVAL_HOURS' AND CAST(value AS INTEGER)=6"""
         )
         # Balance revision: Brace retains its full defensive stance but heals
         # only 15% of missing HP. Update the former stock value while leaving
@@ -505,29 +617,27 @@ def get_player(player_id: int) -> dict | None:
     player["initiative_modifier"] = modifiers["initiative"]
     settings = get_all_settings()
 
-    base_daily_ap  = settings.get("BASE_DAILY_AP",            cfg.BASE_DAILY_AP)
-    ap_cap         = settings.get("AP_CARRYOVER_CAP",         cfg.AP_CARRYOVER_CAP)
     inactive_days  = settings.get("INACTIVE_DAYS_THRESHOLD",  cfg.INACTIVE_DAYS_THRESHOLD)
-    ap_regen       = settings.get("AP_PASSIVE_HP_REGEN",      cfg.AP_PASSIVE_HP_REGEN)
-    end_divisor    = settings.get("END_HP_REGEN_DIVISOR",     cfg.END_HP_REGEN_DIVISOR)
-    curse_red      = settings.get("CURSE_AP_REDUCTION",       cfg.CURSE_AP_REDUCTION)
 
     equipped = get_player_equipped(player)
-    gear_str = sum(int((item or {}).get("str_bonus", 0) or 0) for item in equipped.values())
-    gear_end = sum(int((item or {}).get("end_bonus", 0) or 0) for item in equipped.values())
-    special = get_player_bonus_profile(player_id, equipped.get("special"))
-    perk_bonuses = get_player_perk_bonuses(player_id)
-    end   = player["end_stat"] + gear_end + int(perk_bonuses.get("end_bonus", 0))
-    effective_str = player["str_stat"] + gear_str + int(perk_bonuses.get("str_bonus", 0))
+    gear_str = sum(int((equipped.get(slot) or {}).get("str_bonus", 0) or 0)
+                   for slot in ("weapon", "armor"))
+    gear_end = sum(int((equipped.get(slot) or {}).get("end_bonus", 0) or 0)
+                   for slot in ("weapon", "armor"))
+    special = get_player_bonus_profile(player_id, equipped.get("specials", []))
+    end   = player["end_stat"] + gear_end + int(special.get("end_bonus", 0))
+    effective_str = player["str_stat"] + gear_str + int(special.get("str_bonus", 0))
     level = player["level"]
 
-    max_hp     = 10 + end + (5 * level)
-    raw_max_ap = base_daily_ap + math.floor(end / 2) + int(special.get("bonus_ap", 0) or 0)
-    max_ap     = int(raw_max_ap * (1 - curse_red)) if is_cursed else raw_max_ap
-    max_ap     = min(max_ap, ap_cap)
+    max_hp     = calculate_max_hp(level, end, settings)
+    ap_result  = calculate_daily_ap(
+        end, int(special.get("bonus_ap", 0) or 0), is_cursed, settings
+    )
+    max_ap     = ap_result["effective"]
     inv_limit  = inventory_capacity(effective_str, settings)
-    passive_regen = (ap_regen + math.floor(end / end_divisor) +
-                     int(special.get("hp_regen_bonus", 0) or 0))
+    passive_regen = calculate_passive_regen(
+        end, int(special.get("hp_regen_bonus", 0) or 0), settings
+    )
 
     inv_count = execute_one(
         "SELECT COUNT(*) as cnt FROM inventory_items WHERE player_id = ?", (player_id,)
@@ -555,6 +665,8 @@ def get_player(player_id: int) -> dict | None:
     player.update({
         "max_hp":            max_hp,
         "max_ap":            max_ap,
+        "raw_max_ap":        ap_result["raw"],
+        "is_ap_capped":      ap_result["is_capped"],
         "inventory_limit":   inv_limit,
         "inventory_count":   inv_count,
         "is_overencumbered": inv_count > inv_limit,
@@ -569,6 +681,22 @@ def get_player(player_id: int) -> dict | None:
     return player
 
 
+def clamp_player_hp_to_max(player_id: int) -> dict | None:
+    """Clamp current HP after a loadout reduces END; never inflict defeat."""
+    player = get_player(player_id)
+    if not player:
+        return None
+    clamped_hp = max(1, min(int(player["current_hp"]), int(player["max_hp"])))
+    if clamped_hp != player["current_hp"]:
+        with exclusive_transaction():
+            execute_write(
+                "UPDATE players SET current_hp=? WHERE id=?",
+                (clamped_hp, player_id),
+            )
+        player["current_hp"] = clamped_hp
+    return {"current_hp": clamped_hp, "max_hp": player["max_hp"]}
+
+
 BONUS_FIELDS = (
     "str_bonus", "end_bonus", "agi_bonus", "lck_bonus", "per_bonus",
     "initiative_bonus", "extra_attack", "crit_chance_bonus",
@@ -577,6 +705,7 @@ BONUS_FIELDS = (
     "res_venom", "bonus_damage_amount", "xp_multiplier",
     "credit_multiplier", "steal_bonus", "bonus_ap", "hp_regen_bonus",
     "durability_reduction", "shop_discount", "sell_bonus", "encounter_bonus",
+    "observe_bonus",
 )
 
 
@@ -626,11 +755,14 @@ def scale_perk_effects(perk: dict) -> dict:
     }
     fractional_caps = {
         "crit_chance_bonus": 0.10,
+        "crit_dmg_multiplier": 0.25,
         "xp_multiplier": 0.25,
         "credit_multiplier": 0.25,
         "steal_bonus": 0.15,
+        "durability_reduction": 0.25,
         "shop_discount": 0.20,
         "sell_bonus": 0.20,
+        "encounter_bonus": 0.20,
     }
     for field, ceiling in integer_caps.items():
         result[field] = max(-ceiling, min(ceiling, result[field]))
@@ -663,36 +795,56 @@ _LOAD_EQUIPPED_SPECIAL = object()
 
 
 def get_player_bonus_profile(player_id: int, special=_LOAD_EQUIPPED_SPECIAL) -> dict:
-    """Combine an equipped special with permanent perks for gameplay formulas."""
+    """Combine unlocked equipped specials, class passives, and permanent perks."""
     if special is _LOAD_EQUIPPED_SPECIAL:
-        row = execute_one(
-            """SELECT s.* FROM players p
-               JOIN inventory_items ii ON ii.id=p.equipped_special_id
-               JOIN special_items s ON s.id=ii.item_id WHERE p.id=?""", (player_id,)
-        )
-        special = row
-    result = dict(special or {})
+        player = execute_one("SELECT * FROM players WHERE id=?", (player_id,)) or {}
+        special = []
+        for inv_id in equipped_special_ids(player):
+            row = execute_one(
+                """SELECT s.* FROM inventory_items ii JOIN special_items s ON s.id=ii.item_id
+                   WHERE ii.id=? AND ii.player_id=?""", (inv_id, player_id)
+            )
+            if row:
+                special.append(row)
+    specials = special if isinstance(special, (list, tuple)) else ([special] if special else [])
+    result = {field: 0 for field in BONUS_FIELDS}
+    for item in specials:
+        for field in BONUS_FIELDS:
+            result[field] += float(item.get(field, 0) or 0)
+    class_row = execute_one(
+        """SELECT c.* FROM players p LEFT JOIN classes c ON c.id=p.class_id WHERE p.id=?""",
+        (player_id,),
+    ) or {}
+    for field in BONUS_FIELDS:
+        # Core class attributes were permanently applied at creation and must
+        # not be counted a second time here.
+        if field not in ("str_bonus", "end_bonus", "agi_bonus", "lck_bonus", "per_bonus"):
+            result[field] += float(class_row.get(field, 0) or 0)
     perk = get_player_perk_bonuses(player_id)
     for field in BONUS_FIELDS:
-        result[field] = (float(result.get(field, 0) or 0) +
-                         float(perk.get(field, 0) or 0))
+        result[field] += float(perk.get(field, 0) or 0)
     components = []
-    if special and special.get("bonus_damage_amount") and special.get("bonus_damage_type"):
-        components.append({"type": special["bonus_damage_type"],
-                           "amount": int(special["bonus_damage_amount"])})
+    for item in specials:
+        if item.get("bonus_damage_amount") and item.get("bonus_damage_type"):
+            components.append({"type": item["bonus_damage_type"],
+                               "amount": int(item["bonus_damage_amount"])})
+    if class_row.get("bonus_damage_amount"):
+        components.append({"type": class_row.get("bonus_damage_type") or "Weapon",
+                           "amount": int(class_row["bonus_damage_amount"])})
     components.extend(perk.get("bonus_damage_components", []))
     result["bonus_damage_components"] = components
+    result["equipped_specials"] = specials
+    result["class_name"] = class_row.get("name")
     return result
 
 
 def get_player_equipped(player: dict) -> dict:
     """Load full weapon, armor, and special item rows for a player's equipped gear.
     Returns {'weapon': dict|None, 'armor': dict|None, 'special': dict|None}"""
-    result = {"weapon": None, "armor": None, "special": None}
+    result = {"weapon": None, "armor": None, "special": None, "specials": []}
     for slot, col, table in [
         ("weapon",  "equipped_weapon_id",  "weapons"),
         ("armor",   "equipped_armor_id",   "armor"),
-        ("special", "equipped_special_id", "special_items"),
     ]:
         inv_id = player.get(col)
         if inv_id:
@@ -703,6 +855,14 @@ def get_player_equipped(player: dict) -> dict:
                     result[slot] = {**content,
                                     "inv_id": inv_id,
                                     "current_durability": inv_row["current_durability"]}
+    for inv_id in equipped_special_ids(player):
+        inv_row = execute_one("SELECT * FROM inventory_items WHERE id=?", (inv_id,))
+        if inv_row:
+            content = execute_one("SELECT * FROM special_items WHERE id=?", (inv_row["item_id"],))
+            if content:
+                result["specials"].append({**content, "inv_id": inv_id,
+                    "current_durability": inv_row["current_durability"]})
+    result["special"] = result["specials"][0] if result["specials"] else None
     return result
 
 

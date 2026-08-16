@@ -4,7 +4,6 @@
 # All write operations go through enqueue_and_process except auth itself
 # (login/register are not game actions, no AP involved).
 
-import math
 import logging
 from datetime import datetime
 
@@ -15,7 +14,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_player, get_all_settings,
                       scale_perk_effects, get_player_equipped,
-                      get_player_perk_bonuses)
+                      get_player_perk_bonuses, get_player_bonus_profile, calculate_max_hp,
+                      calculate_daily_ap)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 from character_rules import SEX_OPTIONS, sex_bonuses, valid_sexes
@@ -237,10 +237,10 @@ def character_create_post():
     }
 
     # Derive starting HP and AP
-    base_daily_ap = settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP)
-    starting_hp   = (settings.get("BASE_HP", cfg.BASE_HP) + final_stats["end"]
-                     + settings.get("HP_PER_LEVEL", cfg.HP_PER_LEVEL))
-    starting_ap   = base_daily_ap + math.floor(final_stats["end"] / 2)
+    starting_hp = calculate_max_hp(1, final_stats["end"], settings)
+    starting_ap = calculate_daily_ap(
+        final_stats["end"], settings=settings
+    )["effective"]
 
     with exclusive_transaction():
         execute_write(
@@ -373,12 +373,14 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
     equipped = get_player_equipped(player)
     gear_end = sum(
         int((equipped.get(slot) or {}).get("end_bonus", 0) or 0)
-        for slot in ("weapon", "armor", "special")
+        for slot in ("weapon", "armor")
     )
-    perk_end = int(get_player_perk_bonuses(player_id).get("end_bonus", 0) or 0)
+    perk_end = int(get_player_bonus_profile(player_id).get("end_bonus", 0) or 0)
     if perk:
         perk_end += int(scale_perk_effects(perk).get("end_bonus", 0) or 0)
-    new_max_hp = 10 + new_end + gear_end + perk_end + (5 * target_level)
+    new_max_hp = calculate_max_hp(
+        target_level, new_end + gear_end + perk_end, get_all_settings()
+    )
 
     with exclusive_transaction():
         execute_write(f"UPDATE players SET {col} = ? WHERE id = ?", (new_stat_val, player_id))
@@ -422,6 +424,13 @@ def handle_assign_levelup(player_id: int, payload: dict) -> dict:
                 """INSERT INTO daily_feed(feed_scope,player_id,flavor_text,event_category)
                    VALUES('PERSONAL',?,?,'PERK')""", (player_id, perk_text)
             )
+        if new_level in (8, 16):
+            slot_number = 2 if new_level == 8 else 3
+            execute_write(
+                """INSERT INTO daily_feed(feed_scope,player_id,flavor_text,event_category)
+                   VALUES('PERSONAL',?,?,'LEVEL_UP')""",
+                (player_id, f"Special equipment slot {slot_number} is now unlocked.")
+            )
 
     logger.info("Player %d assigned level-up stat point to %s (now %d)",
                 player_id, stat.upper(), new_stat_val)
@@ -447,7 +456,7 @@ def get_tutorial_messages() -> list[tuple[str, str]]:
     """Return the transient tutorial shown on a player's first login each day."""
     return [
         ("SYSTEM",       "Welcome. The world is dangerous. Here is what you need to know."),
-        ("SYSTEM",       "AP (Action Points) fuel everything. You earn a daily allotment at midnight plus trickle bonuses every 6 hours. Spend them wisely."),
+        ("SYSTEM",       "AP (Action Points) fuel everything. You earn a daily allotment at midnight plus automatic hourly trickle bonuses. Spend them wisely."),
         ("SYSTEM",       "BOSS — Challenge a movie villain. Defeat them for XP, credits, and gear. Watch for phase transitions as their HP drops."),
         ("SYSTEM",       "PVP — Fight another player. Win to steal credits and items. Lose and you drop to 1 HP. Choose your targets carefully."),
         ("SYSTEM",       "TAVERN — Spend credits to restore HP. No AP cost once inside."),

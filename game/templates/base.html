@@ -37,6 +37,12 @@
     CINEMATIC UI
 </button>
 {% endif %}
+{% if game_shell %}
+<button id="active-players-toggle" class="active-players-toggle header-active-players" type="button"
+        data-url="{{ url_for('feeds.active_players') }}" aria-haspopup="dialog">
+    ACTIVE <span id="active-player-count">{{ active_player_count }}</span>
+</button>
+{% endif %}
 
 {% if game_shell %}
 <header id="mobile-command-bar" aria-label="Mobile player controls">
@@ -74,6 +80,18 @@
         <div class="status-line">
             <span class="label">AP</span>
             <span id="status-ap">{{ player.current_ap }}</span>/<span id="status-maxap">{{ player.max_ap }}</span>
+        </div>
+        <div class="status-line" title="Carried items compared with your current inventory capacity">
+            <span class="label">INV</span>
+            <span id="status-inventory-count">{{ player.inventory_count }}</span>/<span id="status-inventory-limit">{{ player.inventory_limit }}</span>
+        </div>
+        <div class="status-line" title="Armor Class: the target number an enemy normally needs to hit you">
+            <span class="label">AC</span>
+            <span id="status-ac">{{ sidebar_combat.ac }}</span>
+        </div>
+        <div class="status-line" title="Estimated normal damage before critical hits, enemy resistances, weaknesses, and encounter scaling">
+            <span class="label">DMG</span>
+            <span><span id="status-damage-min">{{ sidebar_combat.damage_min }}</span>–<span id="status-damage-max">{{ sidebar_combat.damage_max }}</span> <small id="status-damage-types">{{ sidebar_combat.damage_types|join('/') }}</small></span>
         </div>
         <div class="status-line">
             <span class="label">CR</span>
@@ -150,11 +168,6 @@
                 {% endif %}
             {% endfor %}
         {% endif %}
-        <button class="action-btn disabled scene-coming-soon" disabled
-                title="Cinematic Scenes are being prepared and are not yet available to players.">
-            CINEMATIC SCENES <span class="ap-cost">(COMING SOON)</span>
-            <span class="btn-reason">Version 1 in testing</span>
-        </button>
     </div>
 
     <div class="free-action-buttons" aria-label="Free character actions">
@@ -179,11 +192,6 @@
             </button>
         </form>
     </div>
-
-    <button id="active-players-toggle" class="active-players-toggle" type="button"
-            data-url="{{ url_for('feeds.active_players') }}" aria-haspopup="dialog">
-        ACTIVE PLAYERS <span id="active-player-count">{{ active_player_count }}</span>
-    </button>
 
 </div><!-- /left-col -->
 

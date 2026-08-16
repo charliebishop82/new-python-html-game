@@ -13,7 +13,9 @@ from datetime import datetime
 from database import (execute, execute_one, execute_write, get_player,
                       exclusive_transaction, get_all_settings,
                       get_player_bonus_profile, get_player_perk_bonuses,
-                      encumbered_ap_cost)
+                      encumbered_ap_cost, clamp_player_hp_to_max,
+                      equipped_special_ids, SPECIAL_SLOT_COLUMNS,
+                      unlocked_special_slots)
 from combat import engine
 from combat import flavour
 import config_defaults as cfg
@@ -111,13 +113,12 @@ def get_combat_state(session_id: int) -> dict:
 
 def _load_equipped(player: dict) -> dict:
     """Load weapon, armor, and special item rows for a player."""
-    result = {"weapon": None, "armor": None, "special": None, "bonuses": None}
+    result = {"weapon": None, "armor": None, "special": None, "specials": [], "bonuses": None}
     if player is None:
         return result
     for slot, col, table in [
         ("weapon",  "equipped_weapon_id",  "weapons"),
         ("armor",   "equipped_armor_id",   "armor"),
-        ("special", "equipped_special_id", "special_items"),
     ]:
         inv_id = player.get(col)
         if inv_id:
@@ -127,8 +128,17 @@ def _load_equipped(player: dict) -> dict:
                 if item:
                     result[slot] = {**item, "inv_id": inv_id,
                                     "current_durability": inv["current_durability"]}
+    from database import equipped_special_ids
+    for inv_id in equipped_special_ids(player):
+        inv = execute_one("SELECT * FROM inventory_items WHERE id=?", (inv_id,))
+        if inv:
+            item = execute_one("SELECT * FROM special_items WHERE id=?", (inv["item_id"],))
+            if item:
+                result["specials"].append({**item, "inv_id": inv_id,
+                    "current_durability": inv["current_durability"]})
+    result["special"] = result["specials"][0] if result["specials"] else None
     result["perk_bonuses"] = get_player_perk_bonuses(player["id"])
-    result["bonuses"] = get_player_bonus_profile(player["id"], result["special"])
+    result["bonuses"] = get_player_bonus_profile(player["id"], result["specials"])
     return result
 
 
@@ -156,8 +166,8 @@ def apply_equipped_stat_bonuses(player: dict, equipped: dict | None = None) -> d
         effective[column] = player[column] + sum(
             int((item or {}).get(bonus_key, 0) or 0)
             for key, item in equipped.items()
-            if key in ("weapon", "armor", "special")
-        ) + int((equipped.get("perk_bonuses") or {}).get(bonus_key, 0) or 0)
+            if key in ("weapon", "armor")
+        ) + int((equipped.get("bonuses") or {}).get(bonus_key, 0) or 0)
     effective["max_hp"] = engine.calc_max_hp(effective)
     effective["special_ac_bonus"] = int(
         (equipped.get("bonuses") or {}).get("ac_bonus", 0) or 0
@@ -517,7 +527,7 @@ def _pvp_steal_cascade(attacker_id: int, defender_id: int,
     defender = execute_one("SELECT * FROM players WHERE id = ?", (defender_id,))
     equipped  = {defender.get("equipped_weapon_id"),
                  defender.get("equipped_armor_id"),
-                 defender.get("equipped_special_id")} - {None}
+                 *equipped_special_ids(defender, unlocked_only=False)} - {None}
     inv_items = execute(
         """SELECT * FROM inventory_items ii WHERE player_id = ?
            AND NOT EXISTS(SELECT 1 FROM auction_listings a
@@ -878,6 +888,9 @@ def handle_observe(session_id: int, player_id: int, state: dict) -> dict:
     """Process the queued observe action against validated game state."""
     session  = state["session"]
     attacker = state["attacker"]
+    observe_bonus = int((state.get("attacker_equipped", {}).get("bonuses") or {}).get(
+        "observe_bonus", 0
+    ) or 0)
 
     if session["combat_type"] == "PVP":
         opp = state["defender"]
@@ -889,7 +902,7 @@ def handle_observe(session_id: int, player_id: int, state: dict) -> dict:
     roll_result = engine.resolve_opposed_roll(
         actor_agi=attacker["agi_stat"], actor_lck=attacker["lck_stat"],
         defender_agi=opp_agi, defender_lck=opp_lck,
-        actor_per=attacker["per_stat"], defender_per=opp_per,
+        actor_per=attacker["per_stat"] + observe_bonus, defender_per=opp_per,
         tie_goes_to="defender"
     )
 
@@ -1017,8 +1030,10 @@ def handle_swap_gear(session_id: int, player_id: int, state: dict,
                 (new_armor_inv_id, player_id)
             )
         if new_special_inv_id:
+            unlocked = SPECIAL_SLOT_COLUMNS[:unlocked_special_slots(attacker["level"])]
+            slot = next((column for column in unlocked if not attacker.get(column)), unlocked[0])
             execute_write(
-                "UPDATE players SET equipped_special_id = ? WHERE id = ?",
+                f"UPDATE players SET {slot} = ? WHERE id = ?",
                 (new_special_inv_id, player_id)
             )
         execute_write(
@@ -1043,6 +1058,7 @@ def handle_swap_gear(session_id: int, player_id: int, state: dict,
                           "SWAP_GEAR", "Swap gear action",
                           f"Swapped to {new_item_name}, penalties applied this round")
 
+    clamp_player_hp_to_max(player_id)
     flv = flavour.swap_gear_flavor(attacker["character_name"], new_item_name)
     return {"action": "SWAP_GEAR", "flavor": flv,
             "accuracy_penalty_pct": int(acc_pen * 100), "ac_penalty": ac_penalty}
@@ -1730,7 +1746,7 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                     if i["id"] not in {
                         loser_player.get("equipped_weapon_id"),
                         loser_player.get("equipped_armor_id"),
-                        loser_player.get("equipped_special_id"),
+                        *equipped_special_ids(loser_player, unlocked_only=False),
                     }
                 ]
                 if loser_unequipped:
@@ -1931,7 +1947,7 @@ def _destroy_item(inv_id: int, row: dict, player_id: int):
     """Delete an item at 0 durability, null out equipped slot, return special to pool."""
     # Clear every foreign-key reference before removing the inventory copy.
     # SQLite correctly rejects the inverse ordering when equipped gear breaks.
-    for col in ("equipped_weapon_id", "equipped_armor_id", "equipped_special_id"):
+    for col in ("equipped_weapon_id", "equipped_armor_id", *SPECIAL_SLOT_COLUMNS):
         execute_write(
             f"UPDATE players SET {col} = NULL WHERE id = ? AND {col} = ?",
             (player_id, inv_id)

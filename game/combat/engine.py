@@ -10,7 +10,8 @@ import random
 import logging
 
 import config_defaults as cfg
-from database import get_all_settings
+from database import (get_all_settings, calculate_max_hp, calculate_daily_ap,
+                      calculate_passive_regen)
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,7 @@ def armor_tier_ac_bonus(armor: dict | None) -> int:
 
 def calc_max_hp(player: dict) -> int:
     """10 + END + (5 * level)"""
-    return 10 + player["end_stat"] + (5 * player["level"])
+    return calculate_max_hp(player["level"], player["end_stat"])
 
 
 def calc_ac(combatant: dict, armor: dict | None) -> int:
@@ -104,25 +105,20 @@ def calc_ac(combatant: dict, armor: dict | None) -> int:
     return ac
 
 
-def calc_max_ap(player: dict, is_cursed: bool = False) -> int:
-    """BASE_DAILY_AP + floor(END/2), reduced by CURSE_AP_REDUCTION if cursed."""
-    settings  = get_all_settings()
-    base      = settings.get("BASE_DAILY_AP",       cfg.BASE_DAILY_AP)
-    cap       = settings.get("AP_CARRYOVER_CAP",    cfg.AP_CARRYOVER_CAP)
-    curse_red = settings.get("CURSE_AP_REDUCTION",  cfg.CURSE_AP_REDUCTION)
-    raw       = base + stat_mod(player["end_stat"])
-    if is_cursed:
-        raw = int(raw * (1 - curse_red))
-    return min(raw, cap)
+def calc_max_ap(player: dict, is_cursed: bool = False,
+                bonus_profile: dict | None = None) -> int:
+    """Return capped daily AP from effective END and aggregated bonuses."""
+    bonus_profile = bonus_profile or {}
+    return calculate_daily_ap(
+        player["end_stat"], int(bonus_profile.get("bonus_ap", 0) or 0),
+        is_cursed,
+    )["effective"]
 
 
 def calc_passive_regen(player: dict, special: dict | None = None) -> int:
-    """AP_PASSIVE_HP_REGEN + floor(END/END_HP_REGEN_DIVISOR) + HP_REGEN_BONUS (special)"""
-    settings  = get_all_settings()
-    base_regen = settings.get("AP_PASSIVE_HP_REGEN",   cfg.AP_PASSIVE_HP_REGEN)
-    divisor    = settings.get("END_HP_REGEN_DIVISOR",  cfg.END_HP_REGEN_DIVISOR)
-    bonus      = special.get("hp_regen_bonus", 0) if special else 0
-    return base_regen + math.floor(player["end_stat"] / divisor) + bonus
+    """Return AP-action healing from effective END and aggregated bonuses."""
+    bonus = int((special or {}).get("hp_regen_bonus", 0) or 0)
+    return calculate_passive_regen(player["end_stat"], bonus)
 
 
 def calc_initiative(combatant: dict, initiative_bonus: int = 0) -> tuple[int, int]:
@@ -429,6 +425,8 @@ def resolve_full_attack(attacker: dict, defender: dict,
     for component in bonus_components:
         raw_bonus = int(component.get("amount", 0) or 0) * (2 if is_crit else 1)
         bonus_type = component.get("type", "")
+        if bonus_type == "Weapon":
+            bonus_type = attacker_weapon["damage_type"]
         if raw_bonus and bonus_type:
             final_bonus, bonus_res_note = resolve_resistance(
                 raw_bonus, bonus_type, defender_armor, resistance_profile, boss_resistance_type
@@ -599,8 +597,10 @@ def apply_pvp_loss_durability_hits(player_id: int, equipped: dict):
     from database import execute_write, exclusive_transaction
     # Combat state also carries an aggregate `bonuses` entry. It is not an
     # inventory item and must never be processed as durability-bearing gear.
-    for slot in ("weapon", "armor", "special"):
-        item = equipped.get(slot)
+    gear = [("weapon", equipped.get("weapon")), ("armor", equipped.get("armor"))]
+    gear.extend((f"special {index}", item)
+                for index, item in enumerate(equipped.get("specials", []), 1))
+    for slot, item in gear:
         if item is None:
             continue
         inv_id = item.get("inv_id")

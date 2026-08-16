@@ -2,7 +2,6 @@
 # Scheduled maintenance entry points.
 # Scheduled AP, NPC, reset, archive, recovery, and content-maintenance jobs.
 
-import math
 import random
 import logging
 import os
@@ -10,7 +9,8 @@ from datetime import datetime
 
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player_equipped,
-                      get_player_bonus_profile, get_player_perk_bonuses)
+                      get_player_bonus_profile, get_player_perk_bonuses,
+                      calculate_max_hp, calculate_daily_ap)
 from queue_handler import purge_old_done_rows
 import config_defaults as cfg
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 def ap_trickle():
     """Award TRICKLE_AP_AMOUNT to all non-banned players, capped at AP_CARRYOVER_CAP.
-    Runs at 03:00, 09:00, 15:00, 21:00 UTC daily."""
+    The server awards it once at startup, then at the configured interval."""
     settings = get_all_settings()
     trickle  = settings.get("TRICKLE_AP_AMOUNT", cfg.TRICKLE_AP_AMOUNT)
     cap      = settings.get("AP_CARRYOVER_CAP",  cfg.AP_CARRYOVER_CAP)
@@ -163,7 +163,6 @@ def _step4_5_award_daily_ap():
     settings = get_all_settings()
     base_ap   = settings.get("BASE_DAILY_AP",      cfg.BASE_DAILY_AP)
     cap       = settings.get("AP_CARRYOVER_CAP",   cfg.AP_CARRYOVER_CAP)
-    curse_red = settings.get("CURSE_AP_REDUCTION", cfg.CURSE_AP_REDUCTION)
 
     players = execute("SELECT * FROM players WHERE is_banned = 0")
     cursed_ids = {
@@ -176,15 +175,15 @@ def _step4_5_award_daily_ap():
         execute_write("UPDATE npc_profiles SET actions_today=0")
         for p in players:
             equipped = get_player_equipped(p)
+            bonuses = get_player_bonus_profile(p["id"], equipped.get("specials", []))
             effective_end = p["end_stat"] + sum(
                 int((equipped.get(slot) or {}).get("end_bonus", 0) or 0)
-                for slot in ("weapon", "armor", "special")
-            ) + int(get_player_perk_bonuses(p["id"]).get("end_bonus", 0) or 0)
-            bonuses = get_player_bonus_profile(p["id"], equipped.get("special"))
-            daily_ap = (base_ap + math.floor(effective_end / 2) +
-                        int(bonuses.get("bonus_ap", 0) or 0))
-            if p["id"] in cursed_ids:
-                daily_ap = int(daily_ap * (1 - curse_red))
+                for slot in ("weapon", "armor")
+            ) + int(bonuses.get("end_bonus", 0) or 0)
+            daily_ap = calculate_daily_ap(
+                effective_end, int(bonuses.get("bonus_ap", 0) or 0),
+                p["id"] in cursed_ids, settings,
+            )["effective"]
             # Carryover cap first, then add daily AP, then cap again
             execute_write(
                 "UPDATE players SET current_ap = MIN(MIN(current_ap, ?) + ?, ?) WHERE id = ?",
@@ -206,11 +205,12 @@ def _step6_restore_midnight_hp():
     with exclusive_transaction():
         for p in players:
             equipped = get_player_equipped(p)
+            bonuses = get_player_bonus_profile(p["id"], equipped.get("specials", []))
             effective_end = p["end_stat"] + sum(
                 int((equipped.get(slot) or {}).get("end_bonus", 0) or 0)
-                for slot in ("weapon", "armor", "special")
-            ) + int(get_player_perk_bonuses(p["id"]).get("end_bonus", 0) or 0)
-            max_hp = 10 + effective_end + (5 * p["level"])
+                for slot in ("weapon", "armor")
+            ) + int(bonuses.get("end_bonus", 0) or 0)
+            max_hp = calculate_max_hp(p["level"], effective_end, settings)
             missing = max_hp - p["current_hp"]
             if missing > 0:
                 restore = max(1, int(missing * heal_pct))
@@ -241,9 +241,10 @@ def _step7_midnight_encounters():
             for slot in ("weapon", "armor", "special")
         ) + int(get_player_perk_bonuses(p["id"]).get("end_bonus", 0) or 0)
         bonuses = get_player_bonus_profile(p["id"], equipped.get("special"))
-        p["max_hp"] = 10 + effective_end + (5 * p["level"])
-        p["max_ap"] = (settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP) +
-                       math.floor(effective_end / 2) + int(bonuses.get("bonus_ap", 0) or 0))
+        p["max_hp"] = calculate_max_hp(p["level"], effective_end, settings)
+        p["max_ap"] = calculate_daily_ap(
+            effective_end, int(bonuses.get("bonus_ap", 0) or 0), False, settings
+        )["effective"]
         event = check_random_event(p, settings)
         if event:
             triggered += 1

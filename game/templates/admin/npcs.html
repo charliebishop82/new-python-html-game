@@ -49,7 +49,7 @@
     {% endif %}
     <table><tr><th>Inventory Item</th><th>Type</th><th>Loadout</th><th>Durability</th><th></th></tr>
     {% for item in inventory if item.player_id == npc.player_id %}
-    {% set is_equipped = (item.item_type == 'WEAPON' and item.id == npc.equipped_weapon_id) or (item.item_type == 'ARMOR' and item.id == npc.equipped_armor_id) or (item.item_type == 'SPECIAL' and item.id == npc.equipped_special_id) %}
+    {% set is_equipped = (item.item_type == 'WEAPON' and item.id == npc.equipped_weapon_id) or (item.item_type == 'ARMOR' and item.id == npc.equipped_armor_id) or (item.item_type == 'SPECIAL' and item.id in [npc.equipped_special_id, npc.equipped_special_2_id, npc.equipped_special_3_id]) %}
     <tr{% if is_equipped %} style="background:#10251d;box-shadow:inset 3px 0 #00dd88;"{% endif %}>
         <td{% if is_equipped %} style="color:#fff;font-weight:bold;"{% endif %}>{{ item.item_name }}</td>
         <td>{{ item.item_type }}</td>

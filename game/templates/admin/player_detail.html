@@ -109,7 +109,7 @@
     <tr>
         <td>{{ item.item_name or 'Unknown' }}</td>
         <td>{{ item.item_type }}</td>
-        <td>{% set equipped=(item.id==player.equipped_weapon_id or item.id==player.equipped_armor_id or item.id==player.equipped_special_id) %}<span class="status-pill {{ 'status-active' if equipped }}">{{ 'EQUIPPED' if equipped else 'STORED' }}</span></td>
+        <td>{% set equipped=(item.id==player.equipped_weapon_id or item.id==player.equipped_armor_id or item.id in [player.equipped_special_id, player.equipped_special_2_id, player.equipped_special_3_id]) %}<span class="status-pill {{ 'status-active' if equipped }}">{{ 'EQUIPPED' if equipped else 'STORED' }}</span></td>
         <td>{{ item.current_durability }}%</td>
         <td style="font-size:11px;color:#666">{{ item.acquired_method }}</td>
     </tr>

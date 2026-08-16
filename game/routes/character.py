@@ -13,7 +13,10 @@ from flask import (Blueprint, render_template, request, redirect,
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings,
                       get_player_bonus_profile, get_player_perks,
-                      inventory_capacity)
+                      inventory_capacity, get_player, calculate_max_hp,
+                      calculate_daily_ap, calculate_passive_regen,
+                      clamp_player_hp_to_max, SPECIAL_SLOT_COLUMNS,
+                      unlocked_special_slots, equipped_special_ids)
 from queue_handler import enqueue_and_process, register_handler
 from combat import engine
 import config_defaults as cfg
@@ -33,11 +36,7 @@ def index():
     settings = get_all_settings()
 
     inventory = _get_full_inventory(player)
-    equipped  = {
-        "weapon":  _find_equipped(inventory, player.get("equipped_weapon_id")),
-        "armor":   _find_equipped(inventory, player.get("equipped_armor_id")),
-        "special": _find_equipped(inventory, player.get("equipped_special_id")),
-    }
+    equipped = _equipped_loadout(inventory, player)
     derived = _calc_derived_stats(player, equipped, settings)
     active_effects = _get_active_effects(player["id"])
     level_history = execute(
@@ -46,6 +45,15 @@ def index():
         (player["id"],)
     )
     perks = get_player_perks(player["id"])
+    class_info = execute_one("SELECT * FROM classes WHERE id=?", (player.get("class_id"),)) or {}
+    special_slots = []
+    for index, column in enumerate(SPECIAL_SLOT_COLUMNS, 1):
+        special_slots.append({
+            "slot": f"special{index}", "number": index,
+            "item": _find_equipped(inventory, player.get(column)),
+            "unlocked": index <= unlocked_special_slots(player["level"]),
+            "unlock_level": 1 if index == 1 else (8 if index == 2 else 16),
+        })
 
     return render_template(
         "character/character.html",
@@ -55,6 +63,8 @@ def index():
         active_effects=active_effects,
         level_history=level_history,
         perks=perks,
+        class_info=class_info,
+        special_slots=special_slots,
         preferences=["Aggressive", "Defensive", "Opportunist", "Balanced"],
         feedback=request.args.get("feedback"),
         error=request.args.get("error"),
@@ -68,15 +78,20 @@ def equipment():
     if player.get("in_combat"):
         return redirect(url_for("dashboard.index"))
     inventory = _get_full_inventory(player)
-    equipped = {
-        "weapon": _find_equipped(inventory, player.get("equipped_weapon_id")),
-        "armor": _find_equipped(inventory, player.get("equipped_armor_id")),
-        "special": _find_equipped(inventory, player.get("equipped_special_id")),
-    }
+    equipped = _equipped_loadout(inventory, player)
+    special_slots = []
+    for index, column in enumerate(SPECIAL_SLOT_COLUMNS, 1):
+        special_slots.append({
+            "slot": f"special{index}", "number": index,
+            "item": _find_equipped(inventory, player.get(column)),
+            "unlocked": index <= unlocked_special_slots(player["level"]),
+            "unlock_level": 1 if index == 1 else (8 if index == 2 else 16),
+        })
     return render_template(
         "character/equipment.html",
         inventory=inventory,
         equipped=equipped,
+        special_slots=special_slots,
         derived=_calc_derived_stats(player, equipped, get_all_settings()),
         feedback=request.args.get("feedback"),
         error=request.args.get("error"),
@@ -130,9 +145,8 @@ def _get_full_inventory(player: dict) -> list[dict]:
     # never advertises a different value than the player will actually receive.
     from routes.shop import _calc_sell_price
     equipped_ids = {
-        player.get("equipped_weapon_id"),
-        player.get("equipped_armor_id"),
-        player.get("equipped_special_id"),
+        player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
+        *equipped_special_ids(player, unlocked_only=False),
     } - {None}
 
     rows = execute(
@@ -155,6 +169,18 @@ def _get_full_inventory(player: dict) -> list[dict]:
     return result
 
 
+def _equipped_loadout(inventory: list[dict], player: dict) -> dict:
+    """Build the weapon, outfit, and unlocked multi-special loadout."""
+    specials = [_find_equipped(inventory, inv_id) for inv_id in equipped_special_ids(player)]
+    specials = [item for item in specials if item]
+    return {
+        "weapon": _find_equipped(inventory, player.get("equipped_weapon_id")),
+        "armor": _find_equipped(inventory, player.get("equipped_armor_id")),
+        "special": specials[0] if specials else None,
+        "specials": specials,
+    }
+
+
 def _find_equipped(inventory: list, inv_id) -> dict | None:
     """Provide the internal find equipped operation used by this module."""
     if inv_id is None:
@@ -175,7 +201,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     w = equipped.get("weapon")
     a = equipped.get("armor")
     s = equipped.get("special")
-    b = get_player_bonus_profile(player["id"], s)
+    b = get_player_bonus_profile(player["id"], equipped.get("specials", [s] if s else []))
 
     str_total = player["str_stat"] + (w.get("str_bonus", 0) if w else 0) + \
                 (a.get("str_bonus", 0) if a else 0) + int(b.get("str_bonus", 0) or 0)
@@ -192,7 +218,7 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     ac_bonus     = ((a.get("ac_bonus", 0) if a else 0) + armor_level_bonus +
                     int(b.get("ac_bonus", 0) or 0))
     ac           = 10 + math.floor(agi_total / 2) + ac_bonus
-    max_hp       = 10 + end_total + (5 * player["level"])
+    max_hp       = calculate_max_hp(player["level"], end_total, settings)
     inv_limit    = inventory_capacity(str_total, settings)
     crit_thresh  = max(
         settings.get("CRIT_MIN_THRESHOLD", cfg.CRIT_MIN_THRESHOLD),
@@ -208,11 +234,14 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         math.floor(per_total / 2) + int(float(b.get("shop_discount", 0) or 0) * 100),
         int(settings.get("SHOP_DISCOUNT_MAX", cfg.SHOP_DISCOUNT_MAX) * 100)
     )
-    daily_ap     = settings.get("BASE_DAILY_AP", cfg.BASE_DAILY_AP) + \
-                   math.floor(end_total / 2) + int(b.get("bonus_ap", 0) or 0)
-    passive_regen= settings.get("AP_PASSIVE_HP_REGEN", cfg.AP_PASSIVE_HP_REGEN) + \
-                   math.floor(end_total / settings.get("END_HP_REGEN_DIVISOR", cfg.END_HP_REGEN_DIVISOR)) + \
-                   int(b.get("hp_regen_bonus", 0) or 0)
+    ap_result = calculate_daily_ap(
+        end_total, int(b.get("bonus_ap", 0) or 0),
+        bool(player.get("is_cursed")), settings,
+    )
+    daily_ap = ap_result["effective"]
+    passive_regen = calculate_passive_regen(
+        end_total, int(b.get("hp_regen_bonus", 0) or 0), settings
+    )
 
     # Show a pre-resistance range rather than a misleading average. Actual
     # damage can still change through criticals, resistances, weaknesses,
@@ -240,7 +269,8 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     steal_roll_bonus = int(float(b.get("steal_bonus", 0) or 0) * 20)
     steal_modifier = opposed_modifier + steal_roll_bonus
     escape_modifier = opposed_modifier
-    observe_modifier = opposed_modifier + math.floor(per_total / 2)
+    observe_modifier = (opposed_modifier + math.floor(per_total / 2) +
+                        int(b.get("observe_bonus", 0) or 0))
     components = b.get("bonus_damage_components", [])
     bonus_damage = sum(int(part.get("amount", 0)) for part in components)
     bonus_damage_type = ", ".join(dict.fromkeys(part.get("type", "") for part in components if part.get("type")))
@@ -249,6 +279,8 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     damage_types = [damage_type]
     for component in components:
         component_type = component.get("type")
+        if component_type == "Weapon":
+            component_type = damage_type
         if component_type and component_type not in damage_types:
             damage_types.append(component_type)
 
@@ -293,7 +325,12 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
         "crit_threshold": crit_thresh, "crit_chance_pct": crit_chance_pct,
         "crit_range": f"{crit_thresh}-20" if crit_thresh < 20 else "20",
         "shop_discount_pct": shop_discount,
-        "daily_ap": daily_ap, "passive_regen": passive_regen,
+        "daily_ap": daily_ap, "daily_ap_raw": ap_result["raw"],
+        "daily_ap_after_curse": ap_result["after_curse"],
+        "daily_ap_cap": ap_result["cap"],
+        "daily_ap_capped": ap_result["is_capped"],
+        "daily_ap_cursed": ap_result["is_cursed"],
+        "passive_regen": passive_regen,
         "weapon_name": weapon_name, "weapon_type": weapon_type,
         "damage_die": damage_die, "damage_type": damage_type,
         "attack_modifier": attack_roll_modifier,
@@ -325,6 +362,19 @@ def _calc_derived_stats(player: dict, equipped: dict, settings: dict) -> dict:
     }
 
 
+def get_player_combat_snapshot(player: dict, settings: dict | None = None) -> dict:
+    """Return the compact AC and damage summary shared by persistent UI elements."""
+    inventory = _get_full_inventory(player)
+    equipped = _equipped_loadout(inventory, player)
+    derived = _calc_derived_stats(player, equipped, settings or get_all_settings())
+    return {
+        "ac": derived["ac"],
+        "damage_min": derived["damage_min"],
+        "damage_max": derived["damage_max"],
+        "damage_types": derived["damage_types"],
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # STAT PREVIEW (live AJAX — the third JS feature)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -353,10 +403,14 @@ def preview():
         detail = _get_item_detail(inv["item_type"], inv["item_id"])
         return {**(detail or {}), "current_durability": inv["current_durability"]}
 
+    specials = [load_equipped(request.args.get(f"special{i}"))
+                for i in range(1, unlocked_special_slots(player["level"]) + 1)]
+    specials = [item for item in specials if item]
     equipped = {
-        "weapon":  load_equipped(request.args.get("weapon")),
-        "armor":   load_equipped(request.args.get("armor")),
-        "special": load_equipped(request.args.get("special")),
+        "weapon": load_equipped(request.args.get("weapon")),
+        "armor": load_equipped(request.args.get("armor")),
+        "special": specials[0] if specials else None,
+        "specials": specials,
     }
     derived = _calc_derived_stats(player, equipped, settings)
     return jsonify(derived)
@@ -400,8 +454,12 @@ def handle_equip(player_id: int, payload: dict) -> dict:
     slot_col = {
         "WEAPON":  "equipped_weapon_id",
         "ARMOR":   "equipped_armor_id",
-        "SPECIAL": "equipped_special_id",
     }.get(inv["item_type"])
+    if inv["item_type"] == "SPECIAL":
+        unlocked = SPECIAL_SLOT_COLUMNS[:unlocked_special_slots(player["level"])]
+        if inv_id in [player.get(column) for column in unlocked]:
+            return {"success": True, "hp": None}
+        slot_col = next((column for column in unlocked if not player.get(column)), unlocked[0])
     if slot_col is None:
         raise ValueError("Unknown item type.")
 
@@ -410,7 +468,8 @@ def handle_equip(player_id: int, payload: dict) -> dict:
             f"UPDATE players SET {slot_col} = ? WHERE id = ?",
             (inv_id, player_id)
         )
-    return {"success": True}
+    hp = clamp_player_hp_to_max(player_id)
+    return {"success": True, "hp": hp}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -439,6 +498,9 @@ def handle_unequip(player_id: int, payload: dict) -> dict:
         "weapon":  "equipped_weapon_id",
         "armor":   "equipped_armor_id",
         "special": "equipped_special_id",
+        "special1": "equipped_special_id",
+        "special2": "equipped_special_2_id",
+        "special3": "equipped_special_3_id",
     }.get(slot)
     if not slot_col:
         raise ValueError("Invalid slot.")
@@ -448,7 +510,8 @@ def handle_unequip(player_id: int, payload: dict) -> dict:
             f"UPDATE players SET {slot_col} = NULL WHERE id = ?",
             (player_id,)
         )
-    return {"success": True}
+    hp = clamp_player_hp_to_max(player_id)
+    return {"success": True, "hp": hp}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -488,7 +551,7 @@ def handle_drop_item(player_id: int, payload: dict) -> dict:
     # Cannot drop equipped items
     equipped = {player.get("equipped_weapon_id"),
                 player.get("equipped_armor_id"),
-                player.get("equipped_special_id")}
+                *equipped_special_ids(player, unlocked_only=False)}
     if inv_id in equipped:
         raise ValueError("Unequip the item before dropping it.")
 

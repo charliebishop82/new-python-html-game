@@ -3,7 +3,6 @@
 # Run with: flask --app admin:create_admin_app run --port 5001
 # Localhost only — never expose publicly.
 
-import math
 import json
 import logging
 import os
@@ -19,7 +18,8 @@ from werkzeug.security import generate_password_hash
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, init_db, close_db,
-                      get_all_settings, reconcile_combat_state)
+                      get_all_settings, reconcile_combat_state,
+                      calculate_max_hp, calculate_daily_ap)
 
 logger = logging.getLogger(__name__)
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
@@ -780,7 +780,9 @@ def admin_health():
         "orphan_equipment": execute_one("""SELECT COUNT(*) cnt FROM players p WHERE
             (p.equipped_weapon_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_weapon_id AND i.player_id=p.id)) OR
             (p.equipped_armor_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_armor_id AND i.player_id=p.id)) OR
-            (p.equipped_special_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_special_id AND i.player_id=p.id))""")["cnt"],
+            (p.equipped_special_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_special_id AND i.player_id=p.id)) OR
+            (p.equipped_special_2_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_special_2_id AND i.player_id=p.id)) OR
+            (p.equipped_special_3_id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM inventory_items i WHERE i.id=p.equipped_special_3_id AND i.player_id=p.id))""")["cnt"],
         "special_mismatches": execute_one("""SELECT COUNT(*) cnt FROM special_item_registry r
             WHERE (r.status='IN_INVENTORY' AND (r.current_owner_player_id IS NULL OR r.inventory_item_id IS NULL))
                OR (r.status='IN_POOL' AND (r.current_owner_player_id IS NOT NULL OR r.inventory_item_id IS NOT NULL))""")["cnt"],
@@ -1084,7 +1086,8 @@ def admin_ban(pid: int):
         release_player_auctions(pid)
         execute_write("UPDATE players SET is_banned = 1, credits = 0, in_combat = 0, "
                       "equipped_weapon_id = NULL, equipped_armor_id = NULL, "
-                      "equipped_special_id = NULL WHERE id = ?", (pid,))
+                      "equipped_special_id = NULL, equipped_special_2_id=NULL, "
+                      "equipped_special_3_id=NULL WHERE id = ?", (pid,))
 
         # Return any special items to pool
         specials = execute(
@@ -1144,10 +1147,12 @@ def admin_retire_player(pid: int):
                    inventory_item_id=NULL,last_released_method='PLAYER_RETIRED',updated_at=?
                    WHERE special_item_id=?""", (now, item["item_id"])
             )
-        execute_write("UPDATE players SET equipped_special_id=NULL WHERE id=?", (pid,))
+        execute_write("""UPDATE players SET equipped_special_id=NULL,
+                      equipped_special_2_id=NULL,equipped_special_3_id=NULL WHERE id=?""", (pid,))
         execute_write("DELETE FROM inventory_items WHERE player_id=? AND item_type='SPECIAL'", (pid,))
         execute_write(
-            """UPDATE players SET retired_at=?,is_banned=1,in_combat=0,equipped_special_id=NULL
+            """UPDATE players SET retired_at=?,is_banned=1,in_combat=0,equipped_special_id=NULL,
+               equipped_special_2_id=NULL,equipped_special_3_id=NULL
                WHERE id=?""", (now, pid)
         )
         execute_write("UPDATE npc_profiles SET enabled=0,retired=1 WHERE player_id=?", (pid,))
@@ -1443,8 +1448,10 @@ def admin_npc_remove(pid: int, inv_id: int):
         execute_write(
             """UPDATE players SET equipped_weapon_id=CASE WHEN equipped_weapon_id=? THEN NULL ELSE equipped_weapon_id END,
                equipped_armor_id=CASE WHEN equipped_armor_id=? THEN NULL ELSE equipped_armor_id END,
-               equipped_special_id=CASE WHEN equipped_special_id=? THEN NULL ELSE equipped_special_id END WHERE id=?""",
-            (inv_id, inv_id, inv_id, pid)
+               equipped_special_id=CASE WHEN equipped_special_id=? THEN NULL ELSE equipped_special_id END,
+               equipped_special_2_id=CASE WHEN equipped_special_2_id=? THEN NULL ELSE equipped_special_2_id END,
+               equipped_special_3_id=CASE WHEN equipped_special_3_id=? THEN NULL ELSE equipped_special_3_id END WHERE id=?""",
+            (inv_id, inv_id, inv_id, inv_id, inv_id, pid)
         )
         if item["item_type"] == "SPECIAL":
             execute_write(
@@ -1479,8 +1486,9 @@ def _create_npc(form) -> int:
     stat_names = ("str", "end", "agi", "lck", "per")
     stats = [1 + cls[f"{stat}_bonus"] + alloc[i] + identity_bonus[stat]
              for i, stat in enumerate(stat_names)]
-    max_hp = 10 + stats[1] + 5 * level
-    current_ap = get_all_settings().get("BASE_DAILY_AP", cfg.BASE_DAILY_AP) + math.floor(stats[1] / 2)
+    settings = get_all_settings()
+    max_hp = calculate_max_hp(level, stats[1], settings)
+    current_ap = calculate_daily_ap(stats[1], settings=settings)["effective"]
     slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_") or "npc"
     username = f"npc_{slug}_{uuid.uuid4().hex[:6]}"
     email = f"{username}@npc.local"
@@ -1584,9 +1592,11 @@ def admin_config():
                 error = f"{constant} must be a whole number of at least {minimum}."
                 constant = ""
         if constant in {"TAVERN_CREDITS_PER_HP", "TAVERN_MIN_COST",
-                        "INVENTORY_LIMIT", "INVENTORY_STR_DIVISOR"}:
+                        "INVENTORY_LIMIT", "INVENTORY_STR_DIVISOR",
+                        "TRICKLE_AP_AMOUNT", "TRICKLE_AP_INTERVAL_HOURS"}:
             minimums = {"TAVERN_CREDITS_PER_HP": 0, "TAVERN_MIN_COST": 0,
-                        "INVENTORY_LIMIT": 3, "INVENTORY_STR_DIVISOR": 1}
+                        "INVENTORY_LIMIT": 3, "INVENTORY_STR_DIVISOR": 1,
+                        "TRICKLE_AP_AMOUNT": 0, "TRICKLE_AP_INTERVAL_HOURS": 1}
             try:
                 numeric_value = int(value)
                 if numeric_value < minimums[constant]:

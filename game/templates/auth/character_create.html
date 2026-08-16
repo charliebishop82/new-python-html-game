@@ -43,7 +43,7 @@
         </section>
 
         <section class="form-section creation-step">
-            <div class="creation-step-heading"><span>2</span><div><h3>Choose Class <em>Permanent</em></h3><p>Your class immediately adds the listed bonuses to your five base statistics.</p></div></div>
+            <div class="creation-step-heading"><span>2</span><div><h3>Choose Class <em>Permanent</em></h3><p>Your class adds the listed base statistics and permanent specialty bonuses.</p></div></div>
             <div id="class-list">
                 {% for cls in classes %}
                 <label class="class-option {% if class_id == cls.id %}selected{% endif %}"
@@ -60,6 +60,19 @@
                         {% if cls.lck_bonus %}+{{ cls.lck_bonus }} LCK {% endif %}
                         {% if cls.per_bonus %}+{{ cls.per_bonus }} PER {% endif %}
                         {% if not (cls.str_bonus or cls.end_bonus or cls.agi_bonus or cls.lck_bonus or cls.per_bonus) %}No class stat bonuses{% endif %}
+                    </span>
+                    <span class="class-bonuses class-passives">
+                        <strong>Specialty:</strong>
+                        {% if cls.bonus_damage_amount %}+{{ cls.bonus_damage_amount }} weapon damage · {% endif %}
+                        {% if cls.crit_dmg_multiplier %}+{{ (cls.crit_dmg_multiplier * 100)|round|int }}% critical damage · {% endif %}
+                        {% if cls.initiative_bonus %}+{{ cls.initiative_bonus }} Initiative · {% endif %}
+                        {% if cls.crit_chance_bonus %}+{{ (cls.crit_chance_bonus * 100)|round|int }}% critical chance · {% endif %}
+                        {% if cls.observe_bonus %}+{{ cls.observe_bonus }} Observe · {% endif %}
+                        {% if cls.encounter_bonus %}+{{ (cls.encounter_bonus * 100)|round|int }}% favorable encounters · {% endif %}
+                        {% if cls.ac_bonus %}+{{ cls.ac_bonus }} AC · {% endif %}
+                        {% if cls.durability_reduction %}{{ (cls.durability_reduction * 100)|round|int }}% durability protection · {% endif %}
+                        {% if cls.steal_bonus %}+{{ (cls.steal_bonus * 100)|round|int }}% Steal · {% endif %}
+                        {% if cls.shop_discount %}+{{ (cls.shop_discount * 100)|round|int }}% shop discount{% endif %}
                     </span>
                     {% if cls.description %}
                     <span class="class-desc">{{ cls.description }}</span>

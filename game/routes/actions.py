@@ -12,7 +12,8 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings, get_player,
-                      get_player_bonus_profile, encumbered_ap_cost, tavern_quote)
+                      get_player_bonus_profile, encumbered_ap_cost, tavern_quote,
+                      calculate_max_hp, calculate_passive_regen)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 from combat import engine, flavour
@@ -83,13 +84,12 @@ def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict
     cost = encumbered_ap_cost(player, cost, settings)
     # AP-triggered healing and its HP cap use the same effective END as combat.
     player = combat_actions.apply_equipped_stat_bonuses(player)
-    ap_regen    = settings.get("AP_PASSIVE_HP_REGEN",   cfg.AP_PASSIVE_HP_REGEN)
-    end_divisor = settings.get("END_HP_REGEN_DIVISOR",  cfg.END_HP_REGEN_DIVISOR)
-    hp_regen    = ap_regen + math.floor(player["end_stat"] / end_divisor)
-
-    hp_regen += int(get_player_bonus_profile(player_id).get("hp_regen_bonus", 0) or 0)
-
-    max_hp = 10 + player["end_stat"] + (5 * player["level"])
+    bonus_profile = get_player_bonus_profile(player_id)
+    hp_regen = calculate_passive_regen(
+        player["end_stat"], int(bonus_profile.get("hp_regen_bonus", 0) or 0),
+        settings,
+    )
+    max_hp = calculate_max_hp(player["level"], player["end_stat"], settings)
     charged_ap = min(player["current_ap"], cost) if allow_interruption_shortfall else cost
     new_ap = max(0, player["current_ap"] - charged_ap)
     new_hp = min(player["current_hp"] + hp_regen, max_hp)
@@ -234,7 +234,6 @@ def _apply_random_event(player_id: int, player: dict, event: dict, settings: dic
             )
 
         elif effect == "HP_LOSS":
-            max_hp = 10 + player["end_stat"] + (5 * player["level"])
             new_hp = max(1, player["current_hp"] + amount)  # amount is negative
             execute_write("UPDATE players SET current_hp = ? WHERE id = ?", (new_hp, player_id))
 

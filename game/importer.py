@@ -520,7 +520,19 @@ def _map_class(r: dict) -> dict:
     return {
         "str_bonus": _i(r.get("STR")), "end_bonus": _i(r.get("END")),
         "agi_bonus": _i(r.get("AGI")), "lck_bonus": _i(r.get("LCK")),
-        "per_bonus": _i(r.get("PER")), "description": _s(r.get("Description")),
+        "per_bonus": _i(r.get("PER")),
+        "initiative_bonus": _i(r.get("InitiativeBonus")),
+        "crit_chance_bonus": _f(r.get("CritChanceBonus")),
+        "crit_dmg_multiplier": _f(r.get("CritDamageMultiplier")),
+        "ac_bonus": _i(r.get("ACBonus")),
+        "bonus_damage_amount": _i(r.get("BonusDamageAmount")),
+        "bonus_damage_type": _s(r.get("BonusDamageType")),
+        "observe_bonus": _i(r.get("ObserveBonus")),
+        "encounter_bonus": _f(r.get("EncounterBonus")),
+        "durability_reduction": _f(r.get("DurabilityReduction")),
+        "steal_bonus": _f(r.get("StealBonus")),
+        "shop_discount": _f(r.get("ShopDiscount")),
+        "description": _s(r.get("Description")),
     }
 
 

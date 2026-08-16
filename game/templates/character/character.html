@@ -51,14 +51,14 @@
             <h3 style="color:var(--amber);margin:14px 0 10px;">Utility &amp; Economy</h3>
             <table>
                 <tr><td data-help-key="inventory limit">Inventory Limit</td><td id="d-invlimit">{{ derived.inv_limit }}</td></tr>
-                <tr><td data-help-key="daily ap">Daily AP</td><td id="d-ap">{{ derived.daily_ap }}</td></tr>
+                <tr><td data-help-key="daily ap">Daily AP</td><td id="d-ap">{{ derived.daily_ap }}{% if derived.daily_ap_capped %} <small>(raw {{ derived.daily_ap_after_curse }}, capped at {{ derived.daily_ap_cap }})</small>{% elif derived.daily_ap_cursed %} <small>(raw {{ derived.daily_ap_raw }}, curse-adjusted)</small>{% endif %}</td></tr>
                 <tr><td data-help-key="hp regen/ap">HP Regen/AP</td><td id="d-regen">{{ derived.passive_regen }}</td></tr>
                 <tr><td>Brace Healing</td><td>{{ derived.brace_heal_pct }}% of missing HP</td></tr>
                 <tr><td>Tavern Healing</td><td>{{ derived.tavern_heal_pct }}% of missing HP · {{ derived.tavern_per_hp }} CR/HP · {{ derived.tavern_min_cost }} CR minimum</td></tr>
                 <tr><td data-help-key="shop discount">Shop Discount</td><td id="d-discount">{{ derived.shop_discount_pct }}%</td></tr>
                 <tr><td data-help-key="sell bonus">Sell Bonus</td><td>{{ derived.sell_bonus_pct }}%</td></tr>
                 <tr><td data-help-key="xp reward bonus">XP Reward Bonus</td><td>{{ derived.xp_multiplier_pct }}%</td></tr>
-                <tr><td data-help-key="credit reward bonus">Credit Reward Bonus</td><td>{{ derived.credit_multiplier_pct }}%</td></tr>
+                <tr><td data-help-key="credit reward bonus">Generated Credit Reward Bonus</td><td>{{ derived.credit_multiplier_pct }}%</td></tr>
                 <tr><td data-help-key="durability protection">Durability Protection</td><td>{{ derived.durability_reduction_pct }}%</td></tr>
                 <tr><td data-help-key="encounter bonus">Encounter Bonus</td><td>{{ derived.encounter_bonus_pct }}%</td></tr>
             </table>
@@ -84,7 +84,7 @@
             </form>
 
             <h3 style="color:var(--amber);margin:14px 0 10px;">Equipped <a href="{{ url_for('character.equipment') }}" style="font-size:10px;">MANAGE</a></h3>
-            {% for slot, item in equipped.items() %}
+            {% for slot, item in [('weapon', equipped.weapon), ('armor', equipped.armor)] %}
             <div style="margin-bottom:8px;padding:6px;background:var(--bg-input);border:1px solid var(--border);">
                 <span style="color:var(--grey);font-size:11px;">{{ slot|upper }}</span>
                 {% if item %}
@@ -126,6 +126,23 @@
                 <span class="active-effect-duration">Chosen at Level {{ perk.level_chosen }}</span>
             </div>
             {% endfor %}
+            {% for special_slot in special_slots %}
+            {% set item = special_slot.item %}
+            <div style="margin-bottom:8px;padding:6px;background:var(--bg-input);border:1px solid var(--border);">
+                <span style="color:var(--grey);font-size:11px;">SPECIAL {{ special_slot.number }}</span>
+                {% if not special_slot.unlocked %}
+                <div style="color:var(--dim)">— unlocks at level {{ special_slot.unlock_level }} —</div>
+                {% elif item %}
+                <div>{{ item.name }} <span style="color:var(--grey);font-size:11px;">({{ item.current_durability }}%)</span></div>
+                {% if item.description %}<p class="item-description">{{ item.description }}</p>{% endif %}
+                {% include "fragments/item_combat_stats.html" %}
+                <form method="POST" action="{{ url_for('character.unequip') }}" style="display:inline">
+                    <input type="hidden" name="slot" value="{{ special_slot.slot }}">
+                    <button type="submit" class="btn-small">Unequip</button>
+                </form>
+                {% else %}<div style="color:var(--dim)">— empty —</div>{% endif %}
+            </div>
+            {% endfor %}
         </div>
         {% else %}<p class="active-effects-empty">Your first perk choice arrives at Level 3.</p>{% endif %}
     </section>
@@ -145,7 +162,14 @@
             <div class="active-effect {{ 'effect-good' if effect.is_good else 'effect-bad' }}">
                 <span>{{ effect.description }}</span>
                 <span class="active-effect-duration">Until {{ effect.expires }}</span>
-            </div>
+    </div>
+
+    <section class="active-effects-panel" aria-labelledby="class-passives-title">
+        <h3 id="class-passives-title">{{ class_info.name or 'Class' }} Passives</h3>
+        <p>{{ class_info.description }}</p>
+        {% set item = class_info %}{% include "fragments/item_combat_stats.html" %}
+        {% if class_info.observe_bonus %}<span class="bonus">Observe +{{ class_info.observe_bonus }}</span>{% endif %}
+    </section>
             {% endfor %}
         </div>
         {% else %}

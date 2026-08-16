@@ -26,7 +26,9 @@ if not os.environ.get("GAME_SECRET_KEY"):
     )
 
 from app import create_app
-app = create_app()
+# Directly running this script grants the configured AP trickle once, then the
+# scheduler begins its configured interval from this server start.
+app = create_app(award_startup_trickle=__name__ == "__main__")
 
 if __name__ == "__main__":
     # Bind the player application to every local network interface so another

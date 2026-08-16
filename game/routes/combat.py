@@ -396,9 +396,8 @@ def _apply_end_of_round(session_id: int, state: dict, settings: dict):
     - Special item durability loss (both sides)
     - Expire END_OF_ROUND combat buffs"""
     with exclusive_transaction():
-        # Attacker special item
-        att_special = state["attacker_equipped"].get("special")
-        if att_special:
+        # Every unlocked equipped special shares the normal per-round wear.
+        for att_special in state["attacker_equipped"].get("specials", []):
             loss_pts = engine.calc_special_item_round_loss(
                 state["attacker_equipped"].get("bonuses")
             )
@@ -416,8 +415,7 @@ def _apply_end_of_round(session_id: int, state: dict, settings: dict):
 
         # Defender special item (PvP only)
         if state["session"]["combat_type"] == "PVP" and state.get("defender_equipped"):
-            def_special = state["defender_equipped"].get("special")
-            if def_special:
+            for def_special in state["defender_equipped"].get("specials", []):
                 loss_pts = engine.calc_special_item_round_loss(
                     state["defender_equipped"].get("bonuses")
                 )

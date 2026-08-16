@@ -39,6 +39,26 @@
 </section>
 
 <section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
+    <h2 style="margin-top:0;">Action Point Trickle</h2>
+    <p style="color:#777;margin-bottom:12px;">Starting the player server awards one trickle immediately. Further awards use this interval and never raise a character above the AP cap. Restart the player server after changing the interval; amount changes are read at the next award.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;">
+        {% for name,label,minimum,fallback,help_text in [
+            ('TRICKLE_AP_AMOUNT','AP awarded each time',0,1,'Applied equally to players and NPCs. Set to zero to pause trickle gains.'),
+            ('TRICKLE_AP_INTERVAL_HOURS','Hours between awards',1,1,'The counter begins when the player server starts.')
+        ] %}
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="{{ name }}">
+            <label title="{{ help_text }}">{{ label }}</label><br>
+            <input type="number" name="value" min="{{ minimum }}" step="1"
+                   value="{{ settings_map.get(name, fallback) }}" style="width:95px;">
+            <button type="submit" class="btn">Save</button>
+            <div style="color:#777;font-size:11px;margin-top:5px;">{{ help_text }}</div>
+        </form>
+        {% endfor %}
+    </div>
+</section>
+
+<section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
     <h2 style="margin-top:0;">Encounter Selection &amp; Action Interruptions</h2>
     <p style="color:#777;margin-bottom:12px;">The level ceiling limits boss and interruption-minion selection. After an interruption triggers, d20 + half effective Luck + encounter bonuses determines whether it produces a protagonist reward or a minion.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;">

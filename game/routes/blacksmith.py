@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings, get_player,
-                      encumbered_ap_cost)
+                      encumbered_ap_cost, equipped_special_ids)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 import config_defaults as cfg
@@ -132,7 +132,7 @@ def _get_repairable_items(player: dict, settings: dict) -> list[dict]:
         equipped = inv["id"] in {
             player.get("equipped_weapon_id"),
             player.get("equipped_armor_id"),
-            player.get("equipped_special_id"),
+            *equipped_special_ids(player, unlocked_only=False),
         }
         result.append({
             **inv, **detail,
@@ -213,7 +213,7 @@ def handle_blacksmith_repair(player_id: int, payload: dict) -> dict:
     equipped_ids = {
         player.get("equipped_weapon_id"),
         player.get("equipped_armor_id"),
-        player.get("equipped_special_id"),
+        *equipped_special_ids(player, unlocked_only=False),
     } - {None}
 
     to_repair = []

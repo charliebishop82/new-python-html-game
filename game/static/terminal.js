@@ -415,6 +415,12 @@ async function pollPlayerStatus() {
         const state = await response.json();
         setEl('status-hp', state.hp); setEl('status-maxhp', state.max_hp);
         setEl('status-ap', state.ap); setEl('status-maxap', state.max_ap);
+        setEl('status-inventory-count', state.inventory_count);
+        setEl('status-inventory-limit', state.inventory_limit);
+        setEl('status-ac', state.ac);
+        setEl('status-damage-min', state.damage_min);
+        setEl('status-damage-max', state.damage_max);
+        setEl('status-damage-types', (state.damage_types || []).join('/'));
         setEl('mobile-status-hp', state.hp); setEl('mobile-status-maxhp', state.max_hp);
         setEl('mobile-status-ap', state.ap); setEl('mobile-status-maxap', state.max_ap);
         setEl('status-level', state.level); setEl('status-xp', state.xp);

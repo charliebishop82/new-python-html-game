@@ -13,7 +13,8 @@ from combat import engine
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player, get_player_equipped,
                       get_player_bonus_profile, reconcile_combat_state,
-                      encumbered_ap_cost, tavern_quote)
+                      encumbered_ap_cost, tavern_quote, equipped_special_ids,
+                      SPECIAL_SLOT_COLUMNS, unlocked_special_slots)
 from queue_handler import enqueue_and_process, register_handler
 
 logger = logging.getLogger(__name__)
@@ -396,7 +397,8 @@ def retire_npc(player_id: int):
                    inventory_item_id=NULL,last_released_method='NPC_RETIRED',updated_at=?
                    WHERE special_item_id=?""", (now, item["item_id"])
             )
-        execute_write("UPDATE players SET equipped_special_id=NULL WHERE id=?", (player_id,))
+        execute_write("""UPDATE players SET equipped_special_id=NULL,
+                      equipped_special_2_id=NULL,equipped_special_3_id=NULL WHERE id=?""", (player_id,))
         execute_write("DELETE FROM inventory_items WHERE player_id=? AND item_type='SPECIAL'", (player_id,))
         execute_write("UPDATE npc_profiles SET enabled=0,retired=1 WHERE player_id=?", (player_id,))
         execute_write("UPDATE players SET in_combat=0,is_banned=1 WHERE id=?", (player_id,))
@@ -821,11 +823,12 @@ def _maybe_repair(player: dict, profile: dict):
     equipped = [
         player.get("equipped_weapon_id"),
         player.get("equipped_armor_id"),
-        player.get("equipped_special_id"),
+        *equipped_special_ids(player, unlocked_only=False),
     ]
+    placeholders = ",".join("?" for _ in equipped)
     damaged = execute(
-        """SELECT id,item_type,item_id,current_durability
-           FROM inventory_items WHERE player_id=? AND id IN (?,?,?)
+        f"""SELECT id,item_type,item_id,current_durability
+           FROM inventory_items WHERE player_id=? AND id IN ({placeholders})
            AND current_durability < 100""",
         (player["id"], *(inv_id or -1 for inv_id in equipped))
     )
@@ -872,10 +875,11 @@ def _maybe_repair(player: dict, profile: dict):
                       f"no endangered item is affordable with {player['credits']} credits")
             if endangered_special:
                 with exclusive_transaction():
-                    execute_write(
-                        "UPDATE players SET equipped_special_id=NULL WHERE id=? AND equipped_special_id=?",
-                        (player["id"], endangered_special["id"])
-                    )
+                    for column in SPECIAL_SLOT_COLUMNS:
+                        execute_write(
+                            f"UPDATE players SET {column}=NULL WHERE id=? AND {column}=?",
+                            (player["id"], endangered_special["id"])
+                        )
                 return (reason,
                         f"Protected critically worn special at {endangered_special['current_durability']}% by unequipping it.")
             _log(player["id"], "REPAIR_BLOCKED", reason,
@@ -935,7 +939,7 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
         if vendor_balance <= 0:
             return None
         equipped = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
-                    player.get("equipped_special_id")} - {None}
+                    *equipped_special_ids(player, unlocked_only=False)} - {None}
         candidates = [item for item in owned if item["inv_id"] not in equipped]
         if profile["hoarder"] >= 50:
             non_specials = [item for item in candidates if item["item_type"] != "SPECIAL"]
@@ -962,7 +966,7 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
             inv_count >= max(3, player["inventory_limit"] - 2) and
             random.random() < 0.20):
         equipped = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
-                    player.get("equipped_special_id")} - {None}
+                    *equipped_special_ids(player, unlocked_only=False)} - {None}
         obsolete = []
         for kind in ("WEAPON", "ARMOR"):
             category = [item for item in owned if item["item_type"] == kind]
@@ -986,7 +990,7 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
         "NPC_UPGRADE_MIN_UNEQUIPPED", cfg.NPC_UPGRADE_MIN_UNEQUIPPED
     )))
     equipped_now = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
-                    player.get("equipped_special_id")} - {None}
+                    *equipped_special_ids(player, unlocked_only=False)} - {None}
     unequipped_count = sum(item["inv_id"] not in equipped_now for item in owned)
     # Once an NPC has accumulated the configured number of spare items it
     # actively checks for a liquidation-funded upgrade every turn. With fewer
@@ -1017,17 +1021,18 @@ def _maybe_manage_inventory(player: dict, profile: dict, settings: dict):
         return None
 
     current_scores = {kind: 0.0 for kind in ("WEAPON", "ARMOR", "SPECIAL")}
-    equipped_ids = {"WEAPON": player.get("equipped_weapon_id"),
-                    "ARMOR": player.get("equipped_armor_id"),
-                    "SPECIAL": player.get("equipped_special_id")}
+    equipped_ids = {"WEAPON": {player.get("equipped_weapon_id")},
+                    "ARMOR": {player.get("equipped_armor_id")},
+                    "SPECIAL": set(equipped_special_ids(player, unlocked_only=False))}
     for item in owned:
-        if item["inv_id"] == equipped_ids[item["item_type"]]:
-            current_scores[item["item_type"]] = item["score"]
+        if item["inv_id"] in equipped_ids[item["item_type"]]:
+            current_scores[item["item_type"]] = max(current_scores[item["item_type"]], item["score"])
 
     minimum_improvement = max(0.0, float(settings.get(
         "NPC_UPGRADE_MIN_IMPROVEMENT", cfg.NPC_UPGRADE_MIN_IMPROVEMENT
     )))
-    unequipped = [item for item in owned if item["inv_id"] not in set(equipped_ids.values())]
+    equipped_flat = set().union(*equipped_ids.values()) - {None}
+    unequipped = [item for item in owned if item["inv_id"] not in equipped_flat]
     # Planned liquidation uses ordinary gear only. Specials remain protected,
     # especially for hoarders, unless the existing full-inventory rule must
     # make room and no other legal item is available.
@@ -1125,7 +1130,7 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
         "NPC_UPGRADE_MIN_UNEQUIPPED", cfg.NPC_UPGRADE_MIN_UNEQUIPPED
     )))
     equipped_ids = {player.get("equipped_weapon_id"), player.get("equipped_armor_id"),
-                    player.get("equipped_special_id")} - {None}
+                    *equipped_special_ids(player, unlocked_only=False)} - {None}
     all_unequipped = execute(
         """SELECT * FROM inventory_items ii WHERE player_id=?
            AND NOT EXISTS(SELECT 1 FROM auction_listings a
@@ -1149,12 +1154,9 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
     price = _discounted_shop_price(player, listing["price"])
     reserve = max(0, int(payload.get("credit_reserve", 0)))
     sell_pct = settings.get("SELL_PRICE_PERCENT", cfg.SELL_PRICE_PERCENT)
-    equipped_special = _load_item_detail("SPECIAL", execute_one(
-        "SELECT item_id FROM inventory_items WHERE id=?", (player.get("equipped_special_id") or -1,)
-    )["item_id"]) if player.get("equipped_special_id") and execute_one(
-        "SELECT item_id FROM inventory_items WHERE id=?", (player["equipped_special_id"],)
-    ) else None
-    final_sell_pct = min(1.0, sell_pct + float((equipped_special or {}).get("sell_bonus", 0) or 0))
+    final_sell_pct = min(1.0, sell_pct + float(
+        get_player_bonus_profile(player_id).get("sell_bonus", 0) or 0
+    ))
     sale_details = []
     proceeds = 0
     for inv in sale_rows:
@@ -1214,8 +1216,11 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
                    WHERE special_item_id=?""",
                 (player_id, new_inv_id, datetime.utcnow().isoformat(), listing["item_id"])
             )
-        slot = {"WEAPON": "equipped_weapon_id", "ARMOR": "equipped_armor_id",
-                "SPECIAL": "equipped_special_id"}[listing["item_type"]]
+        if listing["item_type"] == "SPECIAL":
+            unlocked = SPECIAL_SLOT_COLUMNS[:unlocked_special_slots(player["level"])]
+            slot = next((column for column in unlocked if not player.get(column)), unlocked[0])
+        else:
+            slot = {"WEAPON": "equipped_weapon_id", "ARMOR": "equipped_armor_id"}[listing["item_type"]]
         execute_write(f"UPDATE players SET {slot}=? WHERE id=?", (new_inv_id, player_id))
         from shop_stock import enforce_player_sold_listing_cap
         expired = enforce_player_sold_listing_cap(settings)
@@ -1419,13 +1424,12 @@ def _run_npc_minion_interruption(player: dict, profile: dict, settings: dict) ->
 
 
 def _equip_best_items(player_id: int, profile: dict) -> list[str]:
-    """Equip the best owned weapon, armor, and special for this NPC's build."""
+    """Equip the best owned weapon, armor, and every unlocked special slot."""
     player = get_player(player_id)
     if not player:
         return []
     items = _load_scored_inventory(player, profile)
-    fields = {"WEAPON": "equipped_weapon_id", "ARMOR": "equipped_armor_id",
-              "SPECIAL": "equipped_special_id"}
+    fields = {"WEAPON": "equipped_weapon_id", "ARMOR": "equipped_armor_id"}
     updates, changes = {}, []
     for item_type, field in fields.items():
         choices = [item for item in items if item["item_type"] == item_type]
@@ -1436,6 +1440,16 @@ def _equip_best_items(player_id: int, profile: dict) -> list[str]:
         if player.get(field) != best["inv_id"]:
             updates[field] = best["inv_id"]
             changes.append(f"{item_type.lower()}: {best['name']}")
+    special_choices = sorted(
+        (item for item in items if item["item_type"] == "SPECIAL"),
+        key=lambda item: (item["score"], item["current_durability"], item["credit_cost"]),
+        reverse=True,
+    )
+    for column, best in zip(SPECIAL_SLOT_COLUMNS[:unlocked_special_slots(player["level"])],
+                            special_choices):
+        if player.get(column) != best["inv_id"]:
+            updates[column] = best["inv_id"]
+            changes.append(f"special: {best['name']}")
     if updates:
         with exclusive_transaction():
             for field, inv_id in updates.items():
@@ -1523,7 +1537,7 @@ def _discounted_shop_price(player: dict, listed_price: int) -> int:
     """Mirror the Shop's PER and equipped-special discount calculation."""
     settings = get_all_settings()
     equipped = get_player_equipped(player)
-    profile = get_player_bonus_profile(player["id"], equipped.get("special"))
+    profile = get_player_bonus_profile(player["id"], equipped.get("specials", []))
     effective_per = (player["per_stat"] +
                      int((equipped.get("weapon") or {}).get("per_bonus", 0) or 0) +
                      int((equipped.get("armor") or {}).get("per_bonus", 0) or 0) +
@@ -1537,6 +1551,16 @@ def _discounted_shop_price(player: dict, listed_price: int) -> int:
 def _finish_turn(profile: dict, decision: str, reason: str, result) -> dict:
     """Provide the internal finish turn operation used by this module."""
     _assign_pending_levelup(profile["player_id"], profile)
+    # A completed action can award enough XP to reach level 8 or 16.  Fill any
+    # newly unlocked special slots immediately instead of leaving the NPC with
+    # an incomplete loadout until its next scheduled turn.  This uses the same
+    # item scoring and slot rules as the normal start-of-turn equipment check.
+    equipment_changes = _equip_best_items(profile["player_id"], profile)
+    if equipment_changes:
+        _log(
+            profile["player_id"], "EQUIP", "Filled or improved unlocked equipment slots",
+            ", ".join(equipment_changes),
+        )
     now = datetime.utcnow().isoformat()
     with exclusive_transaction():
         execute_write("""UPDATE npc_profiles SET last_action_at=?,

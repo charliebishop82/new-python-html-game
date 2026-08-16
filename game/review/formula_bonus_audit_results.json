@@ -152,7 +152,7 @@
           "maximum": 0.0
         }
       },
-      "gameplay_source_mentions": 9
+      "gameplay_source_mentions": 10
     },
     "ac_bonus": {
       "storage": {
@@ -373,7 +373,7 @@
           "maximum": 10
         }
       },
-      "gameplay_source_mentions": 11
+      "gameplay_source_mentions": 14
     },
     "hp_regen_bonus": {
       "storage": {
@@ -390,7 +390,7 @@
           "maximum": 8
         }
       },
-      "gameplay_source_mentions": 11
+      "gameplay_source_mentions": 13
     },
     "durability_reduction": {
       "storage": {
@@ -407,7 +407,7 @@
           "maximum": 0.0
         }
       },
-      "gameplay_source_mentions": 8
+      "gameplay_source_mentions": 9
     },
     "shop_discount": {
       "storage": {
@@ -458,7 +458,7 @@
           "maximum": 0.0
         }
       },
-      "gameplay_source_mentions": 8
+      "gameplay_source_mentions": 9
     }
   },
   "content": {

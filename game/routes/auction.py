@@ -7,6 +7,7 @@ from flask import Blueprint, g, redirect, render_template, request, session, url
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player, encumbered_ap_cost)
+from database import equipped_special_ids
 from queue_handler import enqueue_and_process, register_handler
 
 bp = Blueprint("auction", __name__)
@@ -49,15 +50,16 @@ def index():
     settle_expired_auctions()
     player_id = g.player["id"]
     listings = _active_listings()
+    equipped_specials = set(equipped_special_ids(g.player, unlocked_only=False))
     sellable = execute(
         """SELECT ii.id AS inv_id,ii.current_durability,si.name,si.description,si.credit_cost
            FROM inventory_items ii JOIN special_items si ON si.id=ii.item_id
            WHERE ii.player_id=? AND ii.item_type='SPECIAL' AND si.is_active=1
-             AND ii.id <> COALESCE((SELECT equipped_special_id FROM players WHERE id=?),-1)
              AND NOT EXISTS(SELECT 1 FROM auction_listings a
                             WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')
-           ORDER BY si.name""", (player_id, player_id)
+           ORDER BY si.name""", (player_id,)
     )
+    sellable = [item for item in sellable if item["inv_id"] not in equipped_specials]
     active_seller_count = execute_one(
         "SELECT COUNT(*) AS n FROM auction_listings WHERE seller_player_id=? AND status='ACTIVE'",
         (player_id,)
@@ -98,10 +100,10 @@ def handle_list(player_id: int, payload: dict) -> dict:
                WHERE ii.id=? AND ii.player_id=? AND ii.item_type='SPECIAL' AND si.is_active=1""",
             (inv_id, player_id)
         )
-        player = execute_one("SELECT equipped_special_id FROM players WHERE id=?", (player_id,))
+        player = execute_one("SELECT * FROM players WHERE id=?", (player_id,))
         if not item:
             raise ValueError("That special item is not available.")
-        if player["equipped_special_id"] == inv_id:
+        if inv_id in equipped_special_ids(player, unlocked_only=False):
             raise ValueError("Equipped items cannot be auctioned.")
         count = execute_one(
             "SELECT COUNT(*) AS n FROM auction_listings WHERE seller_player_id=? AND status='ACTIVE'",

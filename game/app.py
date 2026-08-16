@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from flask import Flask, session, redirect, url_for, g, request
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 import config_defaults as cfg
 from database import (get_db, close_db, init_db, get_player, get_all_settings, execute_one,
@@ -24,7 +25,7 @@ _AUTH_EXEMPT = {
 _LEVELUP_EXEMPT = {"auth.levelup", "auth.levelup_post", "auth.logout", "static"}
 
 
-def create_app() -> Flask:
+def create_app(award_startup_trickle: bool = False) -> Flask:
     """Handle the create app workflow."""
     app = Flask(__name__)
     app.secret_key = cfg.SECRET_KEY
@@ -51,7 +52,7 @@ def create_app() -> Flask:
     app.before_request(_check_levelup)
     app.before_request(_set_blackout_flag)
     _ensure_shop_populated(app)
-    _start_scheduler(app)
+    _start_scheduler(app, award_startup_trickle=award_startup_trickle)
 
     return app
 
@@ -113,8 +114,11 @@ def _context_processor() -> dict:
            JOIN players p ON p.id=q.player_id
            WHERE datetime(q.created_at)>=datetime('now','-5 minutes') AND p.is_banned=0"""
     )["cnt"]
+    from routes.character import get_player_combat_snapshot
+    sidebar_combat = get_player_combat_snapshot(player, settings)
     return {"player": player, "settings": settings,
-            "active_player_count": active_count}
+            "active_player_count": active_count,
+            "sidebar_combat": sidebar_combat}
 
 
 def _check_auth():
@@ -166,12 +170,22 @@ def _set_blackout_flag():
     g.blackout = (minutes_to_midnight <= blackout_mins)
 
 
-def _start_scheduler(app: Flask):
+def _start_scheduler(app: Flask, award_startup_trickle: bool = False):
     """Provide the internal start scheduler operation used by this module."""
     from scheduler import midnight_reset, ap_trickle
     from npc import run_due_npc_turns
     from world_boss import process_expired_rewards
     from routes.auction import settle_expired_auctions
+
+    # run.py requests one immediate award on each genuine game-server start.
+    # App factories used by tests and auxiliary tools do not silently alter AP.
+    if award_startup_trickle:
+        _run_with_context(app, ap_trickle)
+
+    with app.app_context():
+        trickle_hours = max(1, int(get_all_settings().get(
+            "TRICKLE_AP_INTERVAL_HOURS", cfg.TRICKLE_AP_INTERVAL_HOURS
+        )))
 
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(
@@ -182,7 +196,7 @@ def _start_scheduler(app: Flask):
     )
     scheduler.add_job(
         func=lambda: _run_with_context(app, ap_trickle),
-        trigger=CronTrigger(hour="3,9,15,21", minute=0, timezone="UTC"),
+        trigger=IntervalTrigger(hours=trickle_hours, timezone="UTC"),
         id="ap_trickle", name="AP Trickle",
         replace_existing=True, misfire_grace_time=300,
     )

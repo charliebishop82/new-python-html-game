@@ -109,7 +109,4 @@
     {% elif interrupted_action_cancelled %}
     <div class="term-line term-bad">Defeat cancelled your interrupted {{ interrupted_action_cancelled|replace('_', ' ')|lower }} action.</div>
     {% endif %}
-    <div class="combat-return-actions">
-        <a class="auth-btn" href="{{ url_for('dashboard.index') }}">Return to Dashboard</a>
-    </div>
 </div>
