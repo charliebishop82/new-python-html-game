@@ -14,7 +14,7 @@ from datetime import datetime
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player, get_player_equipped,
-                      get_player_perk_bonuses)
+                      get_player_perk_bonuses, spend_ap_and_regen)
 
 
 ATTRIBUTES = {"STR": "str_stat", "END": "end_stat", "AGI": "agi_stat",
@@ -90,7 +90,7 @@ def start_scene(player_id: int, scene_id: int | None = None) -> dict:
     if player["current_ap"] < cost:
         raise ValueError(f"Not enough AP to enter this scene (need {cost}).")
     with exclusive_transaction():
-        execute_write("UPDATE players SET current_ap=current_ap-? WHERE id=?", (cost, player_id))
+        spend_ap_and_regen(player_id, player, cost, get_all_settings())
         attempt_id = execute_write(
             "INSERT INTO scene_attempts(player_id,scene_id,status) VALUES(?,?,'CHOICE_PENDING')",
             (player_id, scene["id"]),
@@ -148,7 +148,11 @@ def resolve_choice(player_id: int, attempt_id: int, choice_id: int,
         (player_id, attempt["scene_id"], attempt_id),
     )
     first = succeeded and not previous_completion
-    xp = int(choice["success_xp"] if succeeded else 0) + (int(attempt["first_completion_xp"]) if first else 0)
+    roll_xp = max(0, int(get_all_settings().get(
+        "SUCCESSFUL_ROLL_XP", getattr(cfg, "SUCCESSFUL_ROLL_XP", 5)
+    ))) if succeeded else 0
+    xp = (int(choice["success_xp"] if succeeded else 0) +
+          (int(attempt["first_completion_xp"]) if first else 0) + roll_xp)
     credits = int(choice["success_credits"] if succeeded else 0) + (int(attempt["first_completion_credits"]) if first else 0)
     needs_combat = bool(not succeeded and choice["combat_on_failure"])
     status = "COMBAT_PENDING" if needs_combat else ("SUCCEEDED" if succeeded else "FAILED")

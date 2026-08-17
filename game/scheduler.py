@@ -35,6 +35,8 @@ def ap_trickle():
         )
     logger.info("ap_trickle: +%d AP to %d players at %s",
                 trickle, updated, datetime.utcnow().isoformat())
+    from merchant import maybe_start_merchant
+    maybe_start_merchant()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

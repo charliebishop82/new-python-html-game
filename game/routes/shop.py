@@ -11,7 +11,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, sessio
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings,
                       get_player_bonus_profile, get_player_equipped, get_player,
-                      encumbered_ap_cost, equipped_special_ids)
+                      encumbered_ap_cost, equipped_special_ids, spend_ap_and_regen)
 from queue_handler import enqueue_and_process, register_handler
 import config_defaults as cfg
 
@@ -100,8 +100,11 @@ def handle_shop_enter(player_id: int, payload: dict) -> dict:
         raise ValueError(f"Not enough AP. Need {ap_cost}.")
     charged_ap = min(player["current_ap"], ap_cost) if allow_shortfall else ap_cost
     with exclusive_transaction():
-        execute_write("UPDATE players SET current_ap=current_ap-? WHERE id=?", (charged_ap, player_id))
+        spent = spend_ap_and_regen(
+            player_id, player, ap_cost, settings, allow_shortfall
+        )
     return {"success": True, "ap_spent": charged_ap,
+            "hp_regenerated": spent["hp_regenerated"], "new_hp": spent["new_hp"],
             "interruption_commitment": allow_shortfall}
 
 @bp.route("/shop")
@@ -437,6 +440,9 @@ def handle_shop_sell(player_id: int, payload: dict) -> dict:
         (inv_id,)
     ):
         raise ValueError("That item is on auction hold and cannot be sold.")
+    from bounties import item_on_bounty_hold
+    if item_on_bounty_hold(inv_id):
+        raise ValueError("That item is held as a bounty prize and cannot be sold.")
 
     # Cannot sell equipped items
     equipped = {player.get("equipped_weapon_id"),

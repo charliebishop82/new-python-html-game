@@ -314,8 +314,6 @@ def _get_button_states(player: dict, settings: dict) -> dict:
         tavern_ok, tavern_reason = False, f'Need {ap_tavern} AP'
     elif credits < tavern_cost:
         tavern_ok, tavern_reason = False, f'Need {tavern_cost} credits'
-    elif current_hp >= max_hp:
-        tavern_ok, tavern_reason = False, 'Already at full health'
     else:
         tavern_ok, tavern_reason = True, None
 

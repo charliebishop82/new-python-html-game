@@ -87,7 +87,7 @@
             <div class="equipment-condition"><div class="durability"><span style="width:{{ item.current_durability }}%"></span></div>Durability {{ item.current_durability }}%</div>
             <div class="equipment-actions">
             {% if item.is_equipped %}<span class="equipped-badge">EQUIPPED</span>
-            {% elif item.is_on_auction %}<span class="equipped-badge">AUCTION HOLD</span>{% else %}
+            {% elif item.is_on_auction %}<span class="equipped-badge">AUCTION HOLD</span>{% elif item.is_on_bounty %}<span class="equipped-badge">BOUNTY ESCROW</span>{% else %}
                 <button type="button" class="btn-small preview-loadout"
                         data-inv-id="{{ item.inv_id }}" data-item-type="{{ item.item_type }}"
                         data-item-name="{{ item.name }}">Preview</button>

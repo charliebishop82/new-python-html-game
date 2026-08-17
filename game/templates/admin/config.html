@@ -39,6 +39,27 @@
 </section>
 
 <section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
+    <h2 style="margin-top:0;">Successful-Roll Experience</h2>
+    <p style="color:#777;margin-bottom:12px;">Rewards the first successful attack and defensive dodge in a fight, plus successful Observe and Escape checks. Steal keeps its separate XP award. Attack damage, initiative and critical rolls never pay twice.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;">
+        {% for name,label,minimum,fallback,help_text in [
+            ('SUCCESSFUL_ROLL_XP','XP per qualifying success',0,5,'Applied equally to players and NPCs.'),
+            ('COMBAT_MICRO_XP_CAP','Maximum per combat',0,15,'Prevents long encounters from becoming XP farms.'),
+            ('PVP_OPPONENT_ESCAPE_XP','XP when an opponent escapes',0,10,'Awarded to the other PvP participant regardless of who initiated the fight.')
+        ] %}
+        <form method="POST">
+            <input type="hidden" name="constant_name" value="{{ name }}">
+            <label title="{{ help_text }}">{{ label }}</label><br>
+            <input type="number" name="value" min="{{ minimum }}" step="1"
+                   value="{{ settings_map.get(name, fallback) }}" style="width:95px;">
+            <button type="submit" class="btn">Save</button>
+            <div style="color:#777;font-size:11px;margin-top:5px;">{{ help_text }}</div>
+        </form>
+        {% endfor %}
+    </div>
+</section>
+
+<section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
     <h2 style="margin-top:0;">Action Point Trickle</h2>
     <p style="color:#777;margin-bottom:12px;">Starting the player server awards one trickle immediately. Further awards use this interval and never raise a character above the AP cap. Restart the player server after changing the interval; amount changes are read at the next award.</p>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;">
@@ -125,9 +146,9 @@
         <input type="hidden" name="constant_name" value="SHOP_DAILY_VENDOR_CREDITS">
         <label title="Maximum credits the Shop can pay each player or NPC per UTC day.">Daily vendor credits per character</label><br>
         <input type="number" name="value" min="0" step="25"
-               value="{{ settings_map.get('SHOP_DAILY_VENDOR_CREDITS', 500) }}" style="width:110px;">
+               value="{{ settings_map.get('SHOP_DAILY_VENDOR_CREDITS', 2500) }}" style="width:110px;">
         <button type="submit" class="btn">Save</button>
-        <div style="color:#777;font-size:11px;margin-top:5px;">Recommended starting value: 500. A changed value takes full effect at the next midnight reset.</div>
+        <div style="color:#777;font-size:11px;margin-top:5px;">Default: 2500. A changed value takes full effect at the next midnight reset.</div>
     </form>
     <form method="POST">
         <input type="hidden" name="constant_name" value="SHOP_PLAYER_SOLD_LISTING_CAP">
@@ -137,6 +158,19 @@
         <button type="submit" class="btn">Save</button>
         <div style="color:#777;font-size:11px;margin-top:5px;">Recommended: 30. Set to 0 if sold items should leave the Shop immediately. Unique specials safely return to the loot pool when expired.</div>
     </form>
+    </div>
+</section>
+
+<section style="background:#111;border:1px solid #333;padding:14px;margin-bottom:20px;">
+    <h2 style="margin-top:0;">Traveling Merchant</h2>
+    <p style="color:#777;margin-bottom:12px;">A global arrival roll occurs after each AP trickle. Values such as 0.05 mean 5%.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">
+    {% for name,label,step,fallback in [
+        ('TRAVELING_MERCHANT_CHANCE','Arrival chance per trickle','0.01',0.05),
+        ('TRAVELING_MERCHANT_DURATION_HOURS','Duration in hours','1',6),
+        ('TRAVELING_MERCHANT_ITEM_COUNT','Special items offered','1',5),
+        ('TRAVELING_MERCHANT_MARKUP','Price markup','0.05',0.25)
+    ] %}<form method="POST"><input type="hidden" name="constant_name" value="{{ name }}"><label>{{ label }}</label><br><input type="number" name="value" min="0" step="{{ step }}" value="{{ settings_map.get(name,fallback) }}" style="width:95px;"><button type="submit" class="btn">Save</button></form>{% endfor %}
     </div>
 </section>
 

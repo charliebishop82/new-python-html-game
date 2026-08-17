@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import Blueprint, render_template, request, redirect, url_for, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings, get_player,
-                      encumbered_ap_cost, equipped_special_ids)
+                      encumbered_ap_cost, equipped_special_ids, spend_ap_and_regen)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 import config_defaults as cfg
@@ -65,11 +65,8 @@ def handle_blacksmith_enter(player_id: int, payload: dict) -> dict:
     if player["current_ap"] < ap_cost:
         raise ValueError(f"Not enough AP. Need {ap_cost}.")
     with exclusive_transaction():
-        execute_write(
-            "UPDATE players SET current_ap=current_ap-? WHERE id=?",
-            (ap_cost, player_id)
-        )
-    return {"success": True, "ap_spent": ap_cost}
+        spent = spend_ap_and_regen(player_id, player, ap_cost, settings)
+    return {"success": True, **spent}
 
 @bp.route("/blacksmith")
 def index():

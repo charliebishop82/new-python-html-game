@@ -170,6 +170,11 @@ def run_npc_turn(player_id: int) -> dict:
     player = get_player(player_id)
     settings = get_all_settings()
 
+    merchant_result = _maybe_buy_from_traveling_merchant(player, profile, settings)
+    if merchant_result:
+        return _finish_turn(profile, "MERCHANT", "A rare special was a worthwhile upgrade",
+                            merchant_result)
+
     # Clear encumbrance before maintenance or another encounter. Otherwise an
     # NPC can keep fighting under penalties and accumulate still more loot.
     if player.get("is_overencumbered"):
@@ -204,6 +209,12 @@ def run_npc_turn(player_id: int) -> dict:
     can_pvp = player["current_ap"] >= encumbered_ap_cost(player, pvp_cost, settings)
     can_boss = player["current_ap"] >= encumbered_ap_cost(player, boss_cost, settings)
     pvp_targets = _eligible_pvp_targets(player) if can_pvp else []
+    bounty_target_ids = {
+        row["target_player_id"] for row in execute(
+            "SELECT target_player_id FROM bounties WHERE status='ACTIVE'"
+        )
+    }
+    bounty_targets = [target for target in pvp_targets if target["id"] in bounty_target_ids]
     # Every archetype occasionally joins the shared event. Boss killers lead;
     # thieves use it for growth, hoarders value its unique prize, and hunters
     # participate least often. Per-turn noise prevents clones acting in sync.
@@ -257,7 +268,8 @@ def run_npc_turn(player_id: int) -> dict:
             if interruption and not interruption["survived"]:
                 return _finish_turn(profile, "MINION", "Minion interrupted PvP theft",
                                     interruption)
-            target = random.choice(pvp_targets)
+            target = (random.choice(bounty_targets) if bounty_targets and random.random() < .45
+                      else random.choice(pvp_targets))
             result = enqueue_and_process(
                 player_id, "start_pvp_fight",
                 {"target_id": target["id"], "cost_ap": settings.get("AP_COST_PVP", cfg.AP_COST_PVP)}
@@ -306,7 +318,11 @@ def run_npc_turn(player_id: int) -> dict:
         if interruption and not interruption["survived"]:
             return _finish_turn(profile, "MINION", "Minion interrupted PvP hunt",
                                 interruption)
-        target = _choose_pvp_target(player, pvp_targets, profile["aggression"])
+        bounty_interest = min(.80, .15 + profile["player_hunter"] / 160
+                              + profile["hoarder"] / 300)
+        target = (random.choice(bounty_targets)
+                  if bounty_targets and random.random() < bounty_interest
+                  else _choose_pvp_target(player, pvp_targets, profile["aggression"]))
         result = enqueue_and_process(
             player_id, "start_pvp_fight",
             {"target_id": target["id"], "cost_ap": settings.get("AP_COST_PVP", cfg.AP_COST_PVP)}
@@ -373,6 +389,8 @@ def retire_npc(player_id: int):
     """Safely retire an NPC and return its unique specials to the pool."""
     now = datetime.utcnow().isoformat()
     with exclusive_transaction():
+        from bounties import release_player_bounties
+        release_player_bounties(player_id)
         active_sessions = execute(
             """SELECT id,attacker_player_id,defender_player_id FROM combat_sessions
                WHERE status='ACTIVE' AND (attacker_player_id=? OR defender_player_id=?)""",
@@ -1134,7 +1152,9 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
     all_unequipped = execute(
         """SELECT * FROM inventory_items ii WHERE player_id=?
            AND NOT EXISTS(SELECT 1 FROM auction_listings a
-                          WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')""",
+                          WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')
+           AND NOT EXISTS(SELECT 1 FROM bounties b
+                          WHERE b.inventory_item_id=ii.id AND b.status='ACTIVE')""",
         (player_id,)
     )
     all_unequipped = [row for row in all_unequipped if row["id"] not in equipped_ids]
@@ -1202,8 +1222,10 @@ def _handle_npc_liquidate_upgrade(player_id: int, payload: dict) -> dict:
             (player_id, listing["item_type"], listing["item_id"], durability)
         )
         execute_write("DELETE FROM shop_listings WHERE id=?", (listing["id"],))
-        execute_write("UPDATE players SET current_ap=current_ap-?,credits=credits+?-? WHERE id=?",
-                      (ap_cost, proceeds, price, player_id))
+        from database import spend_ap_and_regen
+        spend_ap_and_regen(player_id, player, ap_cost, settings)
+        execute_write("UPDATE players SET credits=credits+?-? WHERE id=?",
+                      (proceeds, price, player_id))
         execute_write(
             """INSERT INTO item_history(player_id,item_type,item_id,item_name,event_type,credit_amount)
                VALUES(?,?,?,?, 'PURCHASED',?)""",
@@ -1455,6 +1477,38 @@ def _equip_best_items(player_id: int, profile: dict) -> list[str]:
             for field, inv_id in updates.items():
                 execute_write(f"UPDATE players SET {field}=? WHERE id=?", (inv_id, player_id))
     return changes
+
+
+def _maybe_buy_from_traveling_merchant(player: dict, profile: dict, settings: dict):
+    """Let NPCs evaluate the same live merchant inventory available to players."""
+    if player.get("inventory_count", 0) >= player.get("inventory_limit", 0):
+        return None
+    from merchant import active_event, buy_listing, listings_for_player
+    if not active_event():
+        return None
+    offers = listings_for_player(player["id"])
+    if not offers:
+        return None
+    equipped = get_player_equipped(player)
+    bonus_profile = get_player_bonus_profile(player["id"], equipped.get("specials", []))
+    current_best = max(
+        (_score_item("SPECIAL", item, player, profile, item.get("current_durability", 100))
+         for item in equipped.get("specials", [])), default=0,
+    )
+    affordable = [item for item in offers if item["player_price"] <= player["credits"]]
+    if not affordable:
+        return None
+    for item in affordable:
+        item["npc_score"] = _score_item("SPECIAL", item, player, profile, 100)
+    best = max(affordable, key=lambda item: (item["npc_score"], item["credit_cost"]))
+    # Hoarders accept sidegrades for rarity; other personalities require a
+    # meaningful practical improvement before spending their credits.
+    required = current_best * (1.0 if profile["hoarder"] >= 60 else 1.10)
+    if best["npc_score"] <= required:
+        return None
+    result = buy_listing(player["id"], best["listing_id"])
+    result["score"] = round(best["npc_score"], 2)
+    return result
 
 
 def _load_scored_inventory(player: dict, profile: dict) -> list[dict]:

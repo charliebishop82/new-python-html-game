@@ -13,6 +13,7 @@
   {% for item in listings %}
     <article class="sheet-card auction-card">
       <h3>{{ item.name }}</h3><p>{{ item.description or 'A unique piece of movie history.' }}</p>
+      {% include "fragments/item_combat_stats.html" %}
       <p>Seller: <strong>{{ item.seller_name }}</strong> · Condition: {{ item.current_durability }}%</p>
       <p>Current bid: <strong>{{ item.current_bid if item.current_bid is not none else 'No bids' }}</strong>
         {% if item.bidder_name %} by {{ item.bidder_name }}{% endif %}</p>

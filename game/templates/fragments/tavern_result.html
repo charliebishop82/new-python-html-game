@@ -9,8 +9,10 @@
         ═══ TAVERN ════════════════════════════════════════════════
     </div>
     <div class="term-line term-good">
-        The barkeep patches you up. <strong>+{{ heal_amount }} HP</strong> restored at {{ (cost_cr / heal_amount)|round(1) if heal_amount else 0 }} credits per HP.
+        {% if heal_amount %}The barkeep patches you up. <strong>+{{ heal_amount }} HP</strong> restored at {{ (cost_cr / heal_amount)|round(1) }} credits per HP.{% else %}You take a seat, listen, and keep your drink close.{% endif %}
     </div>
+    <div class="term-line term-blue"><strong>RUMOR:</strong> {{ rumor.text }}</div>
+    <div class="term-line term-muted">Recorded permanently in your War Room.</div>
     <div class="term-line term-system">
         HP: {{ new_hp }}/{{ max_hp }} &nbsp;|&nbsp;
         Credits: {{ new_credits }} (-{{ cost_cr }}) &nbsp;|&nbsp;

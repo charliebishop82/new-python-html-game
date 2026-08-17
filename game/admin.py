@@ -1128,7 +1128,9 @@ def admin_retire_player(pid: int):
     now = datetime.utcnow().isoformat()
     with exclusive_transaction():
         from routes.auction import release_player_auctions
+        from bounties import release_player_bounties
         release_player_auctions(pid)
+        release_player_bounties(pid)
         sessions = execute(
             """SELECT id,attacker_player_id,defender_player_id FROM combat_sessions
                WHERE status='ACTIVE' AND (attacker_player_id=? OR defender_player_id=?)""", (pid, pid)
@@ -1593,10 +1595,13 @@ def admin_config():
                 constant = ""
         if constant in {"TAVERN_CREDITS_PER_HP", "TAVERN_MIN_COST",
                         "INVENTORY_LIMIT", "INVENTORY_STR_DIVISOR",
-                        "TRICKLE_AP_AMOUNT", "TRICKLE_AP_INTERVAL_HOURS"}:
+                        "TRICKLE_AP_AMOUNT", "TRICKLE_AP_INTERVAL_HOURS",
+                        "TRAVELING_MERCHANT_DURATION_HOURS", "TRAVELING_MERCHANT_ITEM_COUNT"}:
             minimums = {"TAVERN_CREDITS_PER_HP": 0, "TAVERN_MIN_COST": 0,
                         "INVENTORY_LIMIT": 3, "INVENTORY_STR_DIVISOR": 1,
-                        "TRICKLE_AP_AMOUNT": 0, "TRICKLE_AP_INTERVAL_HOURS": 1}
+                        "TRICKLE_AP_AMOUNT": 0, "TRICKLE_AP_INTERVAL_HOURS": 1,
+                        "TRAVELING_MERCHANT_DURATION_HOURS": 1,
+                        "TRAVELING_MERCHANT_ITEM_COUNT": 1}
             try:
                 numeric_value = int(value)
                 if numeric_value < minimums[constant]:
@@ -1604,6 +1609,16 @@ def admin_config():
                 value = str(numeric_value)
             except ValueError:
                 error = f"{constant} must be a whole number of at least {minimums[constant]}."
+                constant = ""
+        if constant in {"TRAVELING_MERCHANT_CHANCE", "TRAVELING_MERCHANT_MARKUP"}:
+            try:
+                numeric_value = float(value)
+                maximum = 1.0 if constant == "TRAVELING_MERCHANT_CHANCE" else 5.0
+                if not 0 <= numeric_value <= maximum:
+                    raise ValueError
+                value = str(round(numeric_value, 4))
+            except ValueError:
+                error = f"{constant} must be between 0 and {maximum}."
                 constant = ""
         if constant and value:
             cap_expired = 0
@@ -1707,6 +1722,8 @@ def admin_full_reset():
         "world_boss_events",
         "scene_combat_logs", "scene_combat_sessions", "scene_effects", "scene_attempts",
         "pending_interrupted_actions", "auction_listings",
+        "traveling_merchant_listings", "traveling_merchant_events",
+        "player_wealth_intel", "bounties",
         "npc_action_log", "npc_profiles", "player_activity_log",
         "combat_buffs", "combat_logs", "combat_sessions",
         "boss_instances", "minion_instances", "boss_intel",

@@ -42,6 +42,8 @@ def war_room():
     bosses = execute(
         """SELECT b.name,b.level,b.description,bi.kill_count,bi.discovered_at,
           CASE WHEN intel.id IS NULL THEN 0 ELSE 1 END observed,
+          b.res_blade,b.res_blunt,b.res_ballistic,b.res_energy,b.res_arcane,b.res_explosive,b.res_venom,
+          b.weak_blade,b.weak_blunt,b.weak_ballistic,b.weak_energy,b.weak_arcane,b.weak_explosive,b.weak_venom,
           w.name weapon,a.name armor,s.name special,
           (SELECT COUNT(*) FROM combat_sessions cs WHERE cs.boss_instance_id=bi.id AND cs.status='RESOLVED') encounters,
           (SELECT COUNT(*) FROM combat_sessions cs WHERE cs.boss_instance_id=bi.id AND cs.result IN ('1HP_WIN','SCORE_WIN')) victories
@@ -67,6 +69,9 @@ def war_room():
           WHERE mi.player_id=? ORDER BY mi.discovered_at DESC""", (pid,)
     )
     damage_types = ("blade", "blunt", "ballistic", "energy", "arcane", "explosive", "venom")
+    for boss in bosses:
+        boss["resistances"] = [d.title() for d in damage_types if boss.get(f"res_{d}")]
+        boss["weaknesses"] = [d.title() for d in damage_types if boss.get(f"weak_{d}")]
     for minion in minions:
         minion["resistances"] = [d.title() for d in damage_types if minion.get(f"res_{d}")]
         minion["weaknesses"] = [d.title() for d in damage_types if minion.get(f"weak_{d}")]
@@ -79,5 +84,10 @@ def war_room():
           AND (cs.attacker_player_id=? OR cs.defender_player_id=?))
           GROUP BY opponent ORDER BY last_contact DESC""", (pid,pid,pid,pid)
     )
+    wealth_intel = execute(
+        """SELECT p.character_name,w.wealth_band,w.learned_at
+           FROM player_wealth_intel w JOIN players p ON p.id=w.target_player_id
+           WHERE w.observer_player_id=? ORDER BY w.learned_at DESC""", (pid,)
+    )
     return render_template("community/war_room.html", bosses=bosses,minions=minions,pvp=pvp,
-                           reputation=reputation_profile(pid))
+                           wealth_intel=wealth_intel,reputation=reputation_profile(pid))

@@ -15,12 +15,59 @@ from database import (execute, execute_one, execute_write, get_player,
                       get_player_bonus_profile, get_player_perk_bonuses,
                       encumbered_ap_cost, clamp_player_hp_to_max,
                       equipped_special_ids, SPECIAL_SLOT_COLUMNS,
-                      unlocked_special_slots)
+                      unlocked_special_slots, spend_ap_and_regen)
 from combat import engine
 from combat import flavour
 import config_defaults as cfg
 
 logger = logging.getLogger(__name__)
+
+
+def _award_combat_micro_xp(session_id: int, player_id: int | None,
+                           success_kind: str) -> int:
+    """Award one idempotent, capped micro-XP success inside a combat.
+
+    ``success_kind`` is deliberately coarse: ATTACK and DEFENSE can each pay
+    only once per encounter, while successful non-attack actions use their own
+    kind.  Steal retains its existing configured award and does not call this
+    helper, preventing double payment.
+    """
+    if not player_id:
+        return 0
+    settings = get_all_settings()
+    amount = max(0, int(settings.get(
+        "SUCCESSFUL_ROLL_XP", getattr(cfg, "SUCCESSFUL_ROLL_XP", 5)
+    )))
+    cap = max(0, int(settings.get(
+        "COMBAT_MICRO_XP_CAP", getattr(cfg, "COMBAT_MICRO_XP_CAP", 15)
+    )))
+    if not amount or not cap:
+        return 0
+    with exclusive_transaction():
+        already = execute_one(
+            """SELECT COALESCE(SUM(xp_awarded),0) total FROM combat_micro_xp
+               WHERE combat_session_id=? AND player_id=?""",
+            (session_id, player_id),
+        )["total"]
+        award = min(amount, max(0, cap - int(already or 0)))
+        if not award:
+            return 0
+        execute_write(
+            """INSERT OR IGNORE INTO combat_micro_xp
+               (combat_session_id,player_id,success_kind,xp_awarded)
+               VALUES (?,?,?,?)""",
+            (session_id, player_id, success_kind, award),
+        )
+        inserted = execute_one("SELECT changes() changed")["changed"]
+        if not inserted:
+            return 0
+        awarded = _award_action_xp(player_id, award)
+        round_number = execute_one(
+            "SELECT current_round FROM combat_sessions WHERE id=?", (session_id,)
+        )["current_round"]
+        _write_combat_log(session_id, round_number, "SYSTEM", "MICRO_XP",
+                          success_kind, f"+{awarded} XP for successful {success_kind.lower()} roll")
+    return awarded
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -373,6 +420,20 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
              None, None)  # HP values filled in by caller
         )
 
+    # A hit rewards the acting character once per encounter.  A genuine dodge
+    # rewards the defending character once; ordinary AC misses do not.
+    acting_player_id = None
+    defending_player_id = None
+    if is_attacker:
+        acting_player_id = session["attacker_player_id"]
+        if session["combat_type"] == "PVP":
+            defending_player_id = session["defender_player_id"]
+    elif session["combat_type"] == "PVP":
+        acting_player_id = session["defender_player_id"]
+        defending_player_id = session["attacker_player_id"]
+    attack_xp = _award_combat_micro_xp(session_id, acting_player_id, "ATTACK") if result["hit"] else 0
+    defense_xp = _award_combat_micro_xp(session_id, defending_player_id, "DEFENSE") if result["dodged"] else 0
+
     # Build flavor text
     weapon_name = weapon.get("name", "weapon")
     flavor = flavour.attack_flavor(
@@ -386,6 +447,8 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
         damage_type=weapon.get("damage_type", "Blunt"),
         res_note=result["damage_breakdown"][0]["note"] if result["damage_breakdown"] else ""
     )
+    if attack_xp:
+        flavor += f" +{attack_xp} XP for your first successful attack this fight."
 
     return {
         "action":         "ATTACK",
@@ -400,6 +463,8 @@ def handle_attack(session_id: int, actor_side: str, state: dict) -> dict:
                             if extra_attack_result else "")),
         "flavor":         flavor,
         "extra_attack":   extra_attack_result is not None,
+        "micro_xp":       attack_xp,
+        "defense_micro_xp": defense_xp,
     }
 
 
@@ -781,26 +846,29 @@ def handle_brace(session_id: int, player_id: int, state: dict) -> dict:
 def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
     """Process the queued escape action against validated game state."""
     session  = state["session"]
-    attacker = state["attacker"]
+    is_pvp_defender = (session["combat_type"] == "PVP" and
+                       player_id == session["defender_player_id"])
+    actor = state["defender"] if is_pvp_defender else state["attacker"]
+    actor_side = "DEFENDER" if is_pvp_defender else "ATTACKER"
     settings = get_all_settings()
     ap_cost  = settings.get("AP_COST_ESCAPE", cfg.AP_COST_ESCAPE)
-    ap_cost  = encumbered_ap_cost(attacker, ap_cost, settings)
+    ap_cost  = encumbered_ap_cost(actor, ap_cost, settings)
     cr_drop  = settings.get("ESCAPE_CREDIT_DROP_CHANCE", cfg.ESCAPE_CREDIT_DROP_CHANCE)
 
-    if attacker["current_ap"] < ap_cost:
+    if actor["current_ap"] < ap_cost:
         raise ValueError(f"Not enough AP to attempt escape (need {ap_cost}).")
 
     # Determine opponent stats for roll
     if session["combat_type"] == "PVP":
-        opp = state["defender"]
+        opp = state["attacker"] if is_pvp_defender else state["defender"]
         opp_agi, opp_lck = opp["agi_stat"], opp["lck_stat"]
     else:
         opp = state["boss"] or state["minion"]
         opp_agi, opp_lck = opp["agi_stat"], opp["lck_stat"]
 
     roll_result = engine.resolve_opposed_roll(
-        actor_agi=attacker["agi_stat"],
-        actor_lck=attacker["lck_stat"],
+        actor_agi=actor["agi_stat"],
+        actor_lck=actor["lck_stat"],
         defender_agi=opp_agi,
         defender_lck=opp_lck,
         tie_goes_to="defender"
@@ -808,10 +876,7 @@ def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
 
     credits_lost = 0
     with exclusive_transaction():
-        execute_write(
-            "UPDATE players SET current_ap = current_ap - ? WHERE id = ?",
-            (ap_cost, player_id)
-        )
+        spent = spend_ap_and_regen(player_id, get_player(player_id), ap_cost, settings)
         if roll_result["success"]:
             # Escape: cancel session
             execute_write(
@@ -824,7 +889,8 @@ def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
             if session["combat_type"] == "PVP":
                 execute_write(
                     "UPDATE players SET in_combat = 0 WHERE id = ?",
-                    (session["defender_player_id"],)
+                    (session["attacker_player_id"] if is_pvp_defender
+                     else session["defender_player_id"],)
                 )
             # Reset only private boss/minion HP on escape; shared HP persists.
             if session["combat_type"] == "BOSS":
@@ -850,34 +916,64 @@ def handle_escape(session_id: int, player_id: int, state: dict) -> dict:
                     )
                     execute_write(
                         "UPDATE players SET credits = credits + ? WHERE id = ?",
-                        (credits_lost, session["defender_player_id"])
+                        (credits_lost, session["attacker_player_id"] if is_pvp_defender
+                         else session["defender_player_id"])
                     )
             # Delete combat buffs
             execute_write("DELETE FROM combat_buffs WHERE combat_session_id = ?", (session_id,))
         else:
             # Fail: AC penalty
             execute_write(
-                """DELETE FROM combat_buffs WHERE combat_session_id=? AND side='ATTACKER'
-                   AND buff_type='ESCAPE_FAIL_AC_PENALTY'""", (session_id,)
+                """DELETE FROM combat_buffs WHERE combat_session_id=? AND side=?
+                   AND buff_type='ESCAPE_FAIL_AC_PENALTY'""", (session_id, actor_side)
             )
             execute_write(
                 """INSERT INTO combat_buffs
                    (combat_session_id, side, buff_type, value, expires_on)
-                   VALUES (?, 'ATTACKER', 'ESCAPE_FAIL_AC_PENALTY', 3, 'NEXT_HIT_RESOLVED')""",
-                (session_id,)
+                   VALUES (?, ?, 'ESCAPE_FAIL_AC_PENALTY', 3, 'NEXT_HIT_RESOLVED')""",
+                (session_id, actor_side)
             )
-        _write_combat_log(session_id, session["current_round"], "ATTACKER",
+        _write_combat_log(session_id, session["current_round"], actor_side,
                           "ESCAPE", roll_result["detail"],
                           f"{'Escaped' if roll_result['success'] else 'Failed'}, credits lost: {credits_lost}")
 
     if roll_result["success"] and session["combat_type"] == "WORLD_BOSS":
         _finalize_world_boss_attempt(session_id, state, "ESCAPE", False)
 
-    flv = flavour.escape_flavor(attacker["character_name"],
+    micro_xp = (_award_combat_micro_xp(session_id, player_id, "ESCAPE")
+                if roll_result["success"] else 0)
+    opponent_escape_xp = 0
+    opponent_player_id = None
+    if roll_result["success"] and session["combat_type"] == "PVP":
+        opponent_player_id = (session["attacker_player_id"] if is_pvp_defender
+                              else session["defender_player_id"])
+        base_bonus = max(0, int(settings.get(
+            "PVP_OPPONENT_ESCAPE_XP", getattr(cfg, "PVP_OPPONENT_ESCAPE_XP", 10)
+        )))
+        opponent_escape_xp = _award_action_xp(opponent_player_id, base_bonus)
+        with exclusive_transaction():
+            execute_write(
+                """INSERT INTO daily_feed(feed_scope,player_id,flavor_text,event_category)
+                   VALUES('PERSONAL',?,?,'PVP_ESCAPE')""",
+                (opponent_player_id,
+                 f"{actor['character_name']} escaped from your PvP fight. "
+                 f"You earned +{opponent_escape_xp} XP."),
+            )
+            _write_combat_log(
+                session_id, session["current_round"], "SYSTEM", "ESCAPE_REWARD",
+                "Opponent escaped", f"+{opponent_escape_xp} XP awarded to opponent",
+            )
+    flv = flavour.escape_flavor(actor["character_name"],
                                 roll_result["success"], credits_lost)
+    if micro_xp:
+        flv += f" +{micro_xp} XP for the successful escape roll."
     return {"action": "ESCAPE", "success": roll_result["success"],
             "credits_lost": credits_lost, "roll_detail": roll_result["detail"],
-            "flavor": flv, "escaped": roll_result["success"]}
+            "flavor": flv, "escaped": roll_result["success"],
+            "micro_xp": micro_xp,
+            "hp_regenerated": spent["hp_regenerated"], "new_hp": spent["new_hp"],
+            "opponent_escape_xp": opponent_escape_xp,
+            "opponent_player_id": opponent_player_id}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -972,8 +1068,13 @@ def handle_observe(session_id: int, player_id: int, state: dict) -> dict:
         attacker["character_name"], roll_result["success"],
         opp.get("character_name") or opp.get("name", "opponent"), revealed
     )
+    micro_xp = (_award_combat_micro_xp(session_id, player_id, "OBSERVE")
+                if roll_result["success"] else 0)
+    if micro_xp:
+        flv += f" +{micro_xp} XP for the successful observation roll."
     return {"action": "OBSERVE", "success": roll_result["success"],
-            "revealed": revealed, "roll_detail": roll_result["detail"], "flavor": flv}
+            "revealed": revealed, "roll_detail": roll_result["detail"], "flavor": flv,
+            "micro_xp": micro_xp}
 
 
 def _approx_combat_rating(value: int, level: int) -> str:
@@ -1163,6 +1264,11 @@ def _minion_action(session_id: int, state: dict) -> dict:
         damage=result["damage_total"],
         damage_type=weapon.get("damage_type", "Blunt"),
     )
+    defense_xp = (_award_combat_micro_xp(
+        session_id, session["attacker_player_id"], "DEFENSE"
+    ) if result["dodged"] else 0)
+    if defense_xp:
+        flavor_text += f" +{defense_xp} XP for your first successful defense this fight."
     return {
         "action": "ATTACK",
         "hit": result["hit"],
@@ -1171,6 +1277,7 @@ def _minion_action(session_id: int, state: dict) -> dict:
         "roll_detail": result["roll_detail"],
         "outcome_detail": result["outcome_detail"],
         "flavor": flavor_text,
+        "defense_micro_xp": defense_xp,
     }
 
 
@@ -1748,6 +1855,10 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                         loser_player.get("equipped_armor_id"),
                         *equipped_special_ids(loser_player, unlocked_only=False),
                     }
+                    and not execute_one(
+                        "SELECT 1 FROM bounties WHERE inventory_item_id=? AND status='ACTIVE'",
+                        (i["id"],),
+                    )
                 ]
                 if loser_unequipped:
                     target = random.choice(loser_unequipped)
@@ -1761,6 +1872,13 @@ def finalize_combat(session_id: int, winner_side: str, result_type: str,
                         (target["item_id"],)
                     )
                     item_stolen = item_detail["name"] if item_detail else "item"
+
+        # Anonymous bounties require a decisive PvP reduction to 1 HP. Score
+        # resolutions, escapes, and ordinary steal actions never release escrow.
+        bounty_reward = None
+        if winner and loser and result_type == "1HP_WIN":
+            from bounties import complete_for_pvp
+            bounty_reward = complete_for_pvp(loser["id"], winner["id"])
 
     # A completed loss still teaches the defeated character something. Escapes
     # and stalemates are deliberately excluded from this consolation award.
@@ -2247,6 +2365,11 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
         damage=result["damage_total"],
         damage_type=boss_weapon.get("damage_type", "Blunt"),
     )
+    defense_xp = (_award_combat_micro_xp(
+        session_id, session["attacker_player_id"], "DEFENSE"
+    ) if result["dodged"] else 0)
+    if defense_xp:
+        flv += f" +{defense_xp} XP for your first successful defense this fight."
     return {
         "action": "ATTACK",
         "hit": result["hit"],
@@ -2255,4 +2378,5 @@ def _boss_regular_attack(session_id: int, state: dict, phase: int) -> dict:
         "roll_detail": result["roll_detail"],
         "outcome_detail": result["outcome_detail"],
         "flavor": flv,
+        "defense_micro_xp": defense_xp,
     }

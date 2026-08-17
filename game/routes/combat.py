@@ -9,7 +9,8 @@ from datetime import datetime
 
 from flask import Blueprint, render_template, request, session, g, has_request_context
 from database import (execute, execute_one, execute_write, get_player,
-                      exclusive_transaction, get_all_settings, encumbered_ap_cost)
+                      exclusive_transaction, get_all_settings, encumbered_ap_cost,
+                      spend_ap_and_regen)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 from combat import engine, flavour
@@ -608,15 +609,13 @@ def handle_combat_extend(player_id: int, payload: dict) -> dict:
         return {"error": "Combat has already been extended. Choose your next action."}
 
     with exclusive_transaction():
-        execute_write(
-            "UPDATE players SET current_ap = current_ap - ? WHERE id = ?",
-            (ap_cost, player_id)
-        )
+        spent = spend_ap_and_regen(player_id, player, ap_cost, settings)
         execute_write(
             "UPDATE combat_sessions SET rounds_extended = rounds_extended + 1 WHERE id = ?",
             (session_id,)
         )
-    return {"success": True, "extension_rounds": extension_rounds}
+    return {"success": True, "extension_rounds": extension_rounds,
+            "hp_regenerated": spent["hp_regenerated"], "new_hp": spent["new_hp"]}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

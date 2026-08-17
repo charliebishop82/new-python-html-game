@@ -183,6 +183,8 @@
         <a class="action-btn free-action-btn" href="{{ url_for('community.players') }}">PLAYER LIST <span class="free-cost">FREE</span></a>
         <a class="action-btn free-action-btn" href="{{ url_for('community.contracts') }}">DAILY CONTRACT <span class="free-cost">FREE</span></a>
         <a class="action-btn free-action-btn" href="{{ url_for('community.war_room') }}">WAR ROOM <span class="free-cost">FREE</span></a>
+        <a class="action-btn free-action-btn" href="{{ url_for('bounties.index') }}">BOUNTIES <span class="free-cost">FREE</span></a>
+        {% if merchant_active %}<a class="action-btn free-action-btn merchant-live" href="{{ url_for('merchant.index') }}">TRAVELING MERCHANT <span class="free-cost">LIVE</span></a>{% endif %}
         <a class="action-btn free-action-btn" href="{{ url_for('crews.index') }}">CREWS <span class="free-cost">FREE</span></a>
         <a class="action-btn free-action-btn" href="{{ url_for('scoreboards.index') }}">SCOREBOARDS <span class="free-cost">FREE</span></a>
         <a class="action-btn free-action-btn" href="{{ url_for('feeds.game_help') }}">HOW TO PLAY <span class="free-cost">FREE</span></a>

@@ -320,6 +320,17 @@ CREATE TABLE IF NOT EXISTS combat_logs (
     created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Small, capped XP awards for distinct successful rolls during combat.  The
+-- unique key prevents browser retries and extra attacks from paying twice.
+CREATE TABLE IF NOT EXISTS combat_micro_xp (
+    combat_session_id INTEGER NOT NULL REFERENCES combat_sessions(id),
+    player_id          INTEGER NOT NULL REFERENCES players(id),
+    success_kind       TEXT    NOT NULL,
+    xp_awarded         INTEGER NOT NULL DEFAULT 0,
+    created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (combat_session_id, player_id, success_kind)
+);
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- INVENTORY & ITEMS
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -385,6 +396,56 @@ CREATE TABLE IF NOT EXISTS player_shop_budgets (
     credits_remaining INTEGER NOT NULL CHECK(credits_remaining >= 0),
     reset_date        TEXT NOT NULL
 );
+
+-- Anonymous PvP contracts backed by an item, credits, or both in escrow.
+CREATE TABLE IF NOT EXISTS bounties (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    poster_player_id  INTEGER NOT NULL REFERENCES players(id),
+    target_player_id  INTEGER NOT NULL REFERENCES players(id),
+    inventory_item_id INTEGER REFERENCES inventory_items(id),
+    item_type         TEXT,
+    item_id           INTEGER,
+    credit_prize      INTEGER NOT NULL DEFAULT 0 CHECK(credit_prize >= 0),
+    status            TEXT NOT NULL DEFAULT 'ACTIVE',
+    claimed_by_player_id INTEGER REFERENCES players(id),
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    completed_at      TEXT,
+    cancelled_at      TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bounty_one_active_poster
+ON bounties(poster_player_id) WHERE status='ACTIVE';
+CREATE INDEX IF NOT EXISTS idx_bounty_active_target ON bounties(target_player_id,status);
+CREATE INDEX IF NOT EXISTS idx_bounty_inventory_hold ON bounties(inventory_item_id,status);
+
+-- Last Tavern-sourced estimate of another character's wealth.
+CREATE TABLE IF NOT EXISTS player_wealth_intel (
+    observer_player_id INTEGER NOT NULL REFERENCES players(id),
+    target_player_id   INTEGER NOT NULL REFERENCES players(id),
+    wealth_band        TEXT NOT NULL,
+    credits_snapshot   INTEGER NOT NULL,
+    learned_at         TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY(observer_player_id,target_player_id)
+);
+
+-- Short global event offering five otherwise-unowned unique specials.
+CREATE TABLE IF NOT EXISTS traveling_merchant_events (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    status     TEXT NOT NULL DEFAULT 'ACTIVE',
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),
+    ends_at    TEXT NOT NULL,
+    closed_at  TEXT
+);
+CREATE TABLE IF NOT EXISTS traveling_merchant_listings (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id        INTEGER NOT NULL REFERENCES traveling_merchant_events(id),
+    special_item_id INTEGER NOT NULL REFERENCES special_items(id),
+    price           INTEGER NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'AVAILABLE',
+    buyer_player_id INTEGER REFERENCES players(id),
+    sold_at         TEXT,
+    UNIQUE(event_id,special_item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_merchant_event_status ON traveling_merchant_events(status,ends_at);
 
 -- Player-run, timed sales. The inventory copy remains owned by the seller but
 -- is locked by this row until settlement or cancellation.

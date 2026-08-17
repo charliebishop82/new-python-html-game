@@ -13,7 +13,7 @@ from flask import Blueprint, render_template, request, session, g
 from database import (execute, execute_one, execute_write,
                       exclusive_transaction, get_all_settings, get_player,
                       get_player_bonus_profile, encumbered_ap_cost, tavern_quote,
-                      calculate_max_hp, calculate_passive_regen)
+                      calculate_max_hp, calculate_passive_regen, spend_ap_and_regen)
 from queue_handler import enqueue_and_process, register_handler
 from combat import actions as combat_actions
 from combat import engine, flavour
@@ -82,22 +82,10 @@ def _deduct_ap_and_regen(player_id: int, player: dict, cost: int, settings: dict
                          allow_interruption_shortfall: bool = False):
     """Deduct AP cost and apply passive HP regen. Must be inside exclusive_transaction."""
     cost = encumbered_ap_cost(player, cost, settings)
-    # AP-triggered healing and its HP cap use the same effective END as combat.
-    player = combat_actions.apply_equipped_stat_bonuses(player)
-    bonus_profile = get_player_bonus_profile(player_id)
-    hp_regen = calculate_passive_regen(
-        player["end_stat"], int(bonus_profile.get("hp_regen_bonus", 0) or 0),
-        settings,
+    result = spend_ap_and_regen(
+        player_id, player, cost, settings, allow_interruption_shortfall
     )
-    max_hp = calculate_max_hp(player["level"], player["end_stat"], settings)
-    charged_ap = min(player["current_ap"], cost) if allow_interruption_shortfall else cost
-    new_ap = max(0, player["current_ap"] - charged_ap)
-    new_hp = min(player["current_hp"] + hp_regen, max_hp)
-    execute_write(
-        "UPDATE players SET current_ap = ?, current_hp = ? WHERE id = ?",
-        (new_ap, new_hp, player_id)
-    )
-    return new_ap, new_hp
+    return result["new_ap"], result["new_hp"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -375,8 +363,6 @@ def action_tavern():
     quote = tavern_quote(player, settings)
     cost_cr = quote["credit_cost"]
 
-    if player["current_hp"] >= player["max_hp"]:
-        return _error_fragment("You are already at full health.")
     if not has_interrupted_ap_commitment("BOSS") and (err := _check_ap(player, cost_ap)):
         return err
     if player["credits"] < cost_cr:
@@ -401,8 +387,6 @@ def handle_tavern_heal(player_id: int, payload: dict) -> dict:
         raise ValueError(f"Not enough AP. Need {effective_cost_ap}.")
     max_hp    = engine.calc_max_hp(player)
     missing   = max_hp - player["current_hp"]
-    if missing <= 0:
-        raise ValueError("Already at full health.")
     heal_amount = quote["heal_amount"]
     if player["credits"] < cost_cr:
         raise ValueError(f"Not enough credits. Need {cost_cr}.")
@@ -413,9 +397,12 @@ def handle_tavern_heal(player_id: int, payload: dict) -> dict:
             "UPDATE players SET current_hp = ?, credits = credits - ? WHERE id = ?",
             (final_hp, cost_cr, player_id)
         )
+    from rumors import grant_tavern_rumor
+    rumor = grant_tavern_rumor(player_id)
     return {"heal_amount": heal_amount, "new_hp": final_hp, "max_hp": max_hp,
             "new_ap": new_ap, "max_ap": player["max_ap"],
-            "new_credits": player["credits"] - cost_cr, "cost_cr": cost_cr}
+            "new_credits": player["credits"] - cost_cr, "cost_cr": cost_cr,
+            "rumor": rumor}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1160,6 +1147,12 @@ def _handle_protagonist_encounter(player_id: int, player: dict, settings: dict):
         "PROTAGONIST_ENCOUNTER_XP_PER_LEVEL",
         cfg.PROTAGONIST_ENCOUNTER_XP_PER_LEVEL
     ))) * max(1, int(player["level"]))
+    # Meeting the protagonist is the successful outcome of the interruption
+    # Luck check, so it receives the same configurable micro-XP as other skill
+    # successes before normal XP multipliers and crew contribution apply.
+    raw_xp += max(0, int(settings.get(
+        "SUCCESSFUL_ROLL_XP", getattr(cfg, "SUCCESSFUL_ROLL_XP", 5)
+    )))
     raw_credits = max(0, int(settings.get(
         "PROTAGONIST_ENCOUNTER_CREDITS_BASE",
         cfg.PROTAGONIST_ENCOUNTER_CREDITS_BASE

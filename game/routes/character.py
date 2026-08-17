@@ -151,7 +151,9 @@ def _get_full_inventory(player: dict) -> list[dict]:
 
     rows = execute(
         """SELECT ii.*,EXISTS(SELECT 1 FROM auction_listings a
-                              WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE') AS is_on_auction
+                              WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE') AS is_on_auction,
+          EXISTS(SELECT 1 FROM bounties b
+                 WHERE b.inventory_item_id=ii.id AND b.status='ACTIVE') AS is_on_bounty
            FROM inventory_items ii WHERE player_id = ? ORDER BY item_type, acquired_at""",
         (player["id"],)
     )
@@ -449,6 +451,9 @@ def handle_equip(player_id: int, payload: dict) -> dict:
         (inv_id,)
     ):
         raise ValueError("That item is on auction hold and cannot be equipped.")
+    from bounties import item_on_bounty_hold
+    if item_on_bounty_hold(inv_id):
+        raise ValueError("That item is held as a bounty prize and cannot be equipped.")
 
     # Determine correct slot column
     slot_col = {
@@ -547,6 +552,9 @@ def handle_drop_item(player_id: int, payload: dict) -> dict:
         (inv_id,)
     ):
         raise ValueError("That item is on auction hold and cannot be dropped.")
+    from bounties import item_on_bounty_hold
+    if item_on_bounty_hold(inv_id):
+        raise ValueError("That item is held as a bounty prize and cannot be dropped.")
 
     # Cannot drop equipped items
     equipped = {player.get("equipped_weapon_id"),

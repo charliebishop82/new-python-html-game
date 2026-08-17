@@ -96,10 +96,12 @@ def _register_blueprints(app: Flask):
     from routes.community   import bp as community_bp
     from routes.crews       import bp as crews_bp
     from routes.scenes      import bp as scenes_bp
+    from routes.bounties    import bp as bounties_bp
+    from routes.merchant    import bp as merchant_bp
 
     for bp in [auth_bp, dashboard_bp, actions_bp, combat_bp, shop_bp,
                blacksmith_bp, character_bp, scoreboards_bp, feeds_bp, world_boss_bp,
-               auction_bp, community_bp, crews_bp, scenes_bp]:
+               auction_bp, community_bp, crews_bp, scenes_bp, bounties_bp, merchant_bp]:
         app.register_blueprint(bp)
 
 
@@ -116,9 +118,12 @@ def _context_processor() -> dict:
     )["cnt"]
     from routes.character import get_player_combat_snapshot
     sidebar_combat = get_player_combat_snapshot(player, settings)
+    from merchant import active_event
+    merchant_active = bool(active_event())
     return {"player": player, "settings": settings,
             "active_player_count": active_count,
-            "sidebar_combat": sidebar_combat}
+            "sidebar_combat": sidebar_combat,
+            "merchant_active": merchant_active}
 
 
 def _check_auth():

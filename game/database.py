@@ -227,6 +227,43 @@ def init_db():
             )
         if "in_scene_combat" not in player_columns:
             conn.execute("ALTER TABLE players ADD COLUMN in_scene_combat INTEGER NOT NULL DEFAULT 0")
+        bounty_columns = {
+            row[1]: row for row in conn.execute("PRAGMA table_info(bounties)")
+        }
+        if bounty_columns and (
+            "credit_prize" not in bounty_columns or bounty_columns["inventory_item_id"][3]
+        ):
+            # SQLite cannot relax NOT NULL in place. Rebuild once so a bounty
+            # may escrow credits without requiring a physical item.
+            conn.execute("DROP INDEX IF EXISTS idx_bounty_one_active_poster")
+            conn.execute("DROP INDEX IF EXISTS idx_bounty_active_target")
+            conn.execute("DROP INDEX IF EXISTS idx_bounty_inventory_hold")
+            conn.execute("ALTER TABLE bounties RENAME TO bounties_item_only_legacy")
+            conn.execute(
+                """CREATE TABLE bounties (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    poster_player_id INTEGER NOT NULL REFERENCES players(id),
+                    target_player_id INTEGER NOT NULL REFERENCES players(id),
+                    inventory_item_id INTEGER REFERENCES inventory_items(id),
+                    item_type TEXT,item_id INTEGER,
+                    credit_prize INTEGER NOT NULL DEFAULT 0 CHECK(credit_prize>=0),
+                    status TEXT NOT NULL DEFAULT 'ACTIVE',
+                    claimed_by_player_id INTEGER REFERENCES players(id),
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    completed_at TEXT,cancelled_at TEXT)"""
+            )
+            conn.execute(
+                """INSERT INTO bounties
+                   (id,poster_player_id,target_player_id,inventory_item_id,item_type,item_id,
+                    credit_prize,status,claimed_by_player_id,created_at,completed_at,cancelled_at)
+                   SELECT id,poster_player_id,target_player_id,inventory_item_id,item_type,item_id,
+                    0,status,claimed_by_player_id,created_at,completed_at,cancelled_at
+                   FROM bounties_item_only_legacy"""
+            )
+            conn.execute("DROP TABLE bounties_item_only_legacy")
+            conn.execute("CREATE UNIQUE INDEX idx_bounty_one_active_poster ON bounties(poster_player_id) WHERE status='ACTIVE'")
+            conn.execute("CREATE INDEX idx_bounty_active_target ON bounties(target_player_id,status)")
+            conn.execute("CREATE INDEX idx_bounty_inventory_hold ON bounties(inventory_item_id,status)")
         scene_choice_columns = {row[1] for row in conn.execute("PRAGMA table_info(scene_choices)")}
         if scene_choice_columns and "is_active" not in scene_choice_columns:
             conn.execute("ALTER TABLE scene_choices ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1")
@@ -297,6 +334,48 @@ def init_db():
                VALUES ('COMBAT_DEFEAT_XP','10',
                        'Small XP award for losing a completed fight; escapes and stalemates excluded.')"""
         )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS combat_micro_xp (
+                   combat_session_id INTEGER NOT NULL REFERENCES combat_sessions(id),
+                   player_id INTEGER NOT NULL REFERENCES players(id),
+                   success_kind TEXT NOT NULL,
+                   xp_awarded INTEGER NOT NULL DEFAULT 0,
+                   created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                   PRIMARY KEY (combat_session_id,player_id,success_kind))"""
+        )
+        conn.execute(
+            """INSERT OR IGNORE INTO settings(constant_name,value,description)
+               VALUES ('SUCCESSFUL_ROLL_XP','5',
+                       'Micro XP for a qualifying successful roll.')"""
+        )
+        conn.execute(
+            """INSERT OR IGNORE INTO settings(constant_name,value,description)
+               VALUES ('COMBAT_MICRO_XP_CAP','15',
+                       'Maximum successful-roll micro XP a character can earn in one combat.')"""
+        )
+        conn.execute(
+            """INSERT OR IGNORE INTO settings(constant_name,value,description)
+               VALUES ('PVP_OPPONENT_ESCAPE_XP','10',
+                       'XP awarded to the remaining PvP participant when their opponent escapes.')"""
+        )
+        if not conn.execute(
+            "SELECT 1 FROM settings WHERE constant_name='SHOP_VENDOR_2500_MIGRATED'"
+        ).fetchone():
+            # Apply the new allowance to the running game once. Future admin
+            # customizations remain intact because the marker prevents this
+            # migration from repeating on later restarts.
+            conn.execute(
+                """INSERT INTO settings(constant_name,value,description)
+                   VALUES('SHOP_DAILY_VENDOR_CREDITS','2500',
+                          'Credits each character shop vendor can spend on direct sales per UTC day.')
+                   ON CONFLICT(constant_name) DO UPDATE SET value='2500'"""
+            )
+            conn.execute("UPDATE player_shop_budgets SET credits_remaining=2500")
+            conn.execute(
+                """INSERT INTO settings(constant_name,value,description)
+                   VALUES('SHOP_VENDOR_2500_MIGRATED','TRUE',
+                          'Marker for the one-time 2500-credit vendor allowance migration.')"""
+            )
         # Adopt the hourly AP-trickle rule only for installations still using
         # the former stock 3 AP / 6 hour values. Administrator customizations
         # are deliberately preserved.
@@ -351,7 +430,7 @@ def init_db():
             ("WORLD_BOSS_CREDITS_PER_DAMAGE", "0.25", "Additional world-boss attempt credits per point of actual shared-pool damage."),
             ("WORLD_BOSS_CREDITS_PER_ROUND", "1.0", "Additional world-boss attempt credits per completed combat round."),
             ("WORLD_BOSS_REWARD_HOURS", "12", "Hours each placed player has to choose a prize."),
-            ("SHOP_DAILY_VENDOR_CREDITS", "500", "Credits each character's shop vendor can spend on their direct sales per UTC day."),
+            ("SHOP_DAILY_VENDOR_CREDITS", "2500", "Credits each character's shop vendor can spend on their direct sales per UTC day."),
             ("SHOP_PLAYER_SOLD_LISTING_CAP", "30", "Maximum player-sold listings retained by the Shop; the oldest player-sold stock expires first."),
             ("SHOP_SPECIAL_COUNT", "2", "Maximum unique specials placed in each normal Shop rotation."),
             ("TAVERN_CREDITS_PER_HP", "2", "Credits charged for each HP purchased from the Tavern."),
@@ -363,6 +442,10 @@ def init_db():
             ("PROTAGONIST_ENCOUNTER_CREDITS_BASE", "15", "Flat credits included in a friendly protagonist interruption reward."),
             ("PROTAGONIST_ENCOUNTER_CREDITS_PER_LEVEL", "10", "Additional credits per player level in a friendly protagonist interruption reward."),
             ("ENCOUNTER_MAX_LEVEL_ABOVE", "7", "Highest boss or interruption-minion level permitted above the encountering character."),
+            ("TRAVELING_MERCHANT_CHANCE", "0.05", "Chance checked after each AP trickle that the traveling merchant appears."),
+            ("TRAVELING_MERCHANT_DURATION_HOURS", "6", "Hours the traveling merchant remains available."),
+            ("TRAVELING_MERCHANT_ITEM_COUNT", "5", "Unique special items offered by each traveling merchant."),
+            ("TRAVELING_MERCHANT_MARKUP", "0.25", "Price markup over authored special-item value."),
         ):
             conn.execute(
                 "INSERT OR IGNORE INTO settings(constant_name,value,description) VALUES(?,?,?)",
@@ -864,6 +947,37 @@ def get_player_equipped(player: dict) -> dict:
                     "current_durability": inv_row["current_durability"]})
     result["special"] = result["specials"][0] if result["specials"] else None
     return result
+
+
+def spend_ap_and_regen(player_id: int, player: dict, ap_cost: int,
+                       settings: dict | None = None,
+                       allow_shortfall: bool = False) -> dict:
+    """Spend AP and apply the authoritative per-AP-action HP regeneration.
+
+    Call while holding ``exclusive_transaction``.  Core END includes active
+    status effects through ``get_player``; weapon/outfit END and the combined
+    unlocked-special/perk regeneration profile are then applied exactly once.
+    """
+    settings = settings or get_all_settings()
+    equipped = get_player_equipped(player)
+    profile = get_player_bonus_profile(player_id, equipped.get("specials", []))
+    effective_end = int(player["end_stat"])
+    effective_end += int((equipped.get("weapon") or {}).get("end_bonus", 0) or 0)
+    effective_end += int((equipped.get("armor") or {}).get("end_bonus", 0) or 0)
+    effective_end += int(profile.get("end_bonus", 0) or 0)
+    regen = calculate_passive_regen(
+        effective_end, int(profile.get("hp_regen_bonus", 0) or 0), settings
+    )
+    maximum_hp = calculate_max_hp(player["level"], effective_end, settings)
+    charged = min(int(player["current_ap"]), int(ap_cost)) if allow_shortfall else int(ap_cost)
+    new_ap = max(0, int(player["current_ap"]) - charged)
+    new_hp = min(maximum_hp, int(player["current_hp"]) + regen)
+    execute_write(
+        "UPDATE players SET current_ap=?,current_hp=? WHERE id=?",
+        (new_ap, new_hp, player_id),
+    )
+    return {"ap_spent": charged, "new_ap": new_ap, "hp_regenerated": regen,
+            "new_hp": new_hp, "max_hp": maximum_hp}
 
 
 def get_setting(constant_name: str, default=None):

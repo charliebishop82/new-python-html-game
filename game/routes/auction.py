@@ -7,6 +7,7 @@ from flask import Blueprint, g, redirect, render_template, request, session, url
 import config_defaults as cfg
 from database import (execute, execute_one, execute_write, exclusive_transaction,
                       get_all_settings, get_player, encumbered_ap_cost)
+from database import spend_ap_and_regen
 from database import equipped_special_ids
 from queue_handler import enqueue_and_process, register_handler
 
@@ -38,8 +39,8 @@ def handle_enter(player_id: int, payload: dict) -> dict:
     if player["current_ap"] < cost:
         raise ValueError(f"Not enough AP. Need {cost}.")
     with exclusive_transaction():
-        execute_write("UPDATE players SET current_ap=current_ap-? WHERE id=?", (cost, player_id))
-    return {"success": True, "ap_spent": cost}
+        spent = spend_ap_and_regen(player_id, player, cost, settings)
+    return {"success": True, **spent}
 
 
 @bp.get("/auction")
@@ -57,6 +58,8 @@ def index():
            WHERE ii.player_id=? AND ii.item_type='SPECIAL' AND si.is_active=1
              AND NOT EXISTS(SELECT 1 FROM auction_listings a
                             WHERE a.inventory_item_id=ii.id AND a.status='ACTIVE')
+             AND NOT EXISTS(SELECT 1 FROM bounties b
+                            WHERE b.inventory_item_id=ii.id AND b.status='ACTIVE')
            ORDER BY si.name""", (player_id,)
     )
     sellable = [item for item in sellable if item["inv_id"] not in equipped_specials]
@@ -113,6 +116,8 @@ def handle_list(player_id: int, payload: dict) -> dict:
             raise ValueError("You may have only two active auctions.")
         if execute_one("SELECT 1 FROM auction_listings WHERE inventory_item_id=? AND status='ACTIVE'", (inv_id,)):
             raise ValueError("That item is already on auction hold.")
+        if execute_one("SELECT 1 FROM bounties WHERE inventory_item_id=? AND status='ACTIVE'", (inv_id,)):
+            raise ValueError("That item is held as a bounty prize.")
         ends = (datetime.utcnow() + timedelta(hours=hours)).isoformat()
         listing_id = execute_write(
             """INSERT INTO auction_listings
@@ -263,7 +268,7 @@ def release_player_auctions(player_id: int) -> None:
 def _listing_item(inv_id: int) -> dict:
     """Load display and valuation data for an auction-held inventory copy."""
     return execute_one(
-        """SELECT ii.item_id,ii.current_durability,si.name,si.description,si.credit_cost
+        """SELECT si.*,ii.item_id,ii.current_durability,'SPECIAL' AS item_type
            FROM inventory_items ii JOIN special_items si ON si.id=ii.item_id WHERE ii.id=?""",
         (inv_id,)
     )
@@ -271,7 +276,7 @@ def _listing_item(inv_id: int) -> dict:
 
 def _active_listings() -> list[dict]:
     """Return active auctions with seller, bidder, item, and condition data."""
-    return execute(
+    rows = execute(
         """SELECT a.*,si.name,si.description,si.credit_cost,ii.current_durability,
                   seller.character_name AS seller_name,bidder.character_name AS bidder_name
            FROM auction_listings a JOIN inventory_items ii ON ii.id=a.inventory_item_id
@@ -280,3 +285,9 @@ def _active_listings() -> list[dict]:
            LEFT JOIN players bidder ON bidder.id=a.current_bidder_id
            WHERE a.status='ACTIVE' ORDER BY datetime(a.ends_at),a.id"""
     )
+    for row in rows:
+        detail = _listing_item(row["inventory_item_id"]) or {}
+        # Preserve the auction-listing id; the content row has its own id.
+        detail.pop("id", None)
+        row.update(detail)
+    return rows
